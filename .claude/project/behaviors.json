@@ -31,6 +31,16 @@
       "status": "retired",
       "plan": 27,
       "retired": "the plan was renumbered; s1.h2.one-verdict-path holds it now"
+    },
+    "s2.h3.three-tools": {
+      "what": "find, guide, run trả lời qua MCP stdio",
+      "how": "chạy entry/mcp_server.py thật, gửi JSON-RPC, đọc trả lời",
+      "why": "bề mặt tối thiểu để session dùng harness",
+      "tests": [
+        ".claude/tests/e2e/test_mcp_server.py"
+      ],
+      "status": "active",
+      "plan": 29
     }
   }
 }
