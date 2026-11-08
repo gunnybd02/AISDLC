@@ -1,0 +1,69 @@
+"""h2.one-verdict-path: the runner passes an event through the recipe's translators and detectors to decide; the recipe
+and the config are read only by assemble."""
+import json
+import unittest
+
+from harness.assemble.build import build_runner
+from harness.assemble.config import Config, ConfigError
+from harness.assemble.recipe import RecipeBook, RecipeError
+from harness.assemble.runner import Runner
+from harness.gear.decide import Decide
+from harness.utils.contracts import ALLOW, ASK, Detector, Event, Finding, Translator
+from tests import CLAUDE_DIR, tree
+
+
+class Kind(Translator):
+    def translate(self, event):
+        return {"kind": event.tool.lower()}
+
+
+class SeesBash(Detector):
+    def detect(self, event, facts):
+        return [Finding("tool.bash")] if facts.get("kind") == "bash" else []
+
+
+class RunnerTest(unittest.TestCase):
+    def test_facts_reach_the_detectors_and_findings_reach_decide(self):
+        runner = Runner([Kind()], [SeesBash()], Decide({}))
+        self.assertEqual(runner.run(Event("PreToolUse", "Bash")).decision, ASK)
+        self.assertEqual(runner.run(Event("PreToolUse", "Read")).decision, ALLOW)
+
+    def test_the_real_tree_builds_and_allows_a_plain_call(self):
+        self.assertEqual(build_runner(CLAUDE_DIR).run(Event("PreToolUse", "Read")).decision, ALLOW)
+
+
+class RecipeTest(unittest.TestCase):
+    def book(self, **recipes):
+        return RecipeBook(tree(self, {f"{n}.json": json.dumps(r) for n, r in recipes.items()}))
+
+    def test_an_overlay_only_adds_to_its_base(self):
+        book = self.book(base={"translators": ["t1"], "detectors": ["d1"]},
+                         unit={"extends": "base", "detectors": ["d2", "d1"]})
+        r = book.resolve("unit")
+        self.assertEqual((r.translators, r.detectors), (("t1",), ("d1", "d2")))
+
+    def test_a_wrong_recipe_is_refused(self):
+        cases = (("missing", {}), ("cut", {"base": {}, "cut": {"extends": "base", "remove": ["d1"]}}),
+                 ("a", {"a": {"extends": "b"}, "b": {"extends": "a"}}), ("bad", {"bad": {"detectors": "d1"}}))
+        for name, recipes in cases:
+            with self.subTest(name=name), self.assertRaises(RecipeError):
+                self.book(**recipes).resolve(name)
+
+    def test_the_real_base_recipe_resolves(self):
+        RecipeBook(CLAUDE_DIR / "harness" / "assemble" / "recipes").resolve("base")
+
+
+class ConfigTest(unittest.TestCase):
+    def test_the_real_config_loads(self):
+        self.assertEqual(Config.load(CLAUDE_DIR).recipe, "base")
+
+    def test_a_wrong_config_is_refused(self):
+        for text in ("{", json.dumps({"name": "x"}), json.dumps({"name": "x", "recipe": "base", "extra": 1}), "[]"):
+            with self.subTest(text=text), self.assertRaises(ConfigError):
+                Config.load(tree(self, {"project.json": text}))
+        with self.assertRaises(ConfigError):
+            Config.load(tree(self, {}))
+
+
+if __name__ == "__main__":
+    unittest.main()

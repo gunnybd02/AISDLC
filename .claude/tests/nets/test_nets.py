@@ -1,10 +1,10 @@
 """h1.blocks-and-nets: each net finds its break in a fake tree and nothing in the real one."""
 import unittest
 
-from nets import bridges_net, imports_net, layout_net, size_net
+from nets import bridges_net, config_net, imports_net, layout_net, size_net, verdict_net
 from tests import CLAUDE_DIR, tree
 
-NETS = (layout_net, imports_net, bridges_net, size_net)
+NETS = (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net)
 
 
 def joined(net, test, files):
@@ -81,6 +81,29 @@ class SizeNetTest(unittest.TestCase):
     def test_files_at_the_limit_pass(self):
         files = {"harness/gear/a.py": "x = 1\n" * 500, "docs/a.md": "x\n" * 300}
         self.assertEqual(size_net.check(tree(self, files)), [])
+
+
+class VerdictNetTest(unittest.TestCase):
+    def test_a_verdict_word_outside_decide_and_contracts_is_reported(self):
+        for word in ("allow", "ask", "refuse", "deny"):
+            with self.subTest(word=word):
+                self.assertIn("harness/mcp/a.py", joined(verdict_net, self, {"harness/mcp/a.py": f"X = '{word}'\n"}))
+
+    def test_decide_contracts_and_longer_text_pass(self):
+        files = {"harness/gear/decide.py": "X = 'ask'\n", "harness/utils/contracts.py": "Y = 'deny'\n",
+                 "harness/mcp/a.py": '"""We ask nothing."""\nX = "ask the user"\n'}
+        self.assertEqual(verdict_net.check(tree(self, files)), [])
+
+
+class ConfigNetTest(unittest.TestCase):
+    def test_project_json_named_outside_the_config_door_is_reported(self):
+        found = joined(config_net, self, {"harness/gear/a.py": "PATH = 'project.json'\n"})
+        self.assertIn("harness/gear/a.py", found)
+
+    def test_the_config_door_and_docstrings_pass(self):
+        files = {"harness/assemble/config.py": "P = 'project.json'\n",
+                 "harness/gear/a.py": '"""Never reads project.json."""\n'}
+        self.assertEqual(config_net.check(tree(self, files)), [])
 
 
 if __name__ == "__main__":

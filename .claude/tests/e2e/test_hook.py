@@ -1,0 +1,55 @@
+"""h2.one-verdict-path (AC3): entry/hook.py run as Claude Code runs it: a plain call says nothing, a finding no rule
+names asks the user, a broken harness exits 2."""
+import json
+import unittest
+
+import harness.gear as gear_block
+import harness.mcp as mcp_block
+from tests import CLAUDE_DIR
+from tests.e2e import copy_tree, run
+
+PAYLOAD = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "ls"}, "session_id": "s",
+           "cwd": "C:/x"}
+FAKE = {
+    "harness/gear/fake_detect.py": (
+        '"""A detector for the test."""\nfrom harness.utils.contracts import Detector, Finding\n\n\n'
+        'class Fake(Detector):\n    def detect(self, event, facts):\n'
+        '        return [Finding("test.flagged", event.input.get("command", ""))] if event.input.get("flag") else []\n'),
+    "harness/gear/__init__.py": (
+        '"""x"""\nITEMS = [{"kind": "rule", "name": "decide", "ref": "harness.gear.decide:Decide"},\n'
+        '         {"kind": "detector", "name": "fake", "ref": "harness.gear.fake_detect:Fake"}]\n'),
+    "harness/assemble/recipes/base.json": json.dumps({"translators": [], "detectors": ["fake"]}),
+}
+
+
+def hook(root, payload):
+    return run(root / "entry" / "hook.py", json.dumps(payload))
+
+
+class HookEntryTest(unittest.TestCase):
+    def test_the_hook_path_is_declared_by_the_blocks(self):
+        names = {i["name"] for i in gear_block.ITEMS + mcp_block.ITEMS}
+        self.assertLessEqual({"decide", "hook_io"}, names)
+
+    def test_a_plain_call_says_nothing(self):
+        self.assertEqual(hook(CLAUDE_DIR, PAYLOAD)[:2], (0, ""))
+
+    def test_a_finding_without_a_rule_asks_the_user_with_its_name(self):
+        code, out, _ = hook(copy_tree(self, FAKE), {**PAYLOAD, "tool_input": {"command": "rm x", "flag": True}})
+        decision = json.loads(out)["hookSpecificOutput"]
+        self.assertEqual((code, decision["permissionDecision"]), (0, "ask"))
+        self.assertIn("test.flagged", decision["permissionDecisionReason"])
+        self.assertIn("rm x", decision["permissionDecisionReason"])
+
+    def test_a_broken_harness_exits_2(self):
+        root = copy_tree(self, {"harness/assemble/build.py": "raise RuntimeError('broken')\n"})
+        code, out, err = hook(root, PAYLOAD)
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("broken", err)
+
+    def test_a_payload_that_is_not_json_exits_2(self):
+        self.assertEqual(run(CLAUDE_DIR / "entry" / "hook.py", "not json")[0], 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

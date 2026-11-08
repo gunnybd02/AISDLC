@@ -10,6 +10,27 @@
       ],
       "status": "active",
       "plan": 27
+    },
+    "s1.h2.one-verdict-path": {
+      "what": "một sự kiện hook đi hết translate → detect → decide → out",
+      "how": "payload thật qua entry/hook.py với gear giả; finding không có luật → ask; code hỏng → exit 2",
+      "why": "một chỗ phán quyết; chưa có luật thì hỏi user, code hỏng thì chặn",
+      "tests": [
+        ".claude/tests/e2e/test_hook.py"
+      ],
+      "status": "active",
+      "plan": 29
+    },
+    "s2.h2.one-verdict-path": {
+      "what": "một sự kiện hook đi hết translate → detect → decide → out",
+      "how": "payload thật qua entry/hook.py với gear giả; finding không có luật → ask; code hỏng → exit 2",
+      "why": "một chỗ phán quyết; chưa có luật thì hỏi user, code hỏng thì chặn",
+      "tests": [
+        ".claude/tests/e2e/test_hook.py"
+      ],
+      "status": "retired",
+      "plan": 27,
+      "retired": "the plan was renumbered; s1.h2.one-verdict-path holds it now"
     }
   }
 }
