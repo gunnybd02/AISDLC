@@ -41,6 +41,16 @@
       ],
       "status": "active",
       "plan": 29
+    },
+    "s3.h4.doctor": {
+      "what": "doctor báo 0 lỗi trên cây thật, ERROR khi một net vỡ",
+      "how": "chạy entry/doctor.py trên cây thật và cây giả có vi phạm",
+      "why": "sức khoẻ của hệ đọc bằng một lệnh",
+      "tests": [
+        ".claude/tests/e2e/test_doctor.py"
+      ],
+      "status": "active",
+      "plan": 29
     }
   }
 }
