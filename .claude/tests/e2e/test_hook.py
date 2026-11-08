@@ -47,6 +47,10 @@ class HookEntryTest(unittest.TestCase):
         self.assertEqual((code, out), (2, ""))
         self.assertIn("broken", err)
 
+    def test_a_harness_that_exits_quietly_still_blocks(self):
+        root = copy_tree(self, {"harness/assemble/build.py": "raise SystemExit(0)\n"})
+        self.assertEqual(hook(root, PAYLOAD)[0], 2)
+
     def test_a_payload_that_is_not_json_exits_2(self):
         self.assertEqual(run(CLAUDE_DIR / "entry" / "hook.py", "not json")[0], 2)
 

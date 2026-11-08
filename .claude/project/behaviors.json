@@ -21,6 +21,16 @@
       "status": "active",
       "plan": 29
     },
+    "s1.h5.no-gap": {
+      "what": "các luật của nền được máy giữ, không còn lỗ review đã chỉ",
+      "how": "mỗi lỗ: cây giả hoặc request giả trước đây lọt, nay bị bắt",
+      "why": "xây tiếp lên nền không mang nợ",
+      "tests": [
+        ".claude/tests/e2e/test_mcp_server.py"
+      ],
+      "status": "active",
+      "plan": 31
+    },
     "s2.h2.one-verdict-path": {
       "what": "một sự kiện hook đi hết translate → detect → decide → out",
       "how": "payload thật qua entry/hook.py với gear giả; finding không có luật → ask; code hỏng → exit 2",

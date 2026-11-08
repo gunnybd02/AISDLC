@@ -1,7 +1,7 @@
 """bridges: no file only passes names on (imports, then __all__ or B2 = B); import from where the code lives."""
 import ast
 
-from nets import files
+from nets import python
 
 
 def is_bridge(tree):
@@ -24,5 +24,4 @@ def is_bridge(tree):
 
 def check(claude_dir):
     return [f"bridges: {rel} only passes names on; import them from where they live"
-            for rel, path in files(claude_dir, (".py",), ("harness", "entry", "nets"))
-            if is_bridge(ast.parse(path.read_text(encoding="utf-8")))]
+            for rel, tree in python(claude_dir, ("harness", "entry", "nets")) if is_bridge(tree)]

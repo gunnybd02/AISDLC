@@ -23,8 +23,10 @@ Everything lives under `.claude/`. Python 3.13, standard library only.
 - `utils` imports no block.
 - `assemble` connects: `loader.py` reads the `ITEMS` of `mcp` and `gear` and loads them by name. It is the one place
   of a dynamic import.
-- `entry/` imports only `assemble` (its doors in `build.py`). The top of an entry script imports only the standard
-  library, so a harness that does not load still answers: the hook exits 2.
+- `entry/` imports only `assemble` (its doors in `build.py`), and only inside `main()`: the top of an entry script
+  imports only the standard library. A harness that does not load, or quits (SystemExit), still answers: the hook
+  exits 2.
+- `assemble` imports `nets` only inside `doctor()`. The nets are dev-time code and never weigh on a hook call.
 
 ## Indexes
 `harness/mcp/__init__.py` and `harness/gear/__init__.py` only declare: a docstring and one literal
@@ -50,7 +52,8 @@ Claude Code -> entry/hook.py -> assemble.build.run_hook
 ```
 - Only `gear/decide.py` judges. A finding is looked up in `gear/rules/*.json`, and the strongest verdict wins.
 - A finding that no rule names asks the user, and the question names the finding.
-- A rule row names its test, and a row whose test does not exist does not load.
+- A rule row names its test (`tests/.../test_x.py#test_y`), and a row whose test does not exist does not load.
+- Each fact has one translator. Two translators that give the same fact are an error, never an overwrite.
 - A broken harness exits 2, which blocks the call.
 
 ## The MCP server
@@ -62,16 +65,33 @@ Claude Code -> entry/hook.py -> assemble.build.run_hook
 The handlers of the blocks live in `assemble/build.py`. Today the only block is `health`, with `items` and `doctor`.
 
 ## Nets
-`entry/doctor.py` (also `run("health", "doctor")`) reports every problem as an ERROR. There is no list of exceptions.
+`entry/doctor.py` (also `run("health", "doctor")`) reports every problem as an ERROR, in this order:
+- the indexes;
+- each item's ref, which must load;
+- the build (config, recipe, rules);
+- the skill library: each skill reads, its name is its folder's, and no name is used twice;
+- then every net.
+
+The nets read the whole tree except two places, and only these: `state/` (the private DB) and
+`project/behaviors.json` (the old harness's record of the tests here, until the cutover).
 
 | Net | Rule |
 |---|---|
 | `layout` | a file is only where `nets/layout.json` allows (`*` stays in one folder, `**` crosses folders) |
-| `imports` | the connection rule above, aliases and relative imports included; dynamic imports only in the loader |
+| `imports` | the connection rule above, aliases and relative imports included; dynamic imports only in the loader; a file that does not parse |
 | `bridges` | no file only passes names on |
 | `size` | `.py` at most 500 lines, `.md` at most 300 |
-| `verdict` | the words allow, ask, refuse, deny only in `gear/decide.py` and `utils/contracts.py` |
+| `verdict` | outside `gear/decide.py` and `utils/contracts.py`: no verdict word (allow, ask, refuse, deny), no `ALLOW`/`ASK`/`REFUSE`, no `Verdict` |
 | `config` | `project.json` is named only in `assemble/config.py` |
+| `entry` | an entry script imports only the standard library at load time (in `try`, `if`... too); its `main()` catches `BaseException` |
+
+The nets read the code as written, not as it runs. A name built at run time (`getattr(m, "AL" + "LOW")`) gets past
+them. Review keeps that out, and no net claims to.
+
+A file that does not decode as UTF-8 is reported by `size`, and a file that does not parse by `imports`. No net
+crashes on it. An index or a skill that does not decode is also reported by the loader or the skill library, which
+need it. The nets read `harness/`, `entry/` and `nets/`. A test file that does not parse is shown by the test run
+itself.
 
 ## How to add a thing
 1. Write the test first, in the block's folder under `tests/`.

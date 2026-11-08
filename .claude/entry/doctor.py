@@ -12,7 +12,7 @@ def main():
         sys.path.insert(0, str(CLAUDE_DIR))
         from harness.assemble.build import doctor, report
         problems = doctor()
-    except Exception as e:
+    except BaseException as e:
         print(f"ERROR the harness does not load: {type(e).__name__}: {e}")
         return 2
     print(report(problems))

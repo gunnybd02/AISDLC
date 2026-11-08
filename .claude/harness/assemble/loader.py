@@ -39,10 +39,6 @@ class Loader:
             raise LoaderError(problems)
         return items
 
-    def registry(self):
-        """{name: the object its ref names}, for every item of every block."""
-        return {item.name: self.resolve(item) for item in self.items()}
-
     @staticmethod
     def resolve(item):
         module, _, attr = item.ref.partition(":")
@@ -56,7 +52,12 @@ class Loader:
             if not path.is_file():
                 problems.append(f"{rel}: missing; every block has an index")
                 continue
-            entries, why = Loader.entries_of(path.read_text(encoding="utf-8"))
+            try:
+                text = path.read_text(encoding="utf-8-sig")
+            except UnicodeDecodeError as e:
+                problems.append(f"{rel}: does not decode as UTF-8 ({e.reason})")
+                continue
+            entries, why = Loader.entries_of(text)
             if why:
                 problems.append(f"{rel}: {why}")
                 continue
@@ -85,7 +86,7 @@ class Loader:
             return [], only
         try:
             entries = ast.literal_eval(body[0].value)
-        except ValueError:
+        except (ValueError, TypeError, RecursionError):
             return [], only
         if not isinstance(entries, list):
             return [], only

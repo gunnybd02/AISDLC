@@ -6,7 +6,7 @@ import unittest
 from harness.assemble.build import build_runner
 from harness.assemble.config import Config, ConfigError
 from harness.assemble.recipe import RecipeBook, RecipeError
-from harness.assemble.runner import Runner
+from harness.assemble.runner import Runner, RunnerError
 from harness.gear.decide import Decide
 from harness.utils.contracts import ALLOW, ASK, Detector, Event, Finding, Translator
 from tests import CLAUDE_DIR, tree
@@ -27,6 +27,10 @@ class RunnerTest(unittest.TestCase):
         runner = Runner([Kind()], [SeesBash()], Decide({}))
         self.assertEqual(runner.run(Event("PreToolUse", "Bash")).decision, ASK)
         self.assertEqual(runner.run(Event("PreToolUse", "Read")).decision, ALLOW)
+
+    def test_two_translators_giving_the_same_fact_is_an_error(self):
+        with self.assertRaises(RunnerError):
+            Runner([Kind(), Kind()], [], Decide({})).run(Event("PreToolUse", "Bash"))
 
     def test_the_real_tree_builds_and_allows_a_plain_call(self):
         self.assertEqual(build_runner(CLAUDE_DIR).run(Event("PreToolUse", "Read")).decision, ALLOW)
@@ -49,6 +53,14 @@ class RecipeTest(unittest.TestCase):
             with self.subTest(name=name), self.assertRaises(RecipeError):
                 self.book(**recipes).resolve(name)
 
+    def test_a_recipe_name_cannot_leave_the_recipes_folder(self):
+        root = tree(self, {"base.json": "{}", "a/b.json": "{}", "recipes/x.json": "{}"})
+        book = RecipeBook(root / "recipes")
+        for name in ("../base", "../a/b", ""):
+            with self.subTest(name=name), self.assertRaises(RecipeError):
+                book.resolve(name)
+        self.assertEqual(book.resolve("x").name, "x")
+
     def test_the_real_base_recipe_resolves(self):
         RecipeBook(CLAUDE_DIR / "harness" / "assemble" / "recipes").resolve("base")
 
@@ -56,6 +68,10 @@ class RecipeTest(unittest.TestCase):
 class ConfigTest(unittest.TestCase):
     def test_the_real_config_loads(self):
         self.assertEqual(Config.load(CLAUDE_DIR).recipe, "base")
+
+    def test_a_config_written_with_a_bom_loads(self):
+        root = tree(self, {"project.json": "﻿" + json.dumps({"name": "x", "recipe": "base"})})
+        self.assertEqual(Config.load(root).name, "x")
 
     def test_a_wrong_config_is_refused(self):
         for text in ("{", json.dumps({"name": "x"}), json.dumps({"name": "x", "recipe": "base", "extra": 1}), "[]"):

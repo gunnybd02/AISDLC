@@ -39,7 +39,8 @@ class LoaderTest(unittest.TestCase):
         self.assertIn("'decide' is declared twice", " ".join(found))
 
     def test_an_index_with_logic_is_refused(self):
-        for gear in ('import os\nITEMS = []\n', 'ITEMS = []\ndef f():\n    pass\n', 'ITEMS = [x for x in ()]\n'):
+        for gear in ('import os\nITEMS = []\n', 'ITEMS = []\ndef f():\n    pass\n', 'ITEMS = [x for x in ()]\n',
+                     'ITEMS = [{[1]: 2}]\n'):
             with self.subTest(gear=gear):
                 self.assertIn("only declares", " ".join(self.problems(gear=gear)))
 
@@ -52,6 +53,14 @@ class LoaderTest(unittest.TestCase):
     def test_a_block_without_index_is_refused(self):
         root = tree(self, {"harness/gear/__init__.py": GOOD_GEAR, "harness/gear/decide.py": ""})
         self.assertIn("harness/mcp/__init__.py", " ".join(Loader(root).problems()))
+
+    def test_an_index_written_with_a_bom_reads(self):
+        self.assertEqual(self.problems(gear="﻿" + GOOD_GEAR), [])
+
+    def test_an_index_that_does_not_decode_is_a_problem(self):
+        root = fake(self)
+        (root / "harness" / "gear" / "__init__.py").write_bytes(b"ITEMS = ['\xe9']\n")
+        self.assertIn("does not decode", " ".join(Loader(root).problems()))
 
     def test_items_raise_when_there_is_a_problem(self):
         with self.assertRaises(LoaderError):

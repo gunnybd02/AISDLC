@@ -3,15 +3,16 @@ findings wins, with the reasons of the findings that gave it. A finding no rule 
 in the question. No finding: allow.
 
 A rule row: {"finding": kind, "verdict": allow|ask|refuse, "why": the sentence shown, "test": "tests/<file>.py#<test>"};
-a row whose test does not exist does not load."""
+a row whose test is not a test function under tests/ does not load."""
 import json
 import re
 from pathlib import Path
 
 from harness.utils.contracts import ALLOW, ASK, VERDICTS, Verdict
 
-RULES_DIR = Path(__file__).with_name("rules")
+RULES = ("harness", "gear", "rules")  # under the .claude folder
 FIELDS = ("finding", "verdict", "why", "test")
+TEST = re.compile(r"^tests/(?:[A-Za-z_][\w]*/)*test_\w+\.py#test_\w+$")
 
 
 class RuleError(Exception):
@@ -25,13 +26,16 @@ class Decide:
         self.rules = rules  # {finding kind: row}
 
     @classmethod
-    def load(cls, claude_dir, rules_dir=RULES_DIR):
+    def load(cls, claude_dir, rules_dir=None):
         rules, problems = {}, []
-        for path in sorted(Path(rules_dir).glob("*.json")):
+        for path in sorted(Path(rules_dir or Path(claude_dir).joinpath(*RULES)).glob("*.json")):
             try:
-                rows = json.loads(path.read_text(encoding="utf-8"))["rules"]
+                rows = json.loads(path.read_text(encoding="utf-8-sig"))["rules"]
             except (ValueError, KeyError, TypeError) as e:
                 problems.append(f"{path.name}: not a rules file ({e})")
+                continue
+            if not isinstance(rows, list):
+                problems.append(f"{path.name}: rules is a list of rows")
                 continue
             for n, row in enumerate(rows, 1):
                 why = Decide.row_problem(row, Path(claude_dir))
@@ -53,9 +57,12 @@ class Decide:
             return f"verdict '{row['verdict']}' is not one of {', '.join(VERDICTS)}"
         file, _, name = row["test"].partition("#")
         path = claude_dir / file
-        if not name or not path.is_file() or not re.search(rf"^\s*def {re.escape(name)}\(", path.read_text(encoding="utf-8"), re.M):
-            return f"the test {row['test']} does not exist"
-        return ""
+        try:
+            found = TEST.match(row["test"]) and path.is_file() and \
+                re.search(rf"^\s*def {name}\(", path.read_text(encoding="utf-8-sig"), re.M)
+        except UnicodeDecodeError:
+            found = False
+        return "" if found else f"the test {row['test']} is not a test function of a file under tests/"
 
     def decide(self, findings):
         if not findings:

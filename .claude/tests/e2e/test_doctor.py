@@ -9,6 +9,9 @@ BAD = {
     "imports": {"harness/gear/leak.py": '"""x"""\nimport harness.mcp.hooks\n'},
     "loader": {"harness/gear/__init__.py": "import os\nITEMS = []\n"},
     "config": {"project.json": "{}"},
+    "ref": {"harness/gear/__init__.py": '"""x"""\nITEMS = [{"kind": "rule", "name": "decide", '
+                                        '"ref": "harness.gear.decide:Typo"}]\n'},
+    "skill": {"skills/bad/SKILL.md": "# no frontmatter\n"},
 }
 
 
@@ -24,6 +27,12 @@ class DoctorEntryTest(unittest.TestCase):
                 code, out, _ = run(copy_tree(self, files) / "entry" / "doctor.py")
                 self.assertEqual(code, 1)
                 self.assertIn("ERROR", out)
+
+    def test_a_harness_that_exits_quietly_is_still_an_error(self):
+        root = copy_tree(self, {"harness/assemble/build.py": "raise SystemExit(0)\n"})
+        code, out, _ = run(root / "entry" / "doctor.py")
+        self.assertEqual(code, 2)
+        self.assertIn("ERROR", out)
 
     def test_the_mcp_server_serves_the_doctor_too(self):
         line = '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"run","arguments":' \

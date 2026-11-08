@@ -3,7 +3,7 @@ import fnmatch
 import json
 from pathlib import Path
 
-from nets import files
+from nets import files, read
 
 LAYOUT = Path(__file__).with_name("layout.json")
 
@@ -21,6 +21,11 @@ def match_parts(pattern, parts):
 
 
 def check(claude_dir, layout=LAYOUT):
-    allow = json.loads(Path(layout).read_text(encoding="utf-8"))["allow"]
+    try:
+        allow = json.loads(read(layout))["allow"]
+        if not isinstance(allow, list) or not all(isinstance(p, str) for p in allow):
+            raise ValueError("allow is a list of patterns")
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return [f"layout: {Path(layout).name} cannot be read ({e})"]
     return [f"layout: {rel} is not in a place layout.json allows"
             for rel, _ in files(claude_dir) if not any(match(p, rel) for p in allow)]

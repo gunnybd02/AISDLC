@@ -39,11 +39,15 @@ class ActionTable:
         self.blocks = {}  # block name -> (about, {action name: Action})
 
     def add_block(self, block, about):
+        if block in self.blocks:
+            raise ValueError(f"block {block} is added already")
         self.blocks[block] = (about, {})
 
     def add(self, block, name, about, args, handler):
         if block not in self.blocks:
             raise KeyError(f"no block {block}")
+        if name in self.blocks[block][1]:
+            raise ValueError(f"{block}.{name} is added already")
         unknown = [t for t in args.values() if t not in TYPES]
         if unknown:
             raise ValueError(f"{block}.{name}: unknown argument types {unknown}")

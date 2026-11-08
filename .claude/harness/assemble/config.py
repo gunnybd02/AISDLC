@@ -20,7 +20,7 @@ class Config:
     def load(cls, claude_dir):
         path = Path(claude_dir) / FILE
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError) as e:
             raise ConfigError(f"{FILE} cannot be read: {e}") from e
         if not isinstance(data, dict) or sorted(data) != sorted(FIELDS) or not all(isinstance(v, str) for v in data.values()):

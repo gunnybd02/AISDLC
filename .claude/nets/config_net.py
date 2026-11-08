@@ -1,7 +1,7 @@
 """config: project.json, the values of the user, is named only in assemble/config.py, its one reader."""
 import ast
 
-from nets import files
+from nets import python
 
 DOOR = "harness/assemble/config.py"
 
@@ -14,10 +14,9 @@ def docstrings(tree):
 
 def check(claude_dir):
     out = []
-    for rel, path in files(claude_dir, (".py",), ("harness", "entry")):
+    for rel, tree in python(claude_dir, ("harness", "entry")):
         if rel == DOOR:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"))
         skip = docstrings(tree)
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in skip \

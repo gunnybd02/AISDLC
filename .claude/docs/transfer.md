@@ -19,13 +19,13 @@ and the doctor are clean.
 Ports (the facts a translator or a detector reads from outside, such as git or files) are built in `assemble/ports.py`
 when the first one is needed.
 
-## Ledger
-The schema is copied whole, so a tool that moves in finds its table ready. Two checks guard it:
+## Ledger (planned, row 5: nothing of it exists yet)
+The schema will be copied whole, so a tool that moves in finds its table ready. Two checks will guard it:
 - **Pinned:** opening the private DB compares its fingerprint with `schema.sql`.
 - **Against the real ledger:** the doctor opens the real ledger read only (`mode=ro`) and compares the schema
   fingerprint. If it cannot open it (WAL without `-shm`), it says so, and never takes that as a match.
 
-The fingerprint covers tables, columns, constraints, indexes, triggers and view bodies, with spaces and comments
+The fingerprint will cover tables, columns, constraints, indexes, triggers and view bodies, with spaces and comments
 normalised.
 
 | Table | Written by |

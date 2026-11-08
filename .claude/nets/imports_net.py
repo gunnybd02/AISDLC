@@ -1,8 +1,10 @@
 """imports: mcp and gear import only themselves and utils; utils imports no block; assemble connects them (it loads
-mcp and gear through its loader, the one place of a dynamic import); entry imports only assemble."""
+mcp and gear through its loader, the one place of a dynamic import, and imports the nets only inside a function, so
+they never load on a hook call); entry imports only assemble. It also reports a file that does not parse, for every
+net."""
 import ast
 
-from nets import files
+from nets import files, module_level, read
 
 ALLOWED = {
     "mcp": ("harness.mcp", "harness.utils"),
@@ -44,9 +46,23 @@ def dynamic(node):
 
 def check(claude_dir):
     out = []
-    for rel, path in files(claude_dir, (".py",), ("harness", "entry")):
+    for rel, path in files(claude_dir, (".py",), ("harness", "entry", "nets")):
+        try:
+            tree = ast.parse(read(path))
+        except UnicodeDecodeError:
+            continue  # size_net reports it
+        except (SyntaxError, ValueError) as e:
+            out.append(f"imports: {rel}:{getattr(e, 'lineno', 0)} does not parse ({getattr(e, 'msg', e)})")
+            continue
+        if rel.startswith("nets/"):
+            continue
         who = owner(rel)
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if who == "assemble":
+            for node in module_level(tree):
+                if isinstance(node, (ast.Import, ast.ImportFrom)) and \
+                        any(n.split(".")[0] == "nets" for n in targets(node, rel)):
+                    out.append(f"imports: {rel}:{node.lineno} imports the nets at load time; import them inside a function")
+        for node in ast.walk(tree):
             names = targets(node, rel) if isinstance(node, (ast.Import, ast.ImportFrom)) else []
             for name in names:
                 if name.split(".")[0] in INTERNAL and not under(name, ALLOWED.get(who, ())):

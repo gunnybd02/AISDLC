@@ -1,16 +1,16 @@
-"""The doors entry/ calls. Each builds what it needs from the tree: the loader gives the items of mcp and gear by
-name, the config names the recipe, the recipe names the translators and detectors."""
+"""The doors entry/ calls: run_hook, run_mcp, doctor. Each builds what it needs from the tree: the loader gives the items
+of mcp and gear by name, the config names the recipe, the recipe names the translators and detectors."""
 from pathlib import Path
 
 from harness.assemble.config import Config
 from harness.assemble.loader import Loader
 from harness.assemble.recipe import RecipeBook
 from harness.assemble.runner import Runner
-from nets import bridges_net, config_net, imports_net, layout_net, size_net, verdict_net
+from harness.utils.contracts import Detector, Translator
 
 CLAUDE_DIR = Path(__file__).resolve().parents[2]
 SERVER = ("harness", "0.1")
-NETS = (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net)
+BASES = {"translator": Translator, "detector": Detector}
 
 
 class BuildError(ValueError):
@@ -18,13 +18,14 @@ class BuildError(ValueError):
 
 
 def pick(items, names, kind):
-    """The objects of the named items, each checked to be of the kind the recipe needs."""
+    """An object of each named item, checked to be of the kind the recipe needs and built on its base class."""
     out = []
     for name in names:
         item = items.get(name)
-        if item is None or item.kind != kind:
+        cls = Loader.resolve(item) if item is not None and item.kind == kind else None
+        if not (isinstance(cls, type) and issubclass(cls, BASES[kind])):
             raise BuildError(f"the recipe names {name}, which is no {kind} of any block")
-        out.append(Loader.resolve(item)())
+        out.append(cls())
     return out
 
 
@@ -54,27 +55,9 @@ def action_table(items, claude_dir):
     table.add_block("health", "The health of the harness: what the blocks declare")
     table.add("health", "items", "The items of mcp and gear, one per line: block, kind, name", {},
               lambda: "\n".join(f"{i.block} {i.kind} {i.name}" for i in items.values()))
-    table.add("health", "doctor", "Every problem of the tree: the indexes, the build, the nets", {},
+    table.add("health", "doctor", "Every problem of the tree: the indexes, the build, the skills, the nets", {},
               lambda: report(doctor(claude_dir)))
     return table
-
-
-def doctor(claude_dir=CLAUDE_DIR):
-    """The problems of the tree: the indexes, then the build (config, recipe, rules), then every net."""
-    claude_dir = Path(claude_dir)
-    problems = Loader(claude_dir).problems()
-    if not problems:
-        try:
-            build_runner(claude_dir)
-        except Exception as e:
-            problems.append(f"build: {type(e).__name__}: {e}")
-    for net in NETS:
-        problems += net.check(claude_dir)
-    return problems
-
-
-def report(problems):
-    return "\n".join([f"ERROR {p}" for p in problems] + [f"{len(problems)} errors"])
 
 
 def run_mcp(instream, outstream, claude_dir=CLAUDE_DIR):
@@ -85,3 +68,38 @@ def run_mcp(instream, outstream, claude_dir=CLAUDE_DIR):
     skills = Loader.resolve(items["skills"])(claude_dir / "skills")
     tools = [Loader.resolve(items[n])(skills, table) for n in ("find", "guide")] + [Loader.resolve(items["run"])(table)]
     Loader.resolve(items["stdio"])(*SERVER, tools).serve(instream, outstream)
+
+
+def doctor(claude_dir=CLAUDE_DIR):
+    """Every problem of the tree: the indexes, each item's ref, the build (config, recipe, rules), the skills, the nets.
+    The nets are dev-time code, imported here only, so they never weigh on a hook call."""
+    from nets import bridges_net, config_net, entry_net, imports_net, layout_net, size_net, verdict_net
+    claude_dir = Path(claude_dir)
+    problems = Loader(claude_dir).problems()
+    if not problems:
+        problems += built(claude_dir)
+    for net in (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net, entry_net):
+        problems += net.check(claude_dir)
+    return problems
+
+
+def built(claude_dir):
+    """What fails when the tree is put together: a ref that does not load, the build, the skill library."""
+    out, items = [], items_of(claude_dir)
+    for item in items.values():
+        try:
+            Loader.resolve(item)
+        except Exception as e:
+            out.append(f"item {item.name}: {item.ref} does not load ({type(e).__name__}: {e})")
+    if out:
+        return out
+    try:
+        build_runner(claude_dir, items)
+        out += Loader.resolve(items["skills"])(claude_dir / "skills").problems()
+    except Exception as e:
+        out.append(f"build: {type(e).__name__}: {e}")
+    return out
+
+
+def report(problems):
+    return "\n".join([f"ERROR {p}" for p in problems] + [f"{len(problems)} errors"])
