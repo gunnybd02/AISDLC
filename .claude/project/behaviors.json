@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "behaviors": {
+    "s1.h1.blocks-and-nets": {
+      "what": "ba khối nạp qua ITEMS và các lưới bắt vi phạm cấu trúc",
+      "how": "cây giả trên thư mục tạm cho từng vi phạm; cây thật sạch",
+      "why": "luật cấu trúc do máy giữ từ ngày đầu",
+      "tests": [
+        ".claude/tests/nets/test_nets.py"
+      ],
+      "status": "active",
+      "plan": 27
+    }
+  }
+}
