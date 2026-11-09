@@ -1,5 +1,5 @@
 {
-  "about": "The recipe every unit starts from. Empty until the logic of the old harness moves in.",
-  "translators": [],
+  "about": "The recipe every unit starts from.",
+  "translators": ["answers"],
   "detectors": []
 }

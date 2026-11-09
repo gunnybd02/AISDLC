@@ -62,6 +62,16 @@
       "status": "active",
       "plan": 29
     },
+    "s2.h7.approval": {
+      "what": "chỉ câu 'Duyệt' của user trong form mở plan",
+      "how": "plan_present rồi payload PostToolUse thật: 'Duyệt' mở; 'Sửa plan' hay lệch id/rev không mở",
+      "why": "mọi thay đổi truy về một lần duyệt của người",
+      "tests": [
+        ".claude/tests/assemble/test_act.py"
+      ],
+      "status": "active",
+      "plan": 33
+    },
     "s3.h4.doctor": {
       "what": "doctor báo 0 lỗi trên cây thật, ERROR khi một net vỡ",
       "how": "chạy entry/doctor.py trên cây thật và cây giả có vi phạm",

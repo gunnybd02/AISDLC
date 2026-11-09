@@ -1,5 +1,6 @@
 """HookIO: the hook JSON of Claude Code becomes an Event, and a verdict becomes what Claude Code reads. Allow says
-nothing, so Claude Code's own permissions still apply. Only PreToolUse takes a decision; other events get no answer."""
+nothing, so Claude Code's own permissions still apply. Only PreToolUse takes a decision; the notes of the act step
+(an approval, a delivery) reach the model as additionalContext when there is no decision to give."""
 import json
 
 from harness.utils.contracts import CLAUDE_DECISION, Event
@@ -24,14 +25,15 @@ class HookIO:
         if not isinstance(tool_input, dict):
             raise HookError("tool_input of the hook payload is not an object")
         return Event(data["hook_event_name"], str(data.get("tool_name") or ""), tool_input,
-                     str(data.get("session_id") or ""), str(data.get("cwd") or ""))
+                     str(data.get("session_id") or ""), str(data.get("cwd") or ""), data.get("tool_response"))
 
     @staticmethod
-    def write(event, verdict):
-        if event.kind != DECIDES or verdict.decision not in CLAUDE_DECISION:
+    def write(event, verdict, notes=()):
+        if event.kind == DECIDES and verdict.decision in CLAUDE_DECISION:
+            out = {"hookEventName": event.kind, "permissionDecision": CLAUDE_DECISION[verdict.decision],
+                   "permissionDecisionReason": verdict.reason}
+        elif notes:
+            out = {"hookEventName": event.kind, "additionalContext": "\n".join(notes)}
+        else:
             return ""
-        return json.dumps({"hookSpecificOutput": {
-            "hookEventName": event.kind,
-            "permissionDecision": CLAUDE_DECISION[verdict.decision],
-            "permissionDecisionReason": verdict.reason,
-        }}, ensure_ascii=False)
+        return json.dumps({"hookSpecificOutput": out}, ensure_ascii=False)

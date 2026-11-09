@@ -5,7 +5,6 @@ import unittest
 
 import harness.gear as gear_block
 import harness.mcp as mcp_block
-from tests import CLAUDE_DIR
 from tests.e2e import copy_tree, run
 
 PAYLOAD = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "ls"}, "session_id": "s",
@@ -32,7 +31,7 @@ class HookEntryTest(unittest.TestCase):
         self.assertLessEqual({"decide", "hook_io"}, names)
 
     def test_a_plain_call_says_nothing(self):
-        self.assertEqual(hook(CLAUDE_DIR, PAYLOAD)[:2], (0, ""))
+        self.assertEqual(hook(copy_tree(self), {**PAYLOAD, "tool_name": "Read", "tool_input": {}})[:2], (0, ""))
 
     def test_a_finding_without_a_rule_asks_the_user_with_its_name(self):
         code, out, _ = hook(copy_tree(self, FAKE), {**PAYLOAD, "tool_input": {"command": "rm x", "flag": True}})
@@ -52,7 +51,7 @@ class HookEntryTest(unittest.TestCase):
         self.assertEqual(hook(root, PAYLOAD)[0], 2)
 
     def test_a_payload_that_is_not_json_exits_2(self):
-        self.assertEqual(run(CLAUDE_DIR / "entry" / "hook.py", "not json")[0], 2)
+        self.assertEqual(run(copy_tree(self) / "entry" / "hook.py", "not json")[0], 2)
 
 
 if __name__ == "__main__":

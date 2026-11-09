@@ -10,12 +10,13 @@ CLAUDE_DECISION = {ASK: "ask", REFUSE: "deny"}  # what Claude Code reads; allow 
 
 @dataclass(frozen=True)
 class Event:
-    """One hook call of Claude Code."""
+    """One hook call of Claude Code; response is the tool's answer, given to PostToolUse only."""
     kind: str
     tool: str = ""
     input: dict = field(default_factory=dict)
     session: str = ""
     cwd: str = ""
+    response: object = None
 
 
 @dataclass(frozen=True)

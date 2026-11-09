@@ -31,6 +31,16 @@ class HookIOTest(unittest.TestCase):
     def test_an_event_other_than_pre_tool_use_gets_no_decision(self):
         self.assertEqual(HookIO.write(Event("PostToolUse"), Verdict(REFUSE, "why")), "")
 
+    def test_the_response_of_a_post_tool_use_is_read(self):
+        payload = {**PAYLOAD, "hook_event_name": "PostToolUse", "tool_response": {"answers": {"q": "a"}}}
+        self.assertEqual(HookIO.read(json.dumps(payload)).response, {"answers": {"q": "a"}})
+
+    def test_notes_reach_claude_as_context_when_there_is_no_decision(self):
+        out = json.loads(HookIO.write(Event("PostToolUse"), Verdict(ALLOW), ["approved"]))["hookSpecificOutput"]
+        self.assertEqual((out["hookEventName"], out["additionalContext"]), ("PostToolUse", "approved"))
+        decided = json.loads(HookIO.write(Event("PreToolUse"), Verdict(REFUSE, "why"), ["note"]))["hookSpecificOutput"]
+        self.assertEqual(decided["permissionDecision"], "deny")
+
     def test_mcp_declares_hook_io_as_its_hook(self):
         self.assertIn({"kind": "hook", "name": "hook_io", "ref": "harness.mcp.hooks:HookIO"}, mcp_block.ITEMS)
 
