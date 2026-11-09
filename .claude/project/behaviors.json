@@ -31,6 +31,16 @@
       "status": "active",
       "plan": 37
     },
+    "s1.h13.shell-read": {
+      "what": "một dòng lệnh được tách thành lệnh thật, gỡ hết lớp bọc",
+      "how": "từng dạng cú pháp ra đúng đoạn và từ; lớp bọc lồng nhau ra lệnh trong cùng; dòng hỏng thì báo không đọc được",
+      "why": "cổng chỉ phán được cái nó thấy trọn",
+      "tests": [
+        ".claude/tests/utils/test_shell.py#test_wrappers_inside_wrappers_are_all_taken_off"
+      ],
+      "status": "active",
+      "plan": 39
+    },
     "s1.h2.one-verdict-path": {
       "what": "một sự kiện hook đi hết translate → detect → decide → out",
       "how": "payload thật qua entry/hook.py với gear giả; finding không có luật → ask; code hỏng → exit 2",
