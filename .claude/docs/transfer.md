@@ -9,7 +9,7 @@ One flow runs end to end in its smallest form (`tests/e2e/test_flow.py`):
 
 | Piece | Here | Still missing from the old harness |
 |---|---|---|
-| Ledger | the whole schema v5, fingerprint, one transaction a write, hash chains | the check against the real ledger (read only) |
+| Ledger | the whole schema v5, fingerprint, one transaction a write, hash chains; the doctor compares the real ledger read only | the other tables' writers |
 | Plan and approval | `plan_present` (a new plan, or a revision of a waiting one by `plan_id`), the form question, approval from the PostToolUse of AskUserQuestion, forged forms refused | feedback, plan pages, steps, children, scope of units |
 | Edit gate | Write, Edit, MultiEdit, NotebookEdit: approved plan, its files, never `state/`; real paths | writes through the shell |
 | Verify | the unit's test command, a receipt of blob ids read before and after | test selection by impact, behaviours |
@@ -38,8 +38,8 @@ One flow runs end to end in its smallest form (`tests/e2e/test_flow.py`):
 | `act_rule_decisions` | every call with findings |
 | the other 34 tables | nobody yet: they wait for the tool that moves in |
 
-Planned: the doctor opens the real ledger read only (`mode=ro`) and compares its fingerprint with `schema.sql`. If it
-cannot open it (WAL without `-shm`), it says so, and never takes that as a match.
+The doctor compares the real ledger named in `project.json` with `schema.sql`, read only (`architecture.md`). When
+the old harness changes its schema, the doctor names what drifted; `schema.sql` is then brought up to it by a plan.
 
 ## Known gaps of the slice
 - A write to `state/` or to a file outside the plan through the shell (`echo > state/pause.json`) is not caught yet:

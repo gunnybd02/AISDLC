@@ -11,7 +11,7 @@ Everything lives under `.claude/`. Python 3.13, standard library only.
     assemble/   block 3: loads mcp and gear, reads the config and the recipes, runs them
     utils/      the library: shared code any block may import; it knows no rule
   nets/         the rules of the tree, checked by the doctor
-  project.json  the values of the user (name, recipe, verify: the unit's test command)
+  project.json  the values of the user (name, recipe, verify: the unit's test command, ledger: the real ledger)
   skills/       the skill library, served by find and guide
   docs/         this file and transfer.md
   tests/        one folder per block, plus e2e/
@@ -131,12 +131,20 @@ The handlers live in `assemble/` (`blocks.py`, `build.py`):
   the id too. The chain proves no row was changed, not that none was taken off its end.
 - A row is never changed: the state of a plan is its events (`waiting`, `approved`, `delivered`).
 
+The doctor compares the real ledger (`ledger` in `project.json`, an absolute path) with `schema.sql`, read only, and
+names each table, index, view or trigger that is missing, extra or written another way. It never writes the real
+ledger: at rest (no `-wal`, no `-journal`) it reads it as immutable, so no file is made beside it; in use it reads it
+through its `-wal` and `-shm`, and only the `-shm` (the readers' shared index) may change. A ledger it cannot read
+(no file, an empty file, not a database, a `-wal` without its `-shm`, a writer still at work after the read) is an
+ERROR, never a match. The path is this machine's: where it does not exist, the doctor says so.
+
 ## Nets
 `entry/doctor.py` (also `run("health", "doctor")`) reports every problem as an ERROR, in this order:
 - the indexes;
 - each item's ref, which must load;
 - the build (config, recipe, rules);
 - the skill library: each skill reads, its name is its folder's, and no name is used twice;
+- the real ledger's schema, when `project.json` names it;
 - then every net.
 
 The nets read the whole tree except two places, and only these: `state/` (the private DB) and

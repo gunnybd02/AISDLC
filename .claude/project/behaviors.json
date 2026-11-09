@@ -21,6 +21,16 @@
       "status": "active",
       "plan": 36
     },
+    "s1.h12.real-ledger": {
+      "what": "doctor báo khi schema ledger thật lệch bản chép",
+      "how": "DB tạm: cùng schema 0 lỗi; thêm cột, đổi view, bỏ trigger thì nêu tên; thiếu file hay WAL thiếu -shm thì báo; file không đổi byte nào",
+      "why": "bản chép schema không âm thầm cũ đi khi ledger thật đổi",
+      "tests": [
+        ".claude/tests/utils/test_ledger.py#test_each_drifted_object_is_named"
+      ],
+      "status": "active",
+      "plan": 37
+    },
     "s1.h2.one-verdict-path": {
       "what": "một sự kiện hook đi hết translate → detect → decide → out",
       "how": "payload thật qua entry/hook.py với gear giả; finding không có luật → ask; code hỏng → exit 2",

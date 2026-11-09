@@ -22,10 +22,14 @@ def normal(sql):
     return " ".join(sql.split()).rstrip(";").strip()
 
 
+def objects(con):
+    """{(type, name): CREATE text, normalised} of every table, index, view and trigger."""
+    rows = con.execute("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'")
+    return {(t, n): normal(s) for t, n, s in rows.fetchall()}
+
+
 def fingerprint(con):
-    rows = con.execute("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' "
-                       "ORDER BY type, name").fetchall()
-    text = "\n".join(f"{t}|{n}|{normal(s)}" for t, n, s in rows)
+    text = "\n".join(f"{t}|{n}|{s}" for (t, n), s in sorted(objects(con).items()))
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
@@ -35,16 +39,70 @@ def statements():
             if line.strip() and not line.lstrip().startswith("--")]
 
 
+def in_memory():
+    """A DB in memory with the schema of schema.sql."""
+    con = sqlite3.connect(":memory:")
+    for sql in statements():
+        con.execute(sql)
+    return con
+
+
 @lru_cache(maxsize=1)
 def pinned():
     """The fingerprint schema.sql gives."""
-    con = sqlite3.connect(":memory:")
+    con = in_memory()
     try:
-        for sql in statements():
-            con.execute(sql)
         return fingerprint(con)
     finally:
         con.close()
+
+
+def drift(theirs, ours):
+    """One line per object that is not the same in both: missing, extra, or with another CREATE text."""
+    out = []
+    for key in sorted(set(theirs) | set(ours)):
+        what = f"{key[0]} {key[1]}"
+        if key not in theirs:
+            out.append(f"{what} is missing")
+        elif key not in ours:
+            out.append(f"{what} is not in schema.sql")
+        elif theirs[key] != ours[key]:
+            out.append(f"{what} differs")
+    return out
+
+
+def compare_real(path):
+    """The problems of the real ledger at path against schema.sql, one line each; [] when its schema is the same.
+    It is opened read only (mode=ro) and never written. At rest (no -wal, no -journal) it is read as immutable, so no
+    file is made beside it, and a -wal or -journal still there after the read makes the read void (a writer that starts
+    and ends within the read leaves no trace: this is best effort, not a lock). In use, it is read through its own -wal
+    and -shm; only the -shm, the shared index of the readers, may change. A ledger whose schema cannot be read is a
+    problem, never a match: no such file, an empty file, not a database, a -wal without its -shm (a reader cannot
+    rebuild the index), or a journal a read-only reader cannot roll back."""
+    path = Path(path)
+    side = [path.with_name(path.name + end) for end in ("-wal", "-journal")]
+    if not path.is_file():
+        return [f"{path}: no such file; its schema is not compared"]
+    if path.stat().st_size == 0:
+        return [f"{path}: an empty file; its schema is not compared"]
+    if side[0].exists() and not path.with_name(path.name + "-shm").exists():
+        return [f"{path}: a -wal file without its -shm; its schema is not compared"]
+    at_rest = not any(p.exists() for p in side)
+    try:
+        con = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro{'&immutable=1' if at_rest else ''}", uri=True)
+        try:
+            theirs = objects(con)
+        finally:
+            con.close()
+        if at_rest and any(p.exists() for p in side):
+            return [f"{path}: it was written to while being read; its schema is not compared"]
+        ours = in_memory()
+        try:
+            return [f"{path}: {line}" for line in drift(theirs, objects(ours))]
+        finally:
+            ours.close()
+    except sqlite3.Error as e:
+        return [f"{path}: cannot be read read only ({e}); its schema is not compared"]
 
 
 def has_tables(con):
