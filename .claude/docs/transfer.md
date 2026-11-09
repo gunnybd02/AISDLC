@@ -11,7 +11,7 @@ One flow runs end to end in its smallest form (`tests/e2e/test_flow.py`):
 |---|---|---|
 | Ledger | the whole schema v5, fingerprint, one transaction a write, hash chains; the doctor compares the real ledger read only | the other tables' writers |
 | Plan and approval | `plan_present` (a new plan, or a revision of a waiting one by `plan_id`), the form question, approval from the PostToolUse of AskUserQuestion, forged forms refused | feedback, plan pages, steps, children, scope of units |
-| Edit gate | Write, Edit, MultiEdit, NotebookEdit: approved plan, its files, never `state/`; real paths | writes through the shell |
+| Edit gate | Write, Edit, MultiEdit, NotebookEdit and writes by the shell (Bash, PowerShell): approved plan, its files, never `state/`; real paths; a command it cannot read asks the user | MCP tools that write files |
 | Verify | the unit's test command, a receipt of blob ids read before and after | test selection by impact, behaviours |
 | Commit gate and delivery | a commit alone, in the plan's repository, verify passed, files unchanged since, plan files only; HEAD moved there: kept, delivered | multi-step plans, push, MR/PR |
 | Pause | the user's form only, at most 120 minutes, traced first, works with a broken harness | — |
@@ -19,7 +19,7 @@ One flow runs end to end in its smallest form (`tests/e2e/test_flow.py`):
 ## Order of what is left
 | # | What | Lands in |
 |---|---|---|
-| 1 | The shell reader (split, quotes, heredoc; unwrap `sh -c`, `eval`, `xargs`): writes through the shell meet the edit gate and the state guard | `utils/`, `gear/translate_place.py` |
+| 1 | Done: the shell reader (`utils/shell_scan.py`, `utils/shell.py`, `gear/translate_place.py`); the commit gate reads git lines with it | — |
 | 2 | Git guards: a command becomes a git action, with rules P1-P8 | `gear/translate_git.py`, `gear/git_cli.py`, `gear/rules/git.json` |
 | 3 | Commit guards: secrets, AI marks, agent files | `gear/detect_secret.py`, `detect_mark.py`, `detect_agent.py` |
 | 4 | Plans in full: steps, revisions, feedback, units and scope | `assemble/blocks.py`, `assemble/ports.py`, gears |
@@ -42,15 +42,15 @@ The doctor compares the real ledger named in `project.json` with `schema.sql`, r
 the old harness changes its schema, the doctor names what drifted; `schema.sql` is then brought up to it by a plan.
 
 ## Known gaps of the slice
-- A write to `state/` or to a file outside the plan through the shell (`echo > state/pause.json`) is not caught yet:
-  it waits for row 1. The commit reader only knows enough of the shell to refuse what it cannot see whole.
+- A program the shell reader does not know (a script, `make`, `npm`) is asked of the user, who judges it by the
+  agent's words; what it really writes is not seen. A program that only reads but is not in the tables is asked too.
+- After `cd X` a relative path is read from both folders, so a pipeline (`cd X | rm y`) is judged on both.
+- Whether Claude Code still shows its prompt for an ask in auto mode is proven only by row 8.
 - Delivery takes the one commit made right on the approval's base; a plan of several commits waits for row 4.
 - A commit made around the gate (a shell form the reader does not know, a name built at run time) can land in the
-  repository; it is never delivered, but nothing undoes it. Row 1 narrows this.
+  repository; it is never delivered, but nothing undoes it.
 - The hash chain does not see a row taken off its end (no anchor kept outside the DB yet).
 - The edit gate sees Write, Edit, MultiEdit and NotebookEdit; MCP tools that write files are not seen yet.
-- A plain git command that makes no commit may still write a file (`git log --output=<file>`): the same class as
-  shell writes, for row 1.
 - The form checks read questions and option labels; descriptions, previews and headers are left to the rule that
   each answer is found once in the response text.
 - The commit reader refuses every git line it cannot read whole; merges, rebases, cherry-picks and aliases are

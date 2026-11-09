@@ -40,6 +40,23 @@ class HookEntryTest(unittest.TestCase):
         self.assertIn("test.flagged", decision["permissionDecisionReason"])
         self.assertIn("rm x", decision["permissionDecisionReason"])
 
+    def test_a_command_the_reader_cannot_see_whole_asks_the_user_with_the_agents_words(self):
+        said = "Build the project with its own script, which writes into build/"
+        payload = {**PAYLOAD, "tool_input": {"command": "./build.sh --fast", "description": said}}
+        code, out, _ = hook(copy_tree(self), payload)
+        decision = json.loads(out)["hookSpecificOutput"]
+        self.assertEqual((code, decision["permissionDecision"]), (0, "ask"))
+        for part in (said, "./build.sh --fast", "build.sh"):
+            self.assertIn(part, decision["permissionDecisionReason"])
+        payload["tool_input"]["description"] = "./build.sh --fast"
+        decision = json.loads(hook(copy_tree(self), payload)[1])["hookSpecificOutput"]
+        self.assertEqual(decision["permissionDecision"], "deny")
+        self.assertIn("description", decision["permissionDecisionReason"])
+
+    def test_a_known_read_through_the_shell_says_nothing(self):
+        payload = {**PAYLOAD, "tool_input": {"command": "git status && ls -la | grep x", "description": "x"}}
+        self.assertEqual(hook(copy_tree(self), payload)[:2], (0, ""))
+
     def test_a_broken_harness_exits_2(self):
         root = copy_tree(self, {"harness/assemble/build.py": "raise RuntimeError('broken')\n"})
         code, out, err = hook(root, PAYLOAD)

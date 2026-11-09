@@ -81,6 +81,16 @@
       "status": "active",
       "plan": 34
     },
+    "s2.h14.shell-gate": {
+      "what": "ghi qua shell gặp cổng sửa file; lệnh lạ thì hỏi bạn kèm lời giải thích",
+      "how": "echo > file plan qua; > state/ hay ngoài plan chặn; ls qua; lệnh lạ ra ask có giải thích; thiếu giải thích chặn",
+      "why": "không lệnh nào ghi lén qua shell, và bạn quyết lệnh lạ khi đã hiểu nó làm gì",
+      "tests": [
+        ".claude/tests/gear/test_place_and_plan.py#test_a_command_the_reader_cannot_see_whole_asks_the_user_with_the_agents_words"
+      ],
+      "status": "active",
+      "plan": 39
+    },
     "s2.h2.one-verdict-path": {
       "what": "một sự kiện hook đi hết translate → detect → decide → out",
       "how": "payload thật qua entry/hook.py với gear giả; finding không có luật → ask; code hỏng → exit 2",

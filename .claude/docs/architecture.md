@@ -24,7 +24,7 @@ run("plan", "plan_present", {plan})      the revision waits in the ledger; its r
                                          project); the answer is the form question, which names the files and the root
                                          (with plan_id: a new revision of a waiting plan; only the newest is approvable)
 AskUserQuestion                          the user answers; only "Duyệt" to that exact question approves it
-Write / Edit                             allowed only for the files of the approved plan (plan_gate)
+Write / Edit, or a write by the shell     allowed only for the files of the approved plan (plan_gate)
 run("verify", "run", {plan})             the unit's tests in the plan's root; the receipt keeps each file's blob id,
                                          read before and after the tests (a file that changed under them: no pass)
 git add, then git commit -m "..."        the commit alone, in the plan's repository, after a passing verify, with the
@@ -54,6 +54,22 @@ What the gates refuse, so they always see what they judge:
   does not exist is outside the plan.
 - A plan path inside `.git`, with `~`, `%` or a comma, or a title with a double quote.
 - Paths are compared as the system resolves them: real paths (8.3 short names expanded), without a `\\?\` prefix.
+
+## The shell reader
+A Bash or PowerShell call is read before it runs, so a write by the shell meets the same gate as Write/Edit.
+- `utils/shell_scan.py` splits the line as its shell does (bash, PowerShell, cmd): commands, quotes, escapes,
+  redirections, heredocs. `utils/shell.py` takes the wrappers off (`sudo`, `env`, `timeout`, `xargs`...) and reads
+  again the string a shell runs (`sh -c`, `eval`, `powershell -Command`, `cmd /c`, a shell fed a heredoc).
+- `gear/translate_place.py` looks each real command up: a known read writes nothing; a known write names its files
+  (operands, redirections, the destination of a copy, the file of a download); after `cd X` a relative path is
+  read from both folders. Text in quotes or in a heredoc body is no command.
+- What it cannot see whole is unread: an unknown command or script, a target the shell makes (`$F`, `*.py`, `~`),
+  a command run inside a word (`$( )`, backticks), inline code that may write, git that changes the work tree.
+- An unread call asks the user (`shell.unread`) in Claude Code's own prompt, with the agent's words on what it does
+  (the tool's `description`), the command, the files the reader saw and what it could not read. With no such words
+  (fewer than three, or the command copied back) it is refused (`shell.unexplained`), and the agent writes them.
+- A refused write wins over the question: a write to `state/` or outside the plan is refused even when the rest of
+  the line is unread.
 
 ## The connection rule
 - `mcp` and `gear` import only themselves and `utils`. They never import each other or `assemble`.
