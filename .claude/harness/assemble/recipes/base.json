@@ -1,5 +1,5 @@
 {
   "about": "The recipe every unit starts from.",
-  "translators": ["answers"],
-  "detectors": []
+  "translators": ["answers", "places"],
+  "detectors": ["plan_gate"]
 }

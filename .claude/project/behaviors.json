@@ -41,6 +41,16 @@
       "status": "active",
       "plan": 33
     },
+    "s1.h8.edit-gate": {
+      "what": "sửa file chỉ được khi có plan duyệt và file nằm trong plan",
+      "how": "payload Write trước duyệt, sau duyệt trong và ngoài plan, vào state/",
+      "why": "cổng duyệt là lý do harness tồn tại",
+      "tests": [
+        ".claude/tests/gear/test_place_and_plan.py"
+      ],
+      "status": "active",
+      "plan": 34
+    },
     "s2.h2.one-verdict-path": {
       "what": "một sự kiện hook đi hết translate → detect → decide → out",
       "how": "payload thật qua entry/hook.py với gear giả; finding không có luật → ask; code hỏng → exit 2",
@@ -81,6 +91,17 @@
       ],
       "status": "active",
       "plan": 29
+    },
+    "s3.h8.edit-gate": {
+      "what": "sửa file chỉ được khi có plan duyệt và file nằm trong plan",
+      "how": "payload Write trước duyệt, sau duyệt trong và ngoài plan, vào state/",
+      "why": "cổng duyệt là lý do harness tồn tại",
+      "tests": [
+        ".claude/tests/gear/test_place_and_plan.py"
+      ],
+      "status": "retired",
+      "plan": 33,
+      "retired": "the plan was renumbered; s1.h8.edit-gate holds it now"
     }
   }
 }

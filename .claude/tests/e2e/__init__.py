@@ -7,9 +7,10 @@ from tests import CLAUDE_DIR, tree
 
 
 def copy_tree(test, extra=None):
-    """A copy of the real tree (code and config) in a temp folder, with {relative path: text} written over it."""
+    """A copy of the real tree (code, config and tests, which the rules name) in a temp folder, with
+    {relative path: text} written over it. The real state is never copied."""
     root = tree(test, {})
-    for name in ("harness", "entry", "nets", "skills"):
+    for name in ("harness", "entry", "nets", "skills", "tests"):
         if (CLAUDE_DIR / name).is_dir():
             shutil.copytree(CLAUDE_DIR / name, root / name, ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copy(CLAUDE_DIR / "project.json", root / "project.json")

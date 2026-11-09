@@ -6,7 +6,7 @@ LedgerPort keeps the plans of the harness in the ledger (state/harness.db):
 - approved: the plan a session works under, the newest it approved, until it is delivered.
 A row is never changed after it is written: the state of a plan is its events. Reading never creates the ledger.
 
-PlanState gives the approved plan of the event's session as a fact, for the gears."""
+PlanState gives the gears the approved plan of the event's session, and the harness's own state folder."""
 import hashlib
 import json
 import secrets
@@ -113,4 +113,4 @@ class PlanState(Port):
         self.port = port
 
     def read(self, event):
-        return {"plan": self.port.approved(event.session)}
+        return {"plan": self.port.approved(event.session), "state_dir": str(self.port.path.parent).replace("\\", "/")}
