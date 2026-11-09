@@ -184,6 +184,23 @@ class ShellPlacesTest(unittest.TestCase):
             with self.subTest(command=command):
                 self.assert_unread(command, tool="PowerShell")
 
+    def test_what_once_got_through_unseen_is_unread(self):
+        """h16.no-silent-write: each of these deletes a file or runs a program, and was once read as no write."""
+        for command in ("python -c \"getattr(__import__('os'),'remove')('x')\"", "python -c 'import os'",
+                        "node -p \"process.exit(0)\"", "ruby -e 'Kernel.send(:system, \"x\")'",
+                        "rg --pre cat x", "rg --pre=sh x", "sort --compress-program=sh a", "git fetch -u x",
+                        "git fetch --upload-pack=x", "git push --receive-pack=x", "git ls-remote -u x"):
+            with self.subTest(command=command):
+                self.assert_unread(command)
+        for command in ("Get-ChildItem *.tmp | Remove-Item -Force", "dir | del", "Get-Item a | Move-Item -Destination d",
+                        "Get-ChildItem | Copy-Item -Destination d", "Get-Item a | Clear-Content",
+                        "Get-ChildItem | Remove-Item -Recurse"):
+            with self.subTest(command=command):
+                self.assert_unread(command, tool="PowerShell")
+        for command in ("python -c 'print(1)'", "rg -n x src", "sort a", "git fetch origin"):
+            with self.subTest(command=command):
+                self.assert_writes(command, [])
+
     def test_only_a_shell_call_before_it_runs_is_read(self):
         self.assertEqual(shell_facts("make", kind="PostToolUse"), {})
         self.assertEqual(Places().translate(Event("PreToolUse", "Grep", {"command": "make"})), {})

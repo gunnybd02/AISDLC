@@ -41,6 +41,16 @@
       "status": "active",
       "plan": 39
     },
+    "s1.h16.no-silent-write": {
+      "what": "lệnh ghi hay chạy chương trình mà bộ đọc không thấy đích thì hỏi bạn",
+      "how": "mỗi lệnh lọt trước đây (ống vào Remove-Item, getattr(__import__), rg --pre, git fetch -u) giờ ra shell_unread",
+      "why": "không lệnh nào xóa hay chạy chương trình mà bạn không được hỏi",
+      "tests": [
+        ".claude/tests/gear/test_place_and_plan.py#test_what_once_got_through_unseen_is_unread"
+      ],
+      "status": "active",
+      "plan": 40
+    },
     "s1.h2.one-verdict-path": {
       "what": "một sự kiện hook đi hết translate → detect → decide → out",
       "how": "payload thật qua entry/hook.py với gear giả; finding không có luật → ask; code hỏng → exit 2",

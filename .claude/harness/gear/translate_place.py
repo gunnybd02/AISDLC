@@ -52,8 +52,11 @@ INTERPRETERS = {"python": ("-c",), "python3": ("-c",), "py": ("-c",), "node": ("
 WRITE_API = re.compile(
     r"writeFile|appendFile|createWriteStream|\.write\(|copyFile|cpSync|rename|unlink|\brm\b|rmSync|rmdir|mkdir|"
     r"truncate|chmod|open\(|fs\.\w*write|write_text|write_bytes|shutil\.|os\.remove|os\.replace|\.touch\(|"
-    r"subprocess|os\.system|os\.popen|child_process|\bexec|\beval|spawn|Set-Content|Out-File|Remove-Item|>", re.I)
-SED_RUNS = re.compile(r"(^|[;\n{}/]|\d|\$)\s*[wWe](\s|$)")
+    r"subprocess|system|popen|child_process|\bexec|\beval|spawn|Set-Content|Out-File|Remove-Item|>|"
+    r"__|getattr|\bimport\b|require|process|Kernel|\bsend\b|ctypes", re.I)
+READ_RUNS = {"rg": ("--pre",), "sort": ("--compress-program",)}  # options that make a known command run a program
+GIT_RUNS = ("--upload-pack", "--receive-pack", "--exec")
+SED_RUNS =re.compile(r"(^|[;\n{}/]|\d|\$)\s*[wWe](\s|$)")
 
 
 class Unseen(Exception):
@@ -233,7 +236,8 @@ def git(ws):
         return []
     if sub not in GIT_NO_FILES:
         raise Unseen(f"git {sub or '(nothing)'} changes the work tree or reaches another place")
-    if any(w.text.startswith(("--output", "--open-files-in-pager", "--ext-diff")) or w.text == "-O" for w in rest):
+    if any(w.text.startswith(("--output", "--open-files-in-pager", "--ext-diff") + GIT_RUNS) or w.text == "-O"
+           or (w.text == "-u" and sub == "fetch") for w in rest):
         raise Unseen(f"git {sub} writes a file or runs a program")
     return []
 
@@ -294,27 +298,29 @@ class Cmdlet:
     values: tuple = ()  # other parameters with a value
     switches: tuple = ()
     into: bool = False  # the written path may be a folder that gets the sources' names
+    piped: bool = False  # with no -Path, -LiteralPath or first word, it takes the items it changes from the pipeline
 
 
 COMMON_SWITCHES = ("-force", "-whatif", "-confirm", "-passthru", "-verbose")
 COMMON_VALUES = ("-erroraction",)
 CMDLETS = {
-    "remove-item": Cmdlet(("path",), ("-path", "-literalpath"), (), ("-include", "-exclude", "-filter"), ("-recurse",)),
+    "remove-item": Cmdlet(("path",), ("-path", "-literalpath"), (), ("-include", "-exclude", "-filter"), ("-recurse",),
+                          piped=True),
     "new-item": Cmdlet(("path",), ("-path",), (), ("-itemtype", "-type", "-value")),
     "set-content": Cmdlet(("path", "value"), ("-path", "-literalpath"), (), ("-value", "-encoding"), ("-nonewline",)),
     "add-content": Cmdlet(("path", "value"), ("-path", "-literalpath"), (), ("-value", "-encoding"), ("-nonewline",)),
-    "clear-content": Cmdlet(("path",), ("-path", "-literalpath")),
+    "clear-content": Cmdlet(("path",), ("-path", "-literalpath"), piped=True),
     "out-file": Cmdlet(("path",), ("-filepath", "-literalpath", "-path"), (), ("-encoding", "-width", "-inputobject"),
                        ("-append", "-noclobber", "-nonewline")),
     "tee-object": Cmdlet(("path",), ("-filepath", "-literalpath"), (), ("-inputobject",), ("-append",)),
     "copy-item": Cmdlet(("source", "path"), ("-destination",), ("-path", "-literalpath"), (), ("-recurse", "-container"),
-                        into=True),
-    "move-item": Cmdlet(("path", "path"), ("-path", "-literalpath", "-destination")),
+                        into=True, piped=True),
+    "move-item": Cmdlet(("path", "path"), ("-path", "-literalpath", "-destination"), piped=True),
 }
 
 
 def cmdlet(name, spec, ws):
-    written, sources, slot, i = [], [], 0, 0
+    written, sources, slot, i, named = [], [], 0, 0, False
     while i < len(ws):
         word = ws[i]
         t = word.text.lower()
@@ -329,14 +335,18 @@ def cmdlet(name, spec, ws):
             if arg is None:
                 raise Unseen(f"{name} {word.text} has no value")
             (written if key in spec.paths else sources if key in spec.sources else []).append(arg)
+            named = named or key in ("-path", "-literalpath")
             i += 1 if colon else 2
             continue
         kind = spec.positional[slot] if slot < len(spec.positional) else None
         if kind is None:
             raise Unseen(f"{name} has a word the reader does not place ({word.text})")
         (written if kind == "path" else sources if kind == "source" else []).append(word)
+        named = named or slot == 0
         slot, i = slot + 1, i + 1
-    names = tuple(base(w) for w in sources) if spec.into else ()
+    if spec.piped and not named:
+        raise Unseen(f"{name} takes the items it changes from the pipeline")
+    names =tuple(base(w) for w in sources) if spec.into else ()
     return [Target(w, names) for w in written]
 
 
@@ -352,6 +362,9 @@ def command_targets(command):
         reads, writes = PS_READS, CMDLETS
     else:
         reads, writes = READS, CMD_WRITES if command.dialect == "cmd" else BASH_WRITES
+    runs = [w.text for w in ws if w.text.startswith(READ_RUNS.get(name, ("\0",)))]
+    if runs:
+        raise Unseen(f"{command.name} {runs[0]} runs a program")
     if name in reads:
         return redirect_targets(command)
     if name == "git":
