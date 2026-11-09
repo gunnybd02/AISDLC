@@ -45,7 +45,7 @@ class RunnerTest(unittest.TestCase):
         self.assertEqual(runner.run(Event("PreToolUse", "Read")).verdict.decision, ALLOW)
 
     def test_ports_give_facts_and_act_runs_after_decide(self):
-        out = Runner([], [SeesPort()], Decide({}), ports=[ToolPort()], act=Notes()).run(Event("PreToolUse", "Edit"))
+        out = Runner([Kind()], [SeesPort()], Decide({}), ports=[ToolPort()], act=Notes()).run(Event("PreToolUse", "Edit"))
         self.assertEqual((out.verdict.decision, out.notes), (ASK, ("Edit:" + ASK,)))
 
     def test_two_translators_giving_the_same_fact_is_an_error(self):
@@ -90,6 +90,15 @@ class RecipeTest(unittest.TestCase):
 class ConfigTest(unittest.TestCase):
     def test_the_real_config_loads(self):
         self.assertEqual(Config.load(CLAUDE_DIR).recipe, "base")
+
+    def test_the_verify_command_is_a_list_of_words_and_may_name_this_python(self):
+        good = Config.load(tree(self, {"project.json": json.dumps({"name": "x", "recipe": "base",
+                                                                   "verify": ["{python}", "-m", "unittest"]})}))
+        self.assertEqual(good.verify[1:], ("-m", "unittest"))
+        self.assertNotEqual(good.verify[0], "{python}")
+        for bad in ("python -m unittest", [], [1]):
+            with self.subTest(bad=bad), self.assertRaises(ConfigError):
+                Config.load(tree(self, {"project.json": json.dumps({"name": "x", "recipe": "base", "verify": bad})}))
 
     def test_a_config_written_with_a_bom_loads(self):
         root = tree(self, {"project.json": "﻿" + json.dumps({"name": "x", "recipe": "base"})})

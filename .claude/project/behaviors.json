@@ -82,6 +82,16 @@
       "status": "active",
       "plan": 33
     },
+    "s2.h9.commit-gate": {
+      "what": "commit chỉ qua khi verify xanh, file không đổi sau verify, đúng file plan",
+      "how": "repo git tạm: commit trước verify, sau verify rồi sửa, với file ngoài plan, và đúng",
+      "why": "giao là thứ đã kiểm, không phải thứ được nói là đã kiểm",
+      "tests": [
+        ".claude/tests/gear/test_git_and_commit.py"
+      ],
+      "status": "active",
+      "plan": 34
+    },
     "s3.h4.doctor": {
       "what": "doctor báo 0 lỗi trên cây thật, ERROR khi một net vỡ",
       "how": "chạy entry/doctor.py trên cây thật và cây giả có vi phạm",

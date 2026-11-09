@@ -1,0 +1,13 @@
+{
+  "rules": [
+    {"finding": "commit.unverified", "verdict": "refuse",
+     "why": "The plan has no passing verify: run('verify', 'run', {plan}) and commit when it passes.",
+     "test": "tests/gear/test_git_and_commit.py#test_a_commit_without_a_passing_verify_is_refused"},
+    {"finding": "commit.changed", "verdict": "refuse",
+     "why": "A staged file changed after the verify: verify again, then commit.",
+     "test": "tests/gear/test_git_and_commit.py#test_a_file_changed_after_the_verify_is_refused"},
+    {"finding": "commit.outside", "verdict": "refuse",
+     "why": "A staged file is not a file of the approved plan: unstage it, or present a revision that names it.",
+     "test": "tests/gear/test_git_and_commit.py#test_a_staged_file_outside_the_plan_is_refused"}
+  ]
+}

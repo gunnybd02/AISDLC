@@ -1,4 +1,5 @@
 {
   "name": "AI-harness",
-  "recipe": "base"
+  "recipe": "base",
+  "verify": ["{python}", "-m", "unittest", "discover", "-s", ".claude/tests", "-t", ".claude"]
 }

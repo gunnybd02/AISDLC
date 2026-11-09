@@ -15,6 +15,7 @@ import uuid
 from pathlib import Path
 
 from harness.utils.contracts import Port
+from harness.utils.git_run import head, staged, top
 from harness.utils.ledger.db import Ledger
 from harness.utils.ledger.recorder import Recorder
 
@@ -81,7 +82,9 @@ class LedgerPort:
 
     def approve(self, sid, waiting, root):
         """The user approved this waiting revision in the session sid, whose work is under root."""
-        scope = {"plan_id": waiting["plan_id"], "rev": waiting["rev"], "root": root, **waiting["items"]}
+        repo = top(root) if root else None
+        scope = {"plan_id": waiting["plan_id"], "rev": waiting["rev"], "root": root,
+                 "base": head(repo) if repo else None, **waiting["items"]}
 
         def change(con, rec):
             rid = rec.insert(con, "rec_plans", {"sid": sid, "sha": hashlib.sha256(json.dumps(scope, sort_keys=True)
@@ -97,6 +100,15 @@ class LedgerPort:
     def approved(self, sid):
         """The plan the session works under: its newest approval, unless that plan was delivered. None if there is none."""
         row = next(iter(self.rows("SELECT id, scope FROM rec_plans WHERE sid = ? ORDER BY id DESC LIMIT 1", (sid,))), None)
+        return self.live(row)
+
+    def approved_plan(self, plan_id):
+        """The newest approval of the plan named plan_id (pd-...), unless it was delivered."""
+        rows = [r for r in self.rows("SELECT id, scope FROM rec_plans ORDER BY id DESC")
+                if json.loads(r["scope"]).get("plan_id") == plan_id]
+        return self.live(rows[0] if rows else None)
+
+    def live(self, row):
         if row is None or self.rows("SELECT 1 FROM pl_plan_events WHERE event = 'delivered' AND ref = ?", (row["id"],)):
             return None
         return {"id": row["id"], **json.loads(row["scope"])}
@@ -107,10 +119,42 @@ class LedgerPort:
             "rule": finding.kind, "kind": "finding", "tool": event.tool, "service": "", "verdict": verdict,
             "detail": finding.detail, "at": now()}))
 
+    def keep_verify(self, plan, receipt):
+        """A verify receipt of an approved plan: {files: {path: blob id}, tests, commands, code, ok, why, ms}."""
+        self.write(lambda con, rec: rec.insert(con, "pl_verify", {
+            "uid": uuid.uuid4().hex, "sid": "", "plan_id": plan["id"], "repo": plan["root"],
+            "files": json.dumps(receipt["files"]), "tests": json.dumps(plan["tests"]),
+            "commands": json.dumps(receipt["commands"]), "code": receipt["code"], "ok": int(receipt["ok"]),
+            "why": receipt["why"], "ms": receipt["ms"], "at": now()}))
+
+    def receipt(self, plan):
+        row = next(iter(self.rows("SELECT ok, files FROM pl_verify WHERE plan_id = ? ORDER BY at DESC, rowid DESC "
+                                  "LIMIT 1", (plan["id"],))), None)
+        return {"ok": row["ok"], "files": json.loads(row["files"])} if row else None
+
+    def committed(self, sha):
+        return bool(self.rows("SELECT 1 FROM rec_commits WHERE commit_sha = ?", (sha,)))
+
+    def deliver(self, sid, plan, repo, sha):
+        """A commit of the plan went through the gate: keep it, and the plan is delivered."""
+        def change(con, rec):
+            rec.insert(con, "rec_commits", {"plan_id": plan["id"], "service": repo, "commit_sha": sha, "at": now(),
+                                            "uid": uuid.uuid4().hex})
+            self.event(con, rec, plan["plan_id"], "delivered", plan["rev"], plan["id"], sid)
+        self.write(change)
+
 
 class PlanState(Port):
+    """The gears' view of the ledger and git: the approved plan, the harness's own state folder, and commit_view, which
+    reads what a commit stages and the plan's latest verify only when the call is a commit."""
+
     def __init__(self, port):
         self.port = port
 
     def read(self, event):
-        return {"plan": self.port.approved(event.session), "state_dir": str(self.port.path.parent).replace("\\", "/")}
+        return {"plan": self.port.approved(event.session), "state_dir": str(self.port.path.parent).replace("\\", "/"),
+                "commit_view": self.commit_view}
+
+    def commit_view(self, repo, plan):
+        root = top(repo) or str(repo).replace("\\", "/")
+        return {"repo": root, "staged": staged(root) if top(repo) else {}, "receipt": self.port.receipt(plan)}

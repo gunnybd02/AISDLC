@@ -20,6 +20,15 @@ def copy_tree(test, extra=None):
     return root
 
 
+def git_repo(test, files):
+    """A new git repository in a temp folder with {relative path: text} committed on branch work; return its path."""
+    root = tree(test, files)
+    for args in (("init", "-q", "-b", "work"), ("config", "user.name", "t"), ("config", "user.email", "t@t"),
+                 ("config", "core.autocrlf", "false"), ("add", "-A"), ("commit", "-q", "-m", "start")):
+        subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+    return root
+
+
 def run(script, stdin="", args=()):
     """Run an entry script with the given stdin; return (exit code, stdout, stderr)."""
     p = subprocess.run([sys.executable, str(script), *args], input=stdin.encode("utf-8"), capture_output=True,

@@ -50,7 +50,8 @@ class Detector(ABC):
 
 
 class Port(ABC):
-    """Reads facts from outside the harness (git, files) for a translator or a detector."""
+    """Reads facts from outside the harness (the ledger, git) for the detectors. A fact that costs a read (git) is
+    given as a view the detector calls only when the call needs it."""
 
     @abstractmethod
     def read(self, event: Event) -> dict:
