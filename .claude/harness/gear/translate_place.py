@@ -1,5 +1,6 @@
 """Places: the files an editing tool writes (Write, Edit, MultiEdit, NotebookEdit), as absolute paths with forward
-slashes; a relative path is read from the session's cwd. Writes through the shell come with the shell reader."""
+slashes; a relative path is read from the session's cwd. The gates resolve them further (detect_plan.key). Writes
+through the shell come with the shell reader."""
 import os
 
 from harness.utils.contracts import Translator

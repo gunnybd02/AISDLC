@@ -1,6 +1,7 @@
 -- The schema of the real ledger (schema v5 of C:\AI-autonomous\.claude\.state\harness.db), copied whole: 40 tables,
--- 19 indexes, 4 views, in the order the real ledger made them. Tables, indexes: read from its sqlite_master; view
--- bodies: pipeline/adapters/sqlite/ledger_catalog.py. A tool that moves in finds its table here, unchanged.
+-- 19 indexes, 4 views, in the order the real ledger made them. Tables and indexes are read from its sqlite_master,
+-- view bodies from pipeline/adapters/sqlite/ledger_catalog.py. A tool that moves in finds its table here, unchanged.
+-- One statement per line, each ending with a semicolon: db.py runs them one by one inside one transaction.
 CREATE TABLE sessions (sid TEXT PRIMARY KEY, started_at INTEGER, last_at INTEGER, epoch INTEGER NOT NULL DEFAULT 0, project TEXT NOT NULL DEFAULT '', harness_ver TEXT NOT NULL DEFAULT '');
 CREATE TABLE act_skill_loads (sid TEXT, agent TEXT, skill TEXT, via TEXT, epoch INTEGER, at INTEGER, uid TEXT);
 CREATE INDEX act_skill_loads_sid ON act_skill_loads (sid);

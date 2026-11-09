@@ -11,6 +11,9 @@
      "test": "tests/gear/test_place_and_plan.py#test_the_state_of_the_harness_is_never_edited"},
     {"finding": "form.prefilled", "verdict": "refuse",
      "why": "Only the user answers a form: call AskUserQuestion with the questions alone.",
-     "test": "tests/gear/test_place_and_plan.py#test_a_form_the_model_answered_itself_is_refused"}
+     "test": "tests/gear/test_place_and_plan.py#test_a_form_the_model_answered_itself_is_refused"},
+    {"finding": "form.forged", "verdict": "refuse",
+     "why": "A question of a form may not hold '\"=\"': ask the questions as the harness gave them.",
+     "test": "tests/gear/test_place_and_plan.py#test_a_question_built_to_fake_an_answer_is_refused"}
   ]
 }

@@ -1,7 +1,7 @@
 """Ports: what a run reads from outside and writes back.
 
 LedgerPort keeps the plans of the harness in the ledger (state/harness.db):
-- present: a revision of a plan, waiting (pl_plan_revs, a 'waiting' event);
+- present: a revision of a plan {title, files, tests, root}, waiting (pl_plan_revs, a 'waiting' event);
 - approve: the user's "Duyệt" in the form to that revision's question (a chained rec_plans row, an 'approved' event);
 - approved: the plan a session works under, the newest it approved, until it is delivered.
 A row is never changed after it is written: the state of a plan is its events. Reading never creates the ledger.
@@ -23,8 +23,10 @@ YES = "Duyệt"
 HEAD = "Duyệt plan "
 
 
-def question(title, plan_id, rev):
-    return f'{HEAD}"{title}" ({plan_id} rev {rev})?'
+def question(items, plan_id, rev):
+    """The form question of a revision: what the user approves is in it, the files and the folder they are in."""
+    files = ", ".join(items["files"] + items.get("tests", []))
+    return f'{HEAD}"{items["title"]}" ({plan_id} rev {rev}): sửa {files} trong {items["root"]}?'
 
 
 def now():
@@ -61,7 +63,7 @@ class LedgerPort:
             return rev
 
         rev = self.write(change)
-        return plan_id, rev, question(items["title"], plan_id, rev)
+        return plan_id, rev, question(items, plan_id, rev)
 
     @staticmethod
     def event(con, rec, plan_id, name, rev, ref=None, sid=""):
@@ -77,14 +79,15 @@ class LedgerPort:
                            "WHERE e.plan_id = r.plan_id AND e.rev = r.rev AND e.event = 'approved') ORDER BY r.at"):
             items = json.loads(r["items"])
             out.append({"plan_id": r["plan_id"], "rev": r["rev"], "items": items,
-                        "question": question(items["title"], r["plan_id"], r["rev"])})
+                        "question": question(items, r["plan_id"], r["rev"])})
         return out
 
-    def approve(self, sid, waiting, root):
-        """The user approved this waiting revision in the session sid, whose work is under root."""
-        repo = top(root) if root else None
-        scope = {"plan_id": waiting["plan_id"], "rev": waiting["rev"], "root": root,
-                 "base": head(repo) if repo else None, **waiting["items"]}
+    def approve(self, sid, waiting):
+        """The user approved this waiting revision in the session sid. Its root is the one the form showed; base is the
+        commit its repository stands on now, which a delivered commit must come from."""
+        repo = top(waiting["items"]["root"])
+        scope = {"plan_id": waiting["plan_id"], "rev": waiting["rev"], "base": head(repo) if repo else None,
+                 **waiting["items"]}
 
         def change(con, rec):
             rid = rec.insert(con, "rec_plans", {"sid": sid, "sha": hashlib.sha256(json.dumps(scope, sort_keys=True)
@@ -156,5 +159,8 @@ class PlanState(Port):
                 "commit_view": self.commit_view}
 
     def commit_view(self, repo, plan):
-        root = top(repo) or str(repo).replace("\\", "/")
-        return {"repo": root, "staged": staged(root) if top(repo) else {}, "receipt": self.port.receipt(plan)}
+        """The repository the commit runs in (none when its folder does not exist), the plan's own repository, what is
+        staged and the latest receipt."""
+        root = top(repo) if Path(repo).is_dir() else None
+        return {"repo": root or str(repo).replace("\\", "/"), "plan_repo": top(plan["root"]),
+                "staged": staged(root) if root else {}, "receipt": self.port.receipt(plan)}

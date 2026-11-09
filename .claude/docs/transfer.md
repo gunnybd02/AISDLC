@@ -4,33 +4,57 @@ The old harness (`C:\AI-autonomous`) keeps running while its logic moves here. W
 each piece is rewritten to the rules of `architecture.md`. Each move is its own plan, and it lands only when the tests
 and the doctor are clean.
 
-## Order
+## Done: the vertical slice
+One flow runs end to end in its smallest form (`tests/e2e/test_flow.py`):
+
+| Piece | Here | Still missing from the old harness |
+|---|---|---|
+| Ledger | the whole schema v5, fingerprint, one transaction a write, hash chains | the check against the real ledger (read only) |
+| Plan and approval | `plan_present` (a new plan, or a revision of a waiting one by `plan_id`), the form question, approval from the PostToolUse of AskUserQuestion, forged forms refused | feedback, plan pages, steps, children, scope of units |
+| Edit gate | Write, Edit, MultiEdit, NotebookEdit: approved plan, its files, never `state/`; real paths | writes through the shell |
+| Verify | the unit's test command, a receipt of blob ids read before and after | test selection by impact, behaviours |
+| Commit gate and delivery | a commit alone, in the plan's repository, verify passed, files unchanged since, plan files only; HEAD moved there: kept, delivered | multi-step plans, push, MR/PR |
+| Pause | the user's form only, at most 120 minutes, traced first, works with a broken harness | — |
+
+## Order of what is left
 | # | What | Lands in |
 |---|---|---|
-| 1 | The shell reader (split, quotes, heredoc; unwrap `sh -c`, `eval`, `xargs`), git runs and facts, the staged diff | `utils/` |
+| 1 | The shell reader (split, quotes, heredoc; unwrap `sh -c`, `eval`, `xargs`): writes through the shell meet the edit gate and the state guard | `utils/`, `gear/translate_place.py` |
 | 2 | Git guards: a command becomes a git action, with rules P1-P8 | `gear/translate_git.py`, `gear/git_cli.py`, `gear/rules/git.json` |
 | 3 | Commit guards: secrets, AI marks, agent files | `gear/detect_secret.py`, `detect_mark.py`, `detect_agent.py` |
-| 4 | Places and network: zones of a path, hosts of a command | `gear/translate_place.py`, `translate_net.py`, `zones.py`, `net_hosts.py`, rules |
-| 5 | The ledger: the full schema v5, one transaction per write | `utils/ledger/` |
-| 6 | The blocks of the MCP server (plan, session, notes...) | handlers in `assemble/`, the action table of `mcp/` |
+| 4 | Plans in full: steps, revisions, feedback, units and scope | `assemble/blocks.py`, `assemble/ports.py`, gears |
+| 5 | Places and network: zones of a path, hosts of a command | `gear/zones.py`, `net_hosts.py`, `translate_net.py`, rules |
+| 6 | The other blocks of the MCP server (session, notes, ledger reads...) | handlers in `assemble/`, the action table of `mcp/` |
 | 7 | The skills | `skills/` |
-| 8 | Replay real sessions through the new hook, compare verdicts, then replace the old harness | a plan of its own |
+| 8 | Wire this harness into a Claude Code session on a trial repository, then replay real sessions and compare verdicts | a plan of its own |
 
-Ports (the facts a translator or a detector reads from outside, such as git or files) are built in `assemble/ports.py`
-when the first one is needed.
-
-## Ledger (planned, row 5: nothing of it exists yet)
-The schema will be copied whole, so a tool that moves in finds its table ready. Two checks will guard it:
-- **Pinned:** opening the private DB compares its fingerprint with `schema.sql`.
-- **Against the real ledger:** the doctor opens the real ledger read only (`mode=ro`) and compares the schema
-  fingerprint. If it cannot open it (WAL without `-shm`), it says so, and never takes that as a match.
-
-The fingerprint will cover tables, columns, constraints, indexes, triggers and view bodies, with spaces and comments
-normalised.
-
+## Ledger
 | Table | Written by |
 |---|---|
-| (none yet) | the ledger has not moved in |
+| `pl_plan_revs`, `pl_plan_events` | `plan_present`, the approval, the delivery |
+| `rec_plans` | the approval (chained) |
+| `pl_verify` | `verify.run` (chained) |
+| `rec_commits` | the delivery (chained) |
+| `act_rule_decisions` | every call with findings |
+| the other 34 tables | nobody yet: they wait for the tool that moves in |
+
+Planned: the doctor opens the real ledger read only (`mode=ro`) and compares its fingerprint with `schema.sql`. If it
+cannot open it (WAL without `-shm`), it says so, and never takes that as a match.
+
+## Known gaps of the slice
+- A write to `state/` or to a file outside the plan through the shell (`echo > state/pause.json`) is not caught yet:
+  it waits for row 1. The commit reader only knows enough of the shell to refuse what it cannot see whole.
+- Delivery takes the one commit made right on the approval's base; a plan of several commits waits for row 4.
+- A commit made around the gate (a shell form the reader does not know, a name built at run time) can land in the
+  repository; it is never delivered, but nothing undoes it. Row 1 narrows this.
+- The hash chain does not see a row taken off its end (no anchor kept outside the DB yet).
+- The edit gate sees Write, Edit, MultiEdit and NotebookEdit; MCP tools that write files are not seen yet.
+- A plain git command that makes no commit may still write a file (`git log --output=<file>`): the same class as
+  shell writes, for row 1.
+- The form checks read questions and option labels; descriptions, previews and headers are left to the rule that
+  each answer is found once in the response text.
+- The commit reader refuses every git line it cannot read whole; merges, rebases, cherry-picks and aliases are
+  refused until row 2 gives them their own rules.
 
 ## Into the home
 When every row of the order is done and the replay is clean, `.claude/` of this repo replaces the old harness in

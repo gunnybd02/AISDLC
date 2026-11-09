@@ -43,21 +43,39 @@ def head(repo):
         return None
 
 
-def staged(repo):
-    """{path from the repository root: the blob id it stages, or None when the change deletes it}. Blob ids are what
-    git stores after its own filters (line ends...), so they compare with blob() of the same content."""
-    parts = git(repo, "diff", "--cached", "--raw", "--no-abbrev", "-z").split("\0")
+def raw_changes(repo, *args):
+    """{path from the repository root: (old mode, new mode, new blob id)}, a mode None where the path is absent and the
+    blob None when the change deletes it; from `git diff --raw` with renames off (a rename shows as the path it takes
+    away and the path it adds) and every submodule change shown, whatever the repository's config says."""
+    parts = git(repo, "diff", "--raw", "--no-abbrev", "--no-renames", "--ignore-submodules=none", "-z",
+                *args).split("\0")
     out, i = {}, 0
     while i + 1 < len(parts) and parts[i].startswith(":"):
-        fields = parts[i].split()
-        status, path = fields[4], parts[i + 1]
-        if status[0] in "RC":  # a rename or copy names two paths: the old one, then the new one
-            out[parts[i + 2]] = fields[3]
-            i += 3
-            continue
-        out[path] = None if status[0] == "D" else fields[3]
+        old, new, _, blob_id, status = parts[i].lstrip(":").split()[:5]
+        absent = "000000"
+        out[parts[i + 1]] = (None if old == absent else old, None if new == absent else new,
+                             None if status.startswith("D") else blob_id)
         i += 2
     return out
+
+
+def staged(repo):
+    """{path: blob id or None} the index changes against HEAD. Blob ids are what git stores after its own filters
+    (line ends...), so they compare with blob() of the same content."""
+    return {path: blob_id for path, (_, _, blob_id) in raw_changes(repo, "--cached").items()}
+
+
+def committed(repo, base, sha):
+    """{path: (old mode, new mode, blob id)} the commit sha changes against base."""
+    return raw_changes(repo, base, sha)
+
+
+def parent(repo, sha):
+    """The first parent of a commit, or None for a root commit."""
+    try:
+        return git(repo, "rev-parse", f"{sha}^").strip()
+    except GitError:
+        return None
 
 
 def blob(root, path):

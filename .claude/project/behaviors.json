@@ -11,6 +11,16 @@
       "status": "active",
       "plan": 27
     },
+    "s1.h11.one-flow": {
+      "what": "một vòng thật từ plan đến giao chạy qua hệ mới, không lỗ nào review đã chỉ",
+      "how": "hook và MCP là process thật trên repo git tạm; mỗi lỗ một test trước đây lọt, nay bị bắt",
+      "why": "chứng minh các khối ráp với nhau và cổng không lọt trước khi chuyển tiếp logic cũ",
+      "tests": [
+        ".claude/tests/e2e/test_flow.py"
+      ],
+      "status": "active",
+      "plan": 36
+    },
     "s1.h2.one-verdict-path": {
       "what": "một sự kiện hook đi hết translate → detect → decide → out",
       "how": "payload thật qua entry/hook.py với gear giả; finding không có luật → ask; code hỏng → exit 2",
@@ -122,6 +132,17 @@
       "status": "retired",
       "plan": 33,
       "retired": "the plan was renumbered; s1.h8.edit-gate holds it now"
+    },
+    "s4.h11.one-flow": {
+      "what": "một vòng thật từ plan đến giao chạy qua hệ mới",
+      "how": "hook và MCP là process thật trên repo git tạm, payload như Claude Code gửi",
+      "why": "chứng minh các khối ráp với nhau trước khi chuyển tiếp logic cũ",
+      "tests": [
+        ".claude/tests/e2e/test_flow.py"
+      ],
+      "status": "retired",
+      "plan": 34,
+      "retired": "the plan was renumbered; s1.h11.one-flow holds it now"
     }
   }
 }

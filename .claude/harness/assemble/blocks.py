@@ -6,6 +6,7 @@ only serves them.
 - harness: pause gives the form question that, answered "Duyệt" by the user, pauses the guards (entry/hook.py holds
   the pause itself, so it works when the harness is broken); pause_status reads state/pause.json."""
 import json
+import os
 import re
 import subprocess
 import time
@@ -25,25 +26,35 @@ def paths(value, name, required):
     if not isinstance(value, list) or not all(isinstance(p, str) and p.strip() for p in value) or (required and not value):
         raise ValueError(f"{name} is a list of paths" + (", at least one" if required else ""))
     for p in value:
-        if ABSOLUTE.match(p) or ".." in re.split(r"[\\/]", p):
+        parts = [s.lower() for s in re.split(r"[\\/]", p)]
+        if ABSOLUTE.match(p) or ".." in parts:
             raise ValueError(f"{name}: {p} is not a path inside the repository (relative, no ..)")
+        if ".git" in parts:
+            raise ValueError(f"{name}: {p} is inside .git, which no plan edits")
+        if any(mark in p for mark in "~%,"):
+            raise ValueError(f"{name}: {p} holds ~, % or a comma, which the shell or the form would read otherwise")
     return [p.replace("\\", "/") for p in value]
 
 
 def checked(plan):
     if not isinstance(plan, dict) or set(plan) - set(PLAN_KEYS):
         raise ValueError(f"a plan holds only {', '.join(PLAN_KEYS)}")
-    if not isinstance(plan.get("title"), str) or not plan["title"].strip():
-        raise ValueError("a plan has a title")
+    if not isinstance(plan.get("title"), str) or not plan["title"].strip() or '"' in plan["title"]:
+        raise ValueError("a plan has a title, without double quotes (the form question quotes it)")
     return {"title": plan["title"].strip(), "files": paths(plan.get("files"), "files", True),
-            "tests": paths(plan.get("tests", []), "tests", False)}
+            "tests": paths(plan.get("tests", []), "tests", False),
+            "root": os.getcwd().replace("\\", "/")}  # the MCP server runs in the project's folder
 
 
 def add_plan(table, port: LedgerPort):
     table.add_block("plan", "Present a plan; the user approves it in the form, and only its files may change")
 
-    def present(plan):
-        plan_id, rev, q = port.present(checked(plan))
+    def present(plan, plan_id=None):
+        """A new plan, or with plan_id a new revision of a plan that waits for its approval."""
+        items = checked(plan)
+        if plan_id is not None and plan_id not in {w["plan_id"] for w in port.waiting()}:
+            raise ValueError(f"no plan {plan_id} waits for an approval: present a new plan without plan_id")
+        plan_id, rev, q = port.present(items, plan_id)
         return (f"Plan {plan_id} rev {rev} waits for the user's approval. Ask it now with AskUserQuestion, one "
                 f'question, exactly: {q} Options: "Duyệt", "Sửa plan". Never fill in the answer.')
 
@@ -53,9 +64,16 @@ def add_plan(table, port: LedgerPort):
             return "No plan waits for an approval."
         return "\n".join(f"{w['plan_id']} rev {w['rev']} waits: {w['items']['title']}" for w in waiting)
 
-    table.add("plan", "plan_present", "Keep a plan {title, files, tests} and give the form question", {"plan": "object"},
-              present)
+    table.add("plan", "plan_present", "Keep a plan {title, files, tests} and give the form question; plan_id makes a "
+              "new revision of a waiting plan", {"plan": "object", "plan_id?": "string"}, present)
     table.add("plan", "plan_status", "The plans that wait for an approval", {}, status)
+
+
+def blobs(plan):
+    try:
+        return {p: blob(plan["root"], p) for p in plan["files"] + plan["tests"]}
+    except GitError as e:
+        raise ValueError(f"the plan's root is not in a git repository: {e}") from e
 
 
 def verify(port, claude_dir, plan_id):
@@ -66,20 +84,19 @@ def verify(port, claude_dir, plan_id):
     command = Config.load(claude_dir).verify
     if not command:
         raise ValueError("the config names no verify command")
-    started = time.monotonic()
+    started, files = time.monotonic(), blobs(plan)
     try:
         p = subprocess.run(list(command), cwd=plan["root"], capture_output=True, timeout=VERIFY_TIMEOUT)
         code, tail = p.returncode, (p.stdout + p.stderr).decode("utf-8", "replace").strip().splitlines()[-5:]
     except (OSError, subprocess.TimeoutExpired) as e:
         code, tail = -1, [f"{type(e).__name__}: {e}"]
-    try:
-        files = {p: blob(plan["root"], p) for p in plan["files"] + plan["tests"]}
-    except GitError as e:
-        raise ValueError(f"the plan's root is not in a git repository: {e}") from e
-    ok = code == 0
+    moved = sorted(p for p, b in blobs(plan).items() if files[p] != b)
+    if moved:  # the receipt is for what the tests saw: a file that changed under them is no pass
+        tail.append(f"files changed while the tests ran: {', '.join(moved)}")
+    ok = code == 0 and not moved
     port.keep_verify(plan, {"files": files, "commands": [list(command)], "code": code, "ok": ok,
                             "why": "\n".join(tail)[-500:], "ms": int((time.monotonic() - started) * 1000)})
-    word = "passed" if ok else f"failed (exit {code})"
+    word = "passed" if ok else ("failed" + (f" (exit {code})" if code else ""))
     return f"verify {word} for plan {plan_id}." + ("" if ok else "\n" + "\n".join(tail))
 
 

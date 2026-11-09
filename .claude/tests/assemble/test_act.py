@@ -11,7 +11,7 @@ from harness.utils.contracts import Event, Finding, Verdict
 from harness.utils.ledger.recorder import Recorder
 from tests import tree
 
-PLAN = {"title": "Add a greeting", "files": ["hello.py"], "tests": ["test_hello.py"]}
+PLAN = {"title": "Add a greeting", "files": ["hello.py"], "tests": ["test_hello.py"], "root": "C:/repo"}
 
 
 def answered(q, label, how="input"):
@@ -37,7 +37,9 @@ class ApprovalTest(unittest.TestCase):
         return Act(self.port).run(event, facts, Verdict("allow"))
 
     def test_present_keeps_the_revision_and_gives_the_form_question(self):
-        self.assertEqual(self.q, question(PLAN["title"], self.plan_id, 1))
+        self.assertEqual(self.q, question(PLAN, self.plan_id, 1))
+        self.assertIn("hello.py, test_hello.py", self.q)
+        self.assertIn("C:/repo", self.q)
         self.assertEqual([w["question"] for w in self.port.waiting()], [self.q])
         self.assertIsNone(self.port.approved("s1"))
 
@@ -57,8 +59,9 @@ class ApprovalTest(unittest.TestCase):
         notes = self.act(answered(self.q, "Sửa plan"))
         self.assertIsNone(self.port.approved("s1"))
         self.assertIn("did not approve", " ".join(notes))
-        self.act(answered(question(PLAN["title"], self.plan_id, 2), "Duyệt"))
-        self.act(answered(question("Other", self.plan_id, 1), "Duyệt"))
+        self.act(answered(question(PLAN, self.plan_id, 2), "Duyệt"))
+        self.act(answered(question({**PLAN, "title": "Other"}, self.plan_id, 1), "Duyệt"))
+        self.act(answered(question({**PLAN, "files": ["other.py"]}, self.plan_id, 1), "Duyệt"))
         self.assertIsNone(self.port.approved("s1"))
 
     def test_only_the_newest_revision_can_be_approved(self):

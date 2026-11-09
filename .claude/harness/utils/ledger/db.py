@@ -29,15 +29,26 @@ def fingerprint(con):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def statements():
+    """The statements of schema.sql: one a line, comments left out."""
+    return [line.strip().rstrip(";") for line in SCHEMA.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("--")]
+
+
 @lru_cache(maxsize=1)
 def pinned():
     """The fingerprint schema.sql gives."""
     con = sqlite3.connect(":memory:")
     try:
-        con.executescript(SCHEMA.read_text(encoding="utf-8"))
+        for sql in statements():
+            con.execute(sql)
         return fingerprint(con)
     finally:
         con.close()
+
+
+def has_tables(con):
+    return con.execute("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'").fetchone()[0] > 0
 
 
 class Ledger:
@@ -46,14 +57,23 @@ class Ledger:
 
     @classmethod
     def open(cls, path):
+        """Open the DB; one with no table (new, or left empty by a crash) gets the schema in one transaction, which a
+        second process waits for instead of making it twice."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        new = not path.exists()
         con = sqlite3.connect(path, isolation_level=None, timeout=10)
         con.row_factory = sqlite3.Row
         try:
-            if new:
-                con.executescript("BEGIN;" + SCHEMA.read_text(encoding="utf-8") + "COMMIT;")
+            if not has_tables(con):
+                con.execute("BEGIN IMMEDIATE")
+                try:
+                    if not has_tables(con):
+                        for sql in statements():
+                            con.execute(sql)
+                    con.execute("COMMIT")
+                except BaseException:
+                    con.execute("ROLLBACK")
+                    raise
             if fingerprint(con) != pinned():
                 raise LedgerError(f"{path}: its schema is not the one of schema.sql (it drifted)")
         except BaseException:
@@ -69,10 +89,11 @@ class Ledger:
         self.con.execute("BEGIN IMMEDIATE")
         try:
             result = change(self.con)
+            self.con.execute("COMMIT")
         except BaseException:
-            self.con.execute("ROLLBACK")
+            if self.con.in_transaction:
+                self.con.execute("ROLLBACK")
             raise
-        self.con.execute("COMMIT")
         return result
 
     def all(self, sql, args=()):

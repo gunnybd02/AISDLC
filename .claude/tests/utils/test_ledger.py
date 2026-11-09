@@ -72,6 +72,22 @@ class LedgerTest(unittest.TestCase):
         con.close()
         self.assertFalse(Recorder.chain_ok(Ledger.open(ledger.path), "rec_commits"))
 
+    def test_the_id_of_a_plan_row_is_in_its_hash(self):
+        ledger = self.ledger()
+        rec = Recorder(ledger)
+        rid = ledger.write(lambda con: rec.insert(con, "rec_plans", {"sid": "s", "status": "approved", "at": 1}))
+        self.assertTrue(Recorder.chain_ok(ledger, "rec_plans"))
+        con = sqlite3.connect(ledger.path)
+        con.execute("UPDATE rec_plans SET id = ? WHERE id = ?", (rid + 5, rid))
+        con.commit()
+        con.close()
+        self.assertFalse(Recorder.chain_ok(Ledger.open(ledger.path), "rec_plans"))
+
+    def test_an_empty_file_left_by_a_crash_gets_the_schema(self):
+        path = tree(self, {"harness.db": ""}) / "harness.db"
+        ledger = Ledger.open(path)
+        self.assertIsNotNone(ledger.one("SELECT name FROM sqlite_master WHERE name = 'rec_plans'"))
+
     def test_an_unknown_table_or_column_is_refused(self):
         ledger = self.ledger()
         rec = Recorder(ledger)

@@ -1,4 +1,5 @@
 """End to end: the entry scripts run as Claude Code runs them, in a process of their own."""
+import os
 import shutil
 import subprocess
 import sys
@@ -29,8 +30,12 @@ def git_repo(test, files):
     return root
 
 
-def run(script, stdin="", args=()):
-    """Run an entry script with the given stdin; return (exit code, stdout, stderr)."""
+def run(script, stdin="", args=(), env=None, cwd=None):
+    """Run an entry script with the given stdin (environment changes, folder); return (exit code, stdout, stderr)."""
+    full = {**os.environ, **(env or {})}
     p = subprocess.run([sys.executable, str(script), *args], input=stdin.encode("utf-8"), capture_output=True,
-                       timeout=60)
-    return p.returncode, p.stdout.decode("utf-8"), p.stderr.decode("utf-8")
+                       timeout=60, env=full, cwd=cwd)
+    return p.returncode, p.stdout.decode("utf-8"), p.stderr.decode("utf-8", "replace")
+
+
+WINDOWS_CONSOLE = {"PYTHONIOENCODING": "cp1252", "PYTHONUTF8": "0"}  # what a plain Windows console gives a script
