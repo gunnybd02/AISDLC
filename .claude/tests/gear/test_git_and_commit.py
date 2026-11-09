@@ -30,10 +30,26 @@ class GitCommandsTest(unittest.TestCase):
         # several -C resolve like git does; the gate then compares that repository with the plan's
         cases = {"git commit -m x": "C:/r", "git -C sub commit -m 'a && b'": "C:/r/sub", "git commit -q -m x": "C:/r",
                  "git -C . -C .. commit -m x": "C:/", 'g""it commit -m x': "C:/r",  # the shell runs git itself
+                 "g\\it commit -m x": "C:/r",  # bash reads g\it as git: it is a plain commit, judged as one
+                 "git -C %X% commit -m x": "C:/r/%X%",  # % is no expansion in bash: a folder of that name
+                 "git commit -F - <<EOF\nmessage\nEOF": "C:/r",  # the message from a heredoc the reader sees whole
                  "git commit --message=x": "C:/r", "git commit -F msg.txt": "C:/r", "git -C C:/other commit": "C:/other"}
         for command, repo in cases.items():
             with self.subTest(command=command):
                 self.assertEqual((commit_fact(command)["repo"], commit_fact(command)["unsafe"]), (repo, ""))
+
+    def test_the_line_is_read_in_the_dialect_of_its_tool(self):
+        for command in ("g\\it commit -m x", "git commit -m $msg", "& git commit -m x", "git commit -m (Get-Date)"):
+            with self.subTest(command=command):
+                fact = GitCommands().translate(Event("PreToolUse", "PowerShell", {"command": command}, "s1", "C:/r"))
+                self.assertTrue(fact["git_commit"]["unsafe"], command)
+        self.assertTrue(commit_fact("cmd /c \"git -C %X% commit -m x\"")["unsafe"])
+
+    def test_a_wrapped_commit_is_seen_and_named_by_its_wrapper(self):
+        for command, wrapper in (("bash -c 'git commit -m x'", "bash -c"), ("sudo git commit -m x", "sudo"),
+                                 ("env -i git commit -m x", "env"), ("eval git commit -m x", "eval")):
+            with self.subTest(command=command):
+                self.assertIn(wrapper, commit_fact(command)["unsafe"])
 
     def test_a_commit_the_gate_cannot_see_whole_is_unsafe(self):
         for command in ("git add x && git commit -m y", "echo a; git commit -m x", "cd other && git commit -m x",
@@ -56,8 +72,8 @@ class GitCommandsTest(unittest.TestCase):
                         "git commit-tree abc -m x", "git update-ref HEAD abc",
                         # what the third review found
                         "git${IFS}commit${IFS}-m${IFS}x", "$'git' commit -m x", "{git,commit} -m x",
-                        "g\\it commit -m x", "git -C $X commit -m x", "git -C ~/o commit -m x",
-                        "git -C %X% commit -m x", "git-commit -m x"):
+                        "git -C $X commit -m x", "git -C ~/o commit -m x",
+                        "git-commit -m x"):
             with self.subTest(command=command):
                 fact = commit_fact(command)
                 self.assertTrue(fact and fact["unsafe"], command)

@@ -142,6 +142,16 @@
       "status": "active",
       "plan": 34
     },
+    "s3.h15.git-shared": {
+      "what": "cổng commit đọc dòng git bằng bộ đọc chung",
+      "how": "mọi test bypass cũ vẫn bị chặn; lệnh git bọc trong sh -c được thấy",
+      "why": "một bộ đọc shell cho cả hệ, không hai cách hiểu một dòng",
+      "tests": [
+        ".claude/tests/gear/test_git_and_commit.py#test_the_line_is_read_in_the_dialect_of_its_tool"
+      ],
+      "status": "active",
+      "plan": 39
+    },
     "s3.h4.doctor": {
       "what": "doctor báo 0 lỗi trên cây thật, ERROR khi một net vỡ",
       "how": "chạy entry/doctor.py trên cây thật và cây giả có vi phạm",
