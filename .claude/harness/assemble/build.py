@@ -3,7 +3,7 @@ of mcp and gear by name, the config names the recipe, the recipe names the trans
 from pathlib import Path
 
 from harness.assemble.act import Act
-from harness.assemble.blocks import add_plan, add_verify
+from harness.assemble.blocks import add_harness, add_plan, add_verify
 from harness.assemble.config import Config
 from harness.assemble.loader import Loader
 from harness.assemble.ports import LedgerPort, PlanState
@@ -61,6 +61,7 @@ def action_table(items, claude_dir):
     port = LedgerPort(claude_dir)
     add_plan(table, port)
     add_verify(table, port, claude_dir)
+    add_harness(table, claude_dir)
     table.add_block("health", "The health of the harness: what the blocks declare")
     table.add("health", "items", "The items of mcp and gear, one per line: block, kind, name", {},
               lambda: "\n".join(f"{i.block} {i.kind} {i.name}" for i in items.values()))

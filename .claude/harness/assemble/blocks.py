@@ -2,10 +2,14 @@
 only serves them.
 - plan: plan_present keeps a plan and gives the form question the model asks with AskUserQuestion; plan_status.
 - verify: run the unit's test command (the config's verify) in the plan's root and keep the receipt: the result and
-  the blob id of each file of the plan, which the commit gate compares with what is staged."""
+  the blob id of each file of the plan, which the commit gate compares with what is staged.
+- harness: pause gives the form question that, answered "Duyệt" by the user, pauses the guards (entry/hook.py holds
+  the pause itself, so it works when the harness is broken); pause_status reads state/pause.json."""
+import json
 import re
 import subprocess
 import time
+from pathlib import Path
 
 from harness.assemble.config import Config
 from harness.assemble.ports import LedgerPort
@@ -77,6 +81,37 @@ def verify(port, claude_dir, plan_id):
                             "why": "\n".join(tail)[-500:], "ms": int((time.monotonic() - started) * 1000)})
     word = "passed" if ok else f"failed (exit {code})"
     return f"verify {word} for plan {plan_id}." + ("" if ok else "\n" + "\n".join(tail))
+
+
+MAX_PAUSE = 120
+
+
+def pause_question(minutes, why):
+    if not isinstance(minutes, int) or not 1 <= minutes <= MAX_PAUSE:
+        raise ValueError(f"minutes is a whole number from 1 to {MAX_PAUSE}")
+    why = " ".join(str(why).split()).rstrip("?")
+    if not why:
+        raise ValueError("say why the guards should pause")
+    q = f"Tắt guard {minutes} phút: {why}?"
+    return (f"Ask the user now with AskUserQuestion, one question, exactly: {q} Options: \"Duyệt\", \"Không\". Never "
+            f"fill in the answer. Only the user's Duyệt pauses the guards; every call is traced while they are paused.")
+
+
+def pause_status(claude_dir):
+    try:
+        pause = json.loads((Path(claude_dir) / "state" / "pause.json").read_text(encoding="utf-8"))
+        left = int(float(pause["until"]) - time.time())
+    except (OSError, ValueError, KeyError, TypeError):
+        return "The guards are on."
+    return f"The guards are paused for {left // 60} more minutes: {pause.get('why')}." if left > 0 else "The guards are on."
+
+
+def add_harness(table, claude_dir):
+    table.add_block("harness", "The guards themselves: pause them for a while, only through the user's form")
+    table.add("harness", "pause", "The form question that pauses the guards for N minutes (1 to 120)",
+              {"minutes": "number", "why": "string"}, pause_question)
+    table.add("harness", "pause_status", "Whether the guards are paused, and for how long", {},
+              lambda: pause_status(claude_dir))
 
 
 def add_verify(table, port, claude_dir):
