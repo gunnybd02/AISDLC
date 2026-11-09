@@ -31,6 +31,16 @@
       "status": "active",
       "plan": 31
     },
+    "s1.h6.ledger": {
+      "what": "DB riêng đúng schema ledger thật, ghi nguyên tử",
+      "how": "DB tạm: fingerprint khớp; sửa schema thì báo lệch; lỗi giữa chừng thì không còn dòng nào",
+      "why": "công cụ chuyển sang thấy sẵn bảng; sổ không bao giờ ghi dở",
+      "tests": [
+        ".claude/tests/utils/test_ledger.py"
+      ],
+      "status": "active",
+      "plan": 33
+    },
     "s2.h2.one-verdict-path": {
       "what": "một sự kiện hook đi hết translate → detect → decide → out",
       "how": "payload thật qua entry/hook.py với gear giả; finding không có luật → ask; code hỏng → exit 2",
