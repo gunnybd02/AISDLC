@@ -14,7 +14,7 @@ from harness.gear.translate.git import GitCommands
 from harness.utils.contracts import Event
 from harness.utils.git.facts import staged, top
 from harness.utils.git.run import GitError, git
-from tests import CLAUDE_DIR, tree
+from tests import CLAUDE_DIR, WINDOWS, native, tree
 from tests.e2e import copy_tree, git_repo
 
 
@@ -23,18 +23,18 @@ def bash(command, cwd, kind="PreToolUse"):
 
 
 def commit_fact(command):
-    return GitCommands().translate(bash(command, "C:/r")).get("git_commit")
+    return GitCommands().translate(bash(command, native("C:/r"))).get("git_commit")
 
 
 class GitCommandsTest(unittest.TestCase):
     def test_a_plain_commit_is_found_with_its_repository(self):
         # several -C resolve like git does; the gate then compares that repository with the plan's
-        cases = {"git commit -m x": "C:/r", "git -C sub commit -m 'a && b'": "C:/r/sub", "git commit -q -m x": "C:/r",
-                 "git -C . -C .. commit -m x": "C:/", 'g""it commit -m x': "C:/r",  # the shell runs git itself
-                 "g\\it commit -m x": "C:/r",  # bash reads g\it as git: it is a plain commit, judged as one
-                 "git -C %X% commit -m x": "C:/r/%X%",  # % is no expansion in bash: a folder of that name
-                 "git commit -F - <<EOF\nmessage\nEOF": "C:/r",  # the message from a heredoc the reader sees whole
-                 "git commit --message=x": "C:/r", "git commit -F msg.txt": "C:/r", "git -C C:/other commit": "C:/other"}
+        cases = {"git commit -m x": native("C:/r"), "git -C sub commit -m 'a && b'": native("C:/r/sub"), "git commit -q -m x": native("C:/r"),
+                 "git -C . -C .. commit -m x": native("C:/"), 'g""it commit -m x': native("C:/r"),  # the shell runs git itself
+                 "g\\it commit -m x": native("C:/r"),  # bash reads g\it as git: it is a plain commit, judged as one
+                 "git -C %X% commit -m x": native("C:/r/%X%"),  # % is no expansion in bash: a folder of that name
+                 "git commit -F - <<EOF\nmessage\nEOF": native("C:/r"),  # the message from a heredoc the reader sees whole
+                 "git commit --message=x": native("C:/r"), "git commit -F msg.txt": native("C:/r"), native("git -C C:/other commit"): native("C:/other")}
         for command, repo in cases.items():
             with self.subTest(command=command):
                 self.assertEqual((commit_fact(command)["repo"], commit_fact(command)["unsafe"]), (repo, ""))
@@ -42,7 +42,7 @@ class GitCommandsTest(unittest.TestCase):
     def test_the_line_is_read_in_the_dialect_of_its_tool(self):
         for command in ("g\\it commit -m x", "git commit -m $msg", "& git commit -m x", "git commit -m (Get-Date)"):
             with self.subTest(command=command):
-                fact = GitCommands().translate(Event("PreToolUse", "PowerShell", {"command": command}, "s1", "C:/r"))
+                fact = GitCommands().translate(Event("PreToolUse", "PowerShell", {"command": command}, "s1", native("C:/r")))
                 self.assertTrue(fact["git_commit"]["unsafe"], command)
         self.assertTrue(commit_fact("cmd /c \"git -C %X% commit -m x\"")["unsafe"])
 
@@ -87,7 +87,7 @@ class GitCommandsTest(unittest.TestCase):
                 self.assertIsNone(commit_fact(command))
 
     def test_a_commit_through_powershell_is_read_too(self):
-        event = Event("PreToolUse", "PowerShell", {"command": "git add a.py; git commit -m x"}, "s1", "C:/r")
+        event = Event("PreToolUse", "PowerShell", {"command": "git add a.py; git commit -m x"}, "s1", native("C:/r"))
         self.assertTrue(GitCommands().translate(event)["git_commit"]["unsafe"])
 
 

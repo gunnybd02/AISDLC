@@ -14,12 +14,12 @@ from harness.gear.detect.tracked import Tracked
 from harness.hooks.forms import Answers
 from harness.gear.translate.place import Places
 from harness.utils.contracts import Event, Finding
-from tests import CLAUDE_DIR, tree
+from tests import CLAUDE_DIR, WINDOWS, native, tree
 from tests.e2e import copy_tree
 
-ROOT = "C:/repo"
+ROOT = native("C:/repo")
 PLAN = {"id": 1, "plan_id": "pd-1", "rev": 1, "root": ROOT, "title": "t", "files": ["src/a.py"], "tests": ["test_a.py"]}
-STATE = "C:/harness/.claude/state"
+STATE = native("C:/harness/.claude/state")
 
 
 def gate(event, facts):
@@ -68,53 +68,55 @@ class ShellPlacesTest(unittest.TestCase):
                         "rg -n pattern src", "python -c 'print(1)'", "pwd; which git"):
             with self.subTest(command=command):
                 self.assert_writes(command, [])
-        for command in ("Get-ChildItem C:\\repo", "Get-Content a.py | Select-String x", "Test-Path a",
+        for command in (native("Get-ChildItem C:\\repo"), "Get-Content a.py | Select-String x", "Test-Path a",
                         "Write-Output hi > $null"):
             with self.subTest(command=command):
                 self.assert_writes(command, [], tool="PowerShell")
 
     def test_writes_are_the_files_the_command_names(self):
         cases = {
-            "echo x > src/a.py": ["C:/repo/src/a.py"],
-            "cat a >> b 2> err.txt": ["C:/repo/b", "C:/repo/err.txt"],
-            "rm -rf build dist": ["C:/repo/build", "C:/repo/dist"],
-            "touch -d now a": ["C:/repo/a"],
-            "mkdir -p x/y": ["C:/repo/x/y"],
-            "cp -r a b": ["C:/repo/b"],
-            "mv a b": ["C:/repo/a", "C:/repo/b"],
-            "ln -s target link": ["C:/repo/link"],
-            "chmod +x run.sh": ["C:/repo/run.sh"],
-            "sed -i 's/a/b/' x.py y.py": ["C:/repo/x.py", "C:/repo/y.py"],
-            "sed -i.bak -e 's/a/b/' x.py": ["C:/repo/x.py"],
-            "tee out.txt": ["C:/repo/out.txt"],
-            "curl -sSo page.html https://example.com": ["C:/repo/page.html"],
-            "wget -q -O x.zip https://example.com": ["C:/repo/x.zip"],
-            "dd if=a of=b": ["C:/repo/b"],
-            "cd src && rm a.py": ["C:/repo/a.py", "C:/repo/src/a.py"],
-            "cd /c/other && rm z": ["C:/repo/z", "C:/other/z"],
-            "sudo rm C:/x/y": ["C:/x/y"],
-            "bash -c 'echo hi > f'": ["C:/repo/f"],
-            "cat > notes.md <<EOF\nrm -rf /\nEOF": ["C:/repo/notes.md"],
+            "echo x > src/a.py": [native("C:/repo/src/a.py")],
+            "cat a >> b 2> err.txt": [native("C:/repo/b"), native("C:/repo/err.txt")],
+            "rm -rf build dist": [native("C:/repo/build"), native("C:/repo/dist")],
+            "touch -d now a": [native("C:/repo/a")],
+            "mkdir -p x/y": [native("C:/repo/x/y")],
+            "cp -r a b": [native("C:/repo/b")],
+            "mv a b": [native("C:/repo/a"), native("C:/repo/b")],
+            "ln -s target link": [native("C:/repo/link")],
+            "chmod +x run.sh": [native("C:/repo/run.sh")],
+            "sed -i 's/a/b/' x.py y.py": [native("C:/repo/x.py"), native("C:/repo/y.py")],
+            "sed -i.bak -e 's/a/b/' x.py": [native("C:/repo/x.py")],
+            "tee out.txt": [native("C:/repo/out.txt")],
+            "curl -sSo page.html https://example.com": [native("C:/repo/page.html")],
+            "wget -q -O x.zip https://example.com": [native("C:/repo/x.zip")],
+            "dd if=a of=b": [native("C:/repo/b")],
+            "cd src && rm a.py": [native("C:/repo/a.py"), native("C:/repo/src/a.py")],
+            native("sudo rm C:/x/y"): [native("C:/x/y")],
+            "bash -c 'echo hi > f'": [native("C:/repo/f")],
+            "cat > notes.md <<EOF\nrm -rf /\nEOF": [native("C:/repo/notes.md")],
             "echo 'rm -rf / > x'": [],
         }
+        if WINDOWS:  # a Git Bash drive (/c/): Windows only
+            cases["cd /c/other && rm z"] = ["C:/repo/z", "C:/other/z"]
         for command, paths in cases.items():
             with self.subTest(command=command):
                 self.assert_writes(command, paths)
         ps = {
-            "Remove-Item C:\\repo\\a.py -Force": ["C:/repo/a.py"],
-            "Set-Content -Path a.txt -Value hi": ["C:/repo/a.txt"],
-            "Set-Content a.txt hi": ["C:/repo/a.txt"],
-            "Out-File -FilePath o.txt -Encoding utf8": ["C:/repo/o.txt"],
-            "New-Item -ItemType Directory -Path d": ["C:/repo/d"],
-            "Copy-Item a -Destination b": ["C:/repo/b"],
-            "Move-Item a b": ["C:/repo/a", "C:/repo/b"],
-            "Get-Content a > b": ["C:/repo/b"],
-            "rm x": ["C:/repo/x"],
+            "Set-Content -Path a.txt -Value hi": [native("C:/repo/a.txt")],
+            "Set-Content a.txt hi": [native("C:/repo/a.txt")],
+            "Out-File -FilePath o.txt -Encoding utf8": [native("C:/repo/o.txt")],
+            "New-Item -ItemType Directory -Path d": [native("C:/repo/d")],
+            "Copy-Item a -Destination b": [native("C:/repo/b")],
+            "Move-Item a b": [native("C:/repo/a"), native("C:/repo/b")],
+            "Get-Content a > b": [native("C:/repo/b")],
+            "rm x": [native("C:/repo/x")],
         }
+        if WINDOWS:  # \\ as the separator: Windows only
+            ps["Remove-Item C:\\repo\\a.py -Force"] = ["C:/repo/a.py"]
         for command, paths in ps.items():
             with self.subTest(command=command):
                 self.assert_writes(command, paths, tool="PowerShell")
-        self.assert_writes("cmd /c \"del /q x\"", ["C:/repo/x"])
+        self.assert_writes("cmd /c \"del /q x\"", [native("C:/repo/x")])
 
     def test_a_copy_into_a_folder_writes_the_file_inside_it(self):
         root = tree(self, {"src/keep.txt": "x"})
@@ -174,7 +176,7 @@ class ShellPlacesTest(unittest.TestCase):
     def test_a_command_the_reader_cannot_see_whole_asks_the_user_with_the_agents_words(self):
         ((kind, detail),) = self.shell_kinds("echo x > src/a.py && ./build.sh --fast")
         self.assertEqual(kind, "shell.unread")
-        for part in (SAID, "./build.sh --fast", "C:/repo/src/a.py", "build.sh"):
+        for part in (SAID, "./build.sh --fast", native("C:/repo/src/a.py"), "build.sh"):
             self.assertIn(part, detail)
 
     def test_a_command_the_reader_cannot_see_whole_without_words_of_the_agent_is_refused(self):

@@ -14,12 +14,12 @@ from harness.gear.detect.tracked import Tracked
 from harness.hooks.forms import Answers
 from harness.gear.translate.place import Places
 from harness.utils.contracts import Event, Finding
-from tests import CLAUDE_DIR, tree
+from tests import CLAUDE_DIR, WINDOWS, native, tree
 from tests.e2e import copy_tree
 
-ROOT = "C:/repo"
+ROOT = native("C:/repo")
 PLAN = {"id": 1, "plan_id": "pd-1", "rev": 1, "root": ROOT, "title": "t", "files": ["src/a.py"], "tests": ["test_a.py"]}
-STATE = "C:/harness/.claude/state"
+STATE = native("C:/harness/.claude/state")
 
 
 def gate(event, facts):
@@ -53,15 +53,15 @@ class EditGateRunTest(unittest.TestCase):
         claude_dir = copy_tree(self)
         port = LedgerPort(claude_dir)
         runner = build_runner(claude_dir)
-        edit = write("C:/repo/src/a.py")
+        edit = write(native("C:/repo/src/a.py"))
         self.assertEqual(runner.run(edit).verdict.decision, "refuse")
         items = {"title": "t", "files": ["src/a.py"], "tests": [], "root": ROOT}
         plan_id, rev, q = port.present(items)
         answer = Event("PostToolUse", "AskUserQuestion", {"questions": [{"question": q}], "answers": {q: "Duyệt"}},
-                       "s1", "C:/elsewhere")  # the root is the plan's, not the cwd of the answer
+                       "s1", native("C:/elsewhere"))  # the root is the plan's, not the cwd of the answer
         runner.run(answer)
         self.assertEqual(runner.run(edit).verdict.decision, "allow")
-        self.assertEqual(runner.run(write("C:/repo/src/b.py")).verdict.decision, "refuse")
+        self.assertEqual(runner.run(write(native("C:/repo/src/b.py"))).verdict.decision, "refuse")
         self.assertEqual(question(items, plan_id, rev), q)
         self.assertIn("src/a.py", q)
         self.assertIn(ROOT, q)

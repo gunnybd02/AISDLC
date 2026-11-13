@@ -2,7 +2,7 @@
 import unittest
 
 from harness.utils.shell.mentions import mentioned
-from tests import tree
+from tests import WINDOWS, tree
 
 
 class MentionsTest(unittest.TestCase):
@@ -31,6 +31,13 @@ class MentionsTest(unittest.TestCase):
     def test_the_harness_own_commands_name_nothing(self):
         self.assertEqual(self.found("HARNESS_DB=s/h.db python3 -m entry.cli verify"), [])
         self.assertEqual(self.found("python3 .claude/entry/doctor.py s/h.db"), [])
+
+
+class DriveTest(unittest.TestCase):
+    def test_a_git_bash_drive_is_a_windows_spelling(self):
+        from harness.utils.shell.paths import absolute
+        self.assertEqual(absolute("/c/x", "/r", "bash"), "C:/x" if WINDOWS else "/c/x")
+        self.assertEqual(absolute("/c/x", "/r", "powershell").endswith("/c/x"), True)
 
 
 if __name__ == "__main__":

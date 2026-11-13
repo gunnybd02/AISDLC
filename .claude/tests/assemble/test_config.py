@@ -10,7 +10,7 @@ from harness.assemble.engine.runner import Runner, RunnerError
 from harness.assemble.engine.select import select
 from harness.gear.decide.arbiter import Decide
 from harness.utils.contracts import ALLOW, ASK, Detector, Event, Finding, Port, Translator
-from tests import CLAUDE_DIR, tree
+from tests import CLAUDE_DIR, WINDOWS, tree
 from tests.e2e import copy_tree
 
 
@@ -67,6 +67,22 @@ class ConfigTest(unittest.TestCase):
                 Config.load(tree(self, {"project.json": text}))
         with self.assertRaises(ConfigError):
             Config.load(tree(self, {}))
+
+
+class LedgerPathTest(unittest.TestCase):
+    def config(self, ledger):
+        return Config.load(tree(self, {"project.json": json.dumps({"name": "x", "ledger": ledger})}))
+
+    def test_a_windows_path_is_absolute_on_every_system_and_names_a_ledger_on_windows_only(self):
+        config = self.config("C:/AI/.claude/.state/harness.db")
+        self.assertEqual(config.ledger_here, config.ledger if WINDOWS else "")
+        for relative in ("harness.db", "C:harness.db", "./x.db"):
+            with self.subTest(relative=relative), self.assertRaises(ConfigError):
+                self.config(relative)
+
+    def test_a_path_of_this_system_names_its_ledger(self):
+        path = str(tree(self, {}) / "harness.db")
+        self.assertEqual(self.config(path).ledger_here, path)
 
 
 if __name__ == "__main__":

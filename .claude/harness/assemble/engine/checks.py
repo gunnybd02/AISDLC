@@ -48,7 +48,7 @@ def real_ledger(claude_dir):
     """The drift of the real ledger named in the config from schema.sql, read only; nothing when none is named, or
     when the config does not load (built() reports that)."""
     try:
-        path = Config.load(claude_dir).ledger
+        path = Config.load(claude_dir).ledger_here
     except ConfigError:
         return []
     return [f"ledger {line}" for line in compare_real(path)] if path else []

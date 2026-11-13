@@ -174,9 +174,12 @@ Moves in section 1 that change because of this:
 
 ## 7. Status
 
-Steps 1 to 9 are done on branch `refactor/block-folders`, except the behaviour changes of step 7 (7d below). Tests:
-the same 20 fail as before the move, all because they expect Windows paths (`C:/`) and the Windows ledger path of
-`project.json`; nothing new fails, and every net passes.
+Steps 1 to 9 are done on branch `refactor/block-folders`. Tests: every test passes on Windows and on Linux; one
+(`\\?\` prefixes and 8.3 names) runs on Windows only. Tests write Windows paths through `tests.native()`, which keeps
+them on Windows and drops the drive elsewhere; cases that only Windows has (a case folded drive, `\` as the
+separator, a Git Bash `/c/` drive) run on Windows only. Two fixes in the code came with it: a Windows ledger path in
+`project.json` loads on every system and names no ledger off Windows (`Config.ledger_here`), and a Git Bash drive
+(`/c/x` read as `C:/x`) is read only on Windows (`utils/shell/paths.py`).
 
 Where the result differs from section 1:
 - `gear/detect/forms.py` holds `form.prefilled` and `form.forged`: detectors live only in gear.
