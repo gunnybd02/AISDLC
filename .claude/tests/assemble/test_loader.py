@@ -76,7 +76,7 @@ class ActionFilesTest(unittest.TestCase):
     def test_the_real_action_files_are_read_without_a_problem(self):
         files, problems = Loader(CLAUDE_DIR).read_actions()
         self.assertEqual(problems, [])
-        self.assertLessEqual({"plan", "verify", "harness", "health"}, {f.block for f in files})
+        self.assertLessEqual({"plan", "verify", "maint", "health", "steps"}, {f.block for f in files})
         plan = next(f for f in files if f.block == "plan")
         self.assertEqual((plan.module, plan.names), ("harness.mcp.actions.plan", ("PlanPresent", "PlanStatus")))
 

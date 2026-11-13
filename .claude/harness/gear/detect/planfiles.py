@@ -1,5 +1,5 @@
 """PlanFiles: the files a call writes, against the approved plan and the harness's state.
-- write.state: a write into the harness's own state (its ledger, its pause), approved plan or not;
+- write.state: a write into the harness's own state (its ledger, its maint grant), approved plan or not;
 - plan.outside: a write to a file the approved plan does not name (its files and tests, under its root);
 - shell.unread: a shell call the reader cannot see whole, with the agent's words on what it does, the command, the
   files the reader did see and what it could not read: the user is the one to say;

@@ -182,7 +182,7 @@ Where the result differs from section 1:
 - `gear/detect/forms.py` holds `form.prefilled` and `form.forged`: detectors live only in gear.
 - `mcp/actions/health.py` keeps `items` and `doctor`; `mcp/actions/verify.py` keeps `run` (decision 4).
 - `Act` sits in `assemble/engine/runner.py` (no `act.py`); its logic is `utils/plan/approval.py` and `closing.py`.
-- `mcp/actions/maint.py` still serves `pause` and `pause_status` until the maint grant (7d).
+- `mcp/actions/maint.py` serves the maint grant (`grant`, `status`).
 - The size net is 400 lines for `.py`, as the target says (it was 500).
 
 Done in 7d:
@@ -190,8 +190,10 @@ Done in 7d:
   calls it, the harness checks verify, plan files and secrets, then commits or refuses. `gear/detect/commit.py` stays
   as one finding, `commit.raw`, which `git.json` refuses for every commit from the shell. The secret scan is a short
   list of patterns for now; `gear/detect/secret.py` (transfer.md row 3) replaces it.
+- The maint grant replaces pause (`mcp/actions/maint.py`, `utils/maint/grant.py`): a `pl_notes` row of kind
+  `maint.grant` and its trace in `pl_logs`, existing tables of schema v5, so the schema still matches the real
+  ledger. `entry/hook.py` reads and writes them with plain `sqlite3`, so the grant works when the harness is broken
+  (the user's decision); `pause.json` and `pause.log` are gone.
 
 Left for 7d, each changes what the guards do:
-- The maint grant replaces pause, as a row of `harness.db`; `entry/hook.py` still reads it when the harness is
-  broken (the user's decision), the one place outside `utils/ledger/db.py` that opens SQLite.
 - One store (section 6): `tx_*`, overlay and image tables, the `state/` shell guard, `db_query` without `tx_*`.

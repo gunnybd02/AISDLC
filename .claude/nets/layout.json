@@ -9,6 +9,7 @@
     "harness/utils/plan/*.py",
     "harness/utils/shell/*.py",
     "harness/utils/git/*.py",
+    "harness/utils/maint/*.py",
     "harness/utils/ledger/schema.sql",
     "harness/hooks/*.py",
     "harness/mcp/__init__.py",

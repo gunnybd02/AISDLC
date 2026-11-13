@@ -1,54 +1,84 @@
 """Claude Code hook: the event JSON on stdin, the answer on stdout. Any failure exits 2, which blocks the tool call;
 SystemExit too, so a harness that quits quietly cannot let a call through.
 
-Before the harness is even imported, this file (standard library only, entry_net) holds the pause:
-- the user's "Duyệt" to the form 'Tắt guard N phút: <why>?' (read from the PostToolUse of AskUserQuestion, which the
-  model cannot write) pauses every guard for N minutes, at most 120, in state/pause.json;
-- while a pause lasts, each call passes without the harness and is written to state/pause.log;
+Before the harness is even imported, this file (standard library only, entry_net) holds the maint grant
+(harness/utils/maint/grant.py), reading and writing the ledger with plain sqlite3 so it works when the harness is broken:
+- the user's approval word to the form 'T\u1eaft guard N ph\u00fat: <why>?' (read from the PostToolUse of
+  AskUserQuestion, which the model cannot write) turns every guard off for N minutes, at most 120: a pl_notes row of
+  kind maint.grant, written in one transaction with its trace in pl_logs;
+- while a grant lasts, each call passes without the harness and is traced in pl_logs;
 - AskUserQuestion is answered here: refused when the model filled the answers in or built a question to look like an
   answer ('"="' in it), let through otherwise even when the harness is broken, so the user can always be asked.
 - A form not shaped as one (questions and options that are not lists of objects) is refused too, and any error while
   checking a form refuses it: only a form that passed the check may pass a broken harness.
-- The pause is traced before it is written: no trace, no pause. A pause.json that reaches further than 120 minutes is
-  no pause, and the state folder stays closed to the editing tools while the guards are paused.
+- A grant and its trace are one transaction: no trace, no grant. A grant that reaches further than 120 minutes is no
+  grant, and the state folder stays closed to the editing tools while the guards are off.
 - Output is UTF-8 bytes, whatever the console's code page."""
 import json
 import os
 import re
+import sqlite3
 import sys
 import time
+import uuid
 from pathlib import Path
 
 CLAUDE_DIR = Path(__file__).resolve().parent.parent
 STATE = CLAUDE_DIR / "state"
+LEDGER = STATE / "harness.db"
+SCHEMA = CLAUDE_DIR / "harness" / "utils" / "ledger" / "schema.sql"
 FORM = "AskUserQuestion"
-YES = "Duyệt"
-PAUSE = re.compile(r"^Tắt guard (\d+) phút: (.+)\?$")
+YES = "Duy\u1ec7t"
+PAUSE = re.compile("^T\u1eaft guard (\\d+) ph\u00fat: (.+)\\?$")
+GRANT = "maint.grant"
+LATEST = "SELECT text, why, at FROM pl_notes WHERE kind = ? ORDER BY at DESC, rowid DESC LIMIT 1"
 MAX_MINUTES = 120
 FORGE = '"="'
 PREFILLED = "Only the user answers a form: call AskUserQuestion with the questions alone, none holding '\"=\"'."
 
 
-def trace(what, data):
+def ledger(create):
+    """The ledger, made from schema.sql as utils/ledger/db.py makes it when it has no table yet; None when it does not
+    exist and create is false (no ledger: no grant)."""
+    if not create and not LEDGER.is_file():
+        return None
     STATE.mkdir(parents=True, exist_ok=True)
-    line = {"at": int(time.time()), "what": what, "event": data.get("hook_event_name"), "tool": data.get("tool_name"),
+    con = sqlite3.connect(LEDGER, isolation_level=None, timeout=10)
+    if not con.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' LIMIT 1").fetchone():
+        con.execute("BEGIN IMMEDIATE")
+        for line in SCHEMA.read_text(encoding="utf-8").splitlines():
+            if line.strip() and not line.lstrip().startswith("--"):
+                con.execute(line.strip().rstrip(";"))
+        con.execute("COMMIT")
+    return con
+
+
+def trace(con, what, data):
+    body = {"what": what, "event": data.get("hook_event_name"), "tool": data.get("tool_name"),
             "session": data.get("session_id")}
-    with open(STATE / "pause.log", "a", encoding="utf-8") as f:
-        f.write(json.dumps(line, ensure_ascii=False) + "\n")
+    con.execute("INSERT INTO pl_logs (uid, body, at) VALUES (?, ?, ?)",
+                (uuid.uuid4().hex, json.dumps(body, ensure_ascii=False), int(time.time() * 1000)))
 
 
-def paused():
-    """A pause that has not ended and was not set further than the longest pause allows (a pause.json written by
-    anything but this file is no pause)."""
+def granted():
+    """The ledger while a grant lasts, or None. A grant that reaches further than the longest one allows is no grant
+    (only this file writes one, and never so long)."""
+    con = ledger(create=False)
+    if con is None:
+        return None
+    row = con.execute(LATEST, (GRANT,)).fetchone()
     try:
-        until = float(json.loads((STATE / "pause.json").read_text(encoding="utf-8"))["until"])
-    except (OSError, ValueError, KeyError, TypeError):
-        return False
-    return time.time() < until <= time.time() + MAX_MINUTES * 60
+        until = float(json.loads(row[0])["until"]) if row else 0
+    except (ValueError, KeyError, TypeError):
+        until = 0
+    if time.time() < until <= time.time() + MAX_MINUTES * 60:
+        return con
+    con.close()
+    return None
 
 
 def into_state(data):
-    """Whether an editing tool writes into the state folder, which stays closed while the guards are paused."""
+    """Whether an editing tool writes into the state folder, which stays closed while the guards are off."""
     tool_input = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
     path = tool_input.get("file_path") or tool_input.get("notebook_path")
     if not isinstance(path, str) or not path:
@@ -117,8 +147,8 @@ def refused_form(data):
         return True
 
 
-def pause_from(data):
-    """The note of a pause the user approved in this form, or None. A form that would have been refused gives none."""
+def grant_from(data):
+    """The note of a grant the user approved in this form, or None. A form that would have been refused gives none."""
     if refused_form({**data, "tool_input": {**data["tool_input"], "answers": None}}
                     if isinstance(data.get("tool_input"), dict) else data):
         return None
@@ -126,10 +156,18 @@ def pause_from(data):
         m = PAUSE.match(q)
         if m and label.strip() == YES and q in questions(data):
             minutes = min(int(m.group(1)), MAX_MINUTES)
-            trace("paused", data)  # first: a pause that cannot be traced does not happen
-            (STATE / "pause.json").write_text(json.dumps({"until": time.time() + minutes * 60, "why": m.group(2),
-                                                          "session": data.get("session_id")}), encoding="utf-8")
-            return f"GATE: the user paused the guards for {minutes} minutes: {m.group(2)}. Every call is traced."
+            con = ledger(create=True)
+            try:
+                con.execute("BEGIN IMMEDIATE")  # the grant and its trace: both, or neither
+                trace(con, "granted", data)
+                con.execute("INSERT INTO pl_notes (uid, kind, target, key, text, why, sid, at) VALUES (?, ?, ?, ?, ?, ?, "
+                            "?, ?)", (uuid.uuid4().hex, GRANT, "guards", str(minutes),
+                                      json.dumps({"until": time.time() + minutes * 60}), m.group(2),
+                                      str(data.get("session_id") or ""), int(time.time() * 1000)))
+                con.execute("COMMIT")
+            finally:
+                con.close()
+            return f"GATE: the user turned the guards off for {minutes} minutes: {m.group(2)}. Every call is traced."
     return None
 
 
@@ -159,21 +197,25 @@ def main():
                 return 2
             asking = True  # a clean form: it may pass even when the harness below is broken
         if form and data.get("hook_event_name") == "PostToolUse":  # its answers come from the user: a prefilled call
-            note = pause_from(data)                                  # was refused before it ran
+            note = grant_from(data)                                  # was refused before it ran
             if note:
                 return answer(note)
-        if paused():
-            if pre and into_state(data):
-                say("The state of the harness stays closed while the guards are paused.")
-                return 2
-            trace("passed", data)
+        con = granted()
+        if con is not None:
+            try:
+                if pre and into_state(data):
+                    say("The state of the harness stays closed while the guards are off.")
+                    return 2
+                trace(con, "passed", data)
+            finally:
+                con.close()
             return 0
         sys.path.insert(0, str(CLAUDE_DIR))
         from harness.assemble.engine.build import run_hook
         out = run_hook(raw)
     except BaseException as e:
         if asking:
-            return 0  # a clean form is harmless to ask, and it is how the user is asked for a pause
+            return 0  # a clean form is harmless to ask, and it is how the user is asked for a grant
         say(f"harness hook failed, the call is blocked: {type(e).__name__}: {e}")
         return 2
     sys.stdout.buffer.write(out.encode("utf-8"))

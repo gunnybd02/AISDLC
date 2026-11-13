@@ -1,47 +1,34 @@
-"""h10.pause: only the user's "Duyệt" in the form 'Tắt guard N phút: why?' pauses the guards, for N minutes at most
-120, with a trace; it works when the harness itself is broken, and the model can neither answer the form nor ask for
-the pause around a broken harness."""
+"""h10.maint-grant: the maint block gives the form question to ask, and says whether the guards are off."""
 import json
 import time
 import unittest
 
 from harness.assemble.engine.build import items_of
+from harness.assemble.engine.ports import LedgerPort
 from harness.assemble.engine.wire_mcp import action_table
 from tests import CLAUDE_DIR, tree
-from tests.e2e import WINDOWS_CONSOLE, copy_tree, run
 
-BROKEN = {"harness/assemble/engine/build.py": "raise RuntimeError('broken')\n"}
-Q = "Tắt guard 15 phút: sửa harness?"
+Q = "T\u1eaft guard 15 ph\u00fat: s\u1eeda harness?"
 
 
-def hook(root, payload):
-    return run(root / "entry" / "hook.py", json.dumps(payload), env=WINDOWS_CONSOLE)
+class MaintBlockTest(unittest.TestCase):
+    def setUp(self):
+        self.root = tree(self, {})
+        self.table = action_table(items_of(CLAUDE_DIR), self.root)
 
-
-def write_call():
-    return {"hook_event_name": "PreToolUse", "tool_name": "Write", "tool_input": {"file_path": "C:/x/a.py"},
-            "session_id": "s1", "cwd": "C:/x"}
-
-
-def form(question, kind="PostToolUse", answer=None, prefilled=False):
-    tool_input = {"questions": [{"question": question, "options": [{"label": "Duyệt"}, {"label": "Không"}]}]}
-    if prefilled:
-        tool_input["answers"] = {question: "Duyệt"}
-    payload = {"hook_event_name": kind, "tool_name": "AskUserQuestion", "tool_input": tool_input,
-               "session_id": "s1", "cwd": "C:/x"}
-    if answer is not None:
-        payload["tool_response"] = {"answers": {question: answer}}
-    return payload
-
-
-class PauseBlockTest(unittest.TestCase):
-    def test_the_harness_block_gives_the_question_to_ask(self):
-        table = action_table(items_of(CLAUDE_DIR), tree(self, {}))
-        out = table.action("harness", "pause").handler(minutes=15, why="sửa harness")
-        self.assertIn(Q, out)
-        for minutes in (0, 121):
+    def test_grant_gives_the_question_to_ask(self):
+        self.assertIn(Q, self.table.action("maint", "grant").handler(minutes=15, why="s\u1eeda harness"))
+        for minutes in (0, 121, True):
             with self.subTest(minutes=minutes), self.assertRaises(ValueError):
-                table.action("harness", "pause").handler(minutes=minutes, why="x")
+                self.table.action("maint", "grant").handler(minutes=minutes, why="x")
+
+    def test_status_reads_the_grant_of_the_ledger(self):
+        status = self.table.action("maint", "status").handler
+        self.assertEqual(status(), "The guards are on.")
+        LedgerPort(self.root).write(lambda con, rec: con.execute(
+            "INSERT INTO pl_notes (uid, kind, text, why, at) VALUES ('u', 'maint.grant', ?, 'fix', 1)",
+            (json.dumps({"until": time.time() + 600}),)))
+        self.assertIn("off for 9 more minutes: fix", status())
 
 
 if __name__ == "__main__":

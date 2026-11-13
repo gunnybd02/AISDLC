@@ -13,8 +13,9 @@ SERVER = ("harness", "0.1")
 
 def ports_of(items, claude_dir):
     """The ports an action may name in needs; a port that costs a read is a callable, read when the action runs."""
-    return {"plans": LedgerPort(claude_dir), "verify_command": lambda: Config.load(claude_dir).verify,
-            "state_dir": Path(claude_dir) / "state", "items": items, "doctor": lambda: report(doctor(claude_dir))}
+    ledger = LedgerPort(claude_dir)
+    return {"plans": ledger, "ledger": ledger, "verify_command": lambda: Config.load(claude_dir).verify,
+            "items": items, "doctor": lambda: report(doctor(claude_dir))}
 
 
 def action_table(items, claude_dir, code_dir=CLAUDE_DIR):

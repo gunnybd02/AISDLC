@@ -17,7 +17,7 @@ Everything lives under `.claude/`. Python 3.13, standard library only.
   project/skills/  the skill library, served by find and guide
   docs/         this file, transfer.md, migration-map.md
   tests/        tests/<block>/test_<module>.py, plus nets/ and e2e/
-  state/        private, not in git: harness.db (the ledger), pause.json and pause.log
+  state/        private, not in git: harness.db, the ledger, the one store of the harness's data
 ```
 
 ## The flow of a change
@@ -105,7 +105,7 @@ A Bash or PowerShell call is read before it runs, so a write by the shell meets 
 
 ## The run of a hook
 ```
-Claude Code -> entry/hook.py   (standard library: the pause, the form, then the harness)
+Claude Code -> entry/hook.py   (standard library: the maint grant, the form, then the harness)
   -> assemble/engine/build.run_hook
   hooks/io.py: JSON -> Event
   select.py: the session's approved plan picks the pipeline (none: base, the floor); pipeline.py names the
@@ -122,15 +122,21 @@ Claude Code -> entry/hook.py   (standard library: the pause, the form, then the 
   commit (`utils/plan/closing.py`), each finding as a rule decision.
 - A broken harness exits 2, which blocks the call.
 
-## The pause
-Only the user's "Duyệt" to `Tắt guard N phút: <why>?` pauses every guard, for at most 120 minutes. The top of
-`entry/hook.py` does it, so it works even when the harness is broken. While paused, each call is written to
-`state/pause.log`, and the pause itself is traced before it is written: no trace, no pause. AskUserQuestion is let
-through when the harness is broken, so the user can always be asked. It is refused when the model filled in the
-answers, when a question or label holds `"="`, when it is not shaped as a form, or when checking it fails at all:
-only a form that passed the check may pass a broken harness. A `pause.json` that reaches further than 120 minutes is
-no pause, and the state folder stays closed to the editing tools while the guards are paused. The hook writes UTF-8
-bytes, whatever the console's code page.
+## The maint grant
+Only the user's "Duyệt" to `Tắt guard N phút: <why>?` turns every guard off, for at most 120 minutes. The model gets
+the question from `run("maint", "grant", {minutes, why})` and `run("maint", "status")` says whether the guards are
+off. The grant is a row of the ledger (`pl_notes`, kind `maint.grant`, `{"until": seconds}`), written in one
+transaction with its trace in `pl_logs`: no trace, no grant. While it lasts, each call is traced in `pl_logs`.
+
+The top of `entry/hook.py` writes and reads these rows itself, with plain `sqlite3` and the statements of
+`schema.sql`, so the grant works even when the harness is broken. It is the one place outside `utils/ledger/db.py`
+that opens the ledger; `tests/utils/test_grant.py` keeps its names the same as `utils/maint/grant.py`.
+
+AskUserQuestion is let through when the harness is broken, so the user can always be asked. It is refused when the
+model filled in the answers, when a question or label holds `"="`, when it is not shaped as a form, or when checking
+it fails at all: only a form that passed the check may pass a broken harness. A grant that reaches further than 120
+minutes is no grant, and the state folder stays closed to the editing tools while the guards are off. The hook writes
+UTF-8 bytes, whatever the console's code page.
 
 ## The MCP server
 `entry/mcp_server.py` serves three tools over stdio (JSON-RPC 2.0):
@@ -147,7 +153,7 @@ loader reads these by the file's syntax tree; `engine/wire_mcp.py` gives each ac
 | `plan` | `plan_present`, `plan_status` |
 | `verify` | `run` |
 | `steps` | `step_done` |
-| `harness` | `pause`, `pause_status` |
+| `maint` | `grant`, `status` |
 | `health` | `items`, `doctor` |
 
 ## Ledger

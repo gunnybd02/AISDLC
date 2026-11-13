@@ -7,7 +7,7 @@
      "why": "The approved plan does not name this file: present a new revision that names it and ask the user again.",
      "test": "tests/gear/test_planfiles.py#test_an_edit_of_a_file_outside_the_plan_is_refused"},
     {"finding": "write.state", "verdict": "refuse",
-     "why": "The state of the harness (its ledger, its pause) is written by the harness only, never by an edit.",
+     "why": "The state of the harness (its ledger, its maint grant) is written by the harness only, never by an edit.",
      "test": "tests/gear/test_planfiles.py#test_the_state_of_the_harness_is_never_edited"},
     {"finding": "form.prefilled", "verdict": "refuse",
      "why": "Only the user answers a form: call AskUserQuestion with the questions alone.",
