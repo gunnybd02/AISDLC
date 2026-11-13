@@ -73,7 +73,7 @@ Target: 5 blocks (`hooks`, `gear`, `mcp`, `assemble`, `utils`) with sub-folders.
 | `project/behaviors.json` | stays until the cutover | = |
 | `nets/*` | `nets/*` | = , plus `english_net.py`, `resolve_net.py`, `files.py` new; `entry_net.py` has no row in the target table: keep it |
 | `docs/architecture.md`, `transfer.md` | same | rewrite paths |
-| — | `settings.json`, `.mcp.json` in the repo root | new |
+| — | `settings.json` here, `.mcp.json` in the root of the repository the harness is installed into | new |
 
 ## 2. Hard-coded paths and names that break
 
@@ -132,9 +132,19 @@ Run `python3 -m unittest discover -s tests -t .` and `python3 entry/doctor.py` f
 8. Rename and split the tests (section 3); add `tests/nets/test_tests_layout.py`.
 9. Rewrite `docs/architecture.md` and `docs/transfer.md` to the new paths.
 
-## 5. Open decisions
+## 5. Decisions
 
-- Commit gate (`detect_commit.py`): its own detector, or only through `step_done` / the git tool?
-- `pause` / `pause_status` actions: `mcp/actions/maint.py` or their own `mcp/actions/pause.py`?
-- `nets/entry_net.py`: keep it (it is not in the target table)?
-- `translate_answer.py`: move to `hooks/forms.py` (as the target says) or keep as a gear translator?
+`Core-repo` is only a name: this repository is cloned into the repository where the user starts Claude, and the
+harness works from there on other folders. Paths stay relative to `.claude/`; nothing is renamed.
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Commit gate (`detect_commit.py`) | Commits go only through `step_done` / the git tool. `git.json` refuses a raw `git commit`; the checks (verify passed, files unchanged, plan files only) move to `utils/plan/steps.py`. `detect_commit.py` is removed |
+| 2 | Pause | Becomes the maint grant, `mcp/actions/maint.py` + `utils/maint/grant.py` |
+| 3 | Vietnamese text | `\u` escapes in `.py` files; JSON rule text stays as is |
+| 4 | Verify | Stays an MCP action too (`run('verify', 'run', {plan})`), next to the CLI `verify` |
+| 5 | Pipeline key | Follow the target: `select.py` picks the pipeline from the plan state; the `recipe` key leaves `project.json` |
+| 6 | Entry logic, nets import | Pause logic leaves `entry/hook.py` for `hooks/forms.py`; `engine/checks.py` keeps importing `nets`, the one exception, listed in `imports_net.ALLOWED` |
+| 7 | State storage | Stable and local: all state lives under `.claude/state/` of the install (`harness.db`, `transcripts.db`, `overlay.db`, `live/`), path from `HARNESS_DB`, default `state/harness.db`. Nothing points at another harness's files. Loose state files (`state/pause.json`) go into the ledger |
+| 8 | `nets/entry_net.py` | Kept (default, not chosen by the user) |
+| 9 | `translate_answer.py` | Moves to `hooks/forms.py` as the target says (default, not chosen by the user) |
