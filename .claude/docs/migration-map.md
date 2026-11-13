@@ -145,6 +145,6 @@ harness works from there on other folders. Paths stay relative to `.claude/`; no
 | 4 | Verify | Stays an MCP action too (`run('verify', 'run', {plan})`), next to the CLI `verify` |
 | 5 | Pipeline key | Follow the target: `select.py` picks the pipeline from the plan state; the `recipe` key leaves `project.json` |
 | 6 | Entry logic, nets import | Pause logic leaves `entry/hook.py` for `hooks/forms.py`; `engine/checks.py` keeps importing `nets`, the one exception, listed in `imports_net.ALLOWED` |
-| 7 | State storage | Stable and local: all state lives under `.claude/state/` of the install (`harness.db`, `transcripts.db`, `overlay.db`, `live/`), path from `HARNESS_DB`, default `state/harness.db`. Nothing points at another harness's files. Loose state files (`state/pause.json`) go into the ledger |
+| 7 | State storage | All state stays under `.claude/state/` of the install, split by kind as the target draws it: `harness.db` (decisions, plans, steps, commits, sessions, audit chain), `transcripts.db`, `overlay.db`, `live/`, `twg/`, plus `overlays/<session>/`. Today the code writes only `state/harness.db` and `state/pause.json`; `pause.json` moves into `harness.db` with the maint grant. The `ledger` key of `project.json` is read only by the doctor (schema compare with the old harness), never written |
 | 8 | `nets/entry_net.py` | Kept (default, not chosen by the user) |
 | 9 | `translate_answer.py` | Moves to `hooks/forms.py` as the target says (default, not chosen by the user) |
