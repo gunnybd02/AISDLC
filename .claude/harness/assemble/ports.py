@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 
 from harness.utils.contracts import YES, Port
-from harness.utils.git_run import head, staged, top
+from harness.utils.git.facts import head, staged, top
 from harness.utils.ledger.db import Ledger
 from harness.utils.ledger.recorder import Recorder
 

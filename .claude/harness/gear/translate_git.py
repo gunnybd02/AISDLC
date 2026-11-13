@@ -1,5 +1,5 @@
 """GitCommands: whether a shell line commits, in which repository, and whether the gate can see the whole commit. The
-line is read by the shell reader (utils/shell), as its shell reads it, wrappers taken off; what it cannot see whole is
+line is read by the shell reader (utils/shell/), as its shell reads it, wrappers taken off; what it cannot see whole is
 unsafe.
 
 A commit is safe only as one plain command alone on its line:
@@ -20,7 +20,7 @@ import os
 import re
 
 from harness.utils.contracts import Translator
-from harness.utils.shell import program, read as read_shell
+from harness.utils.shell.words import program, read as read_shell
 
 GIT = re.compile(r"(?<![\w.-])git(?:\.exe)?(?![\w.-])", re.I)
 NO_COMMIT = {"add", "status", "diff", "log", "show", "branch", "checkout", "switch", "restore", "reset", "fetch",

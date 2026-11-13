@@ -7,6 +7,8 @@
     "harness/utils/*.py",
     "harness/utils/ledger/*.py",
     "harness/utils/plan/*.py",
+    "harness/utils/shell/*.py",
+    "harness/utils/git/*.py",
     "harness/utils/ledger/schema.sql",
     "harness/mcp/*.py",
     "harness/gear/*.py",

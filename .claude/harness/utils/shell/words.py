@@ -16,7 +16,7 @@ a shell with no argument runs its heredoc. A wrapper's redirections and environm
 import os
 from dataclasses import dataclass, replace
 
-from harness.utils.shell_scan import NAME, Unread, Word, scan
+from harness.utils.shell.scan import NAME, Unread, Word, scan
 
 DEPTH = 4  # strings inside strings: sh -c "eval '...'" is two
 

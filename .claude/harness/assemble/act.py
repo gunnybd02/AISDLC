@@ -9,7 +9,7 @@
 import os
 
 from harness.utils.contracts import CLAUDE_DECISION, YES
-from harness.utils.git_run import committed, head, parent, top
+from harness.utils.git.facts import committed, head, parent, top
 
 APPROVED = "GATE: the user approved plan {plan} rev {rev} in the form. You may edit its files: {files}."
 REFINE = 'GATE: the user did not approve plan {plan} rev {rev}; they answered "{label}". Revise it, then ask again.'

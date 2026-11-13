@@ -12,7 +12,8 @@ from harness.gear.decide import Decide
 from harness.gear.detect_commit import CommitGate
 from harness.gear.translate_git import GitCommands
 from harness.utils.contracts import Event
-from harness.utils.git_run import GitError, git, staged, top
+from harness.utils.git.facts import staged, top
+from harness.utils.git.run import GitError, git
 from tests import CLAUDE_DIR, tree
 from tests.e2e import copy_tree, git_repo
 

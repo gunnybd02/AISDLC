@@ -3,8 +3,8 @@ wrappers (sudo, env, xargs, sh -c, eval, powershell -Command, cmd /c...) are tak
 whole says why, and gives no command."""
 import unittest
 
-from harness.utils.shell import DEPTH, read
-from harness.utils.shell_scan import scan
+from harness.utils.shell.scan import scan
+from harness.utils.shell.words import DEPTH, read
 
 
 def names(text, dialect="bash"):
