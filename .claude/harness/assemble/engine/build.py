@@ -2,12 +2,11 @@
 the blocks by name, the config names the recipe, the recipe names the translators and detectors."""
 from pathlib import Path
 
-from harness.assemble.engine.act import Act
 from harness.assemble.engine.config import Config
 from harness.assemble.engine.loader import Loader
 from harness.assemble.engine.ports import LedgerPort, PlanState
 from harness.assemble.engine.pipeline import RecipeBook
-from harness.assemble.engine.runner import Runner
+from harness.assemble.engine.runner import Act, Runner
 from harness.utils.contracts import Detector, Translator
 
 CLAUDE_DIR = Path(__file__).resolve().parents[3]

@@ -3,7 +3,9 @@ the harness writes back, such as an approval, and the notes it gives the model).
 give the same fact are an error of the recipe, never a silent overwrite."""
 from dataclasses import dataclass
 
-from harness.utils.contracts import Port
+from harness.utils.contracts import CLAUDE_DECISION, Port
+from harness.utils.plan.approval import approvals
+from harness.utils.plan.closing import delivery
 
 
 class RunnerError(ValueError):
@@ -33,3 +35,21 @@ class Runner:
         verdict = self.decide.decide(findings)
         notes = self.act.run(event, facts, verdict) if self.act else []
         return Outcome(verdict, tuple(notes))
+
+
+class Act:
+    """What the harness writes back after the verdict, and the notes it gives the model: an approval of a plan
+    (utils/plan/approval.py), a delivery (utils/plan/closing.py), and each finding kept as a rule decision with the word
+    Claude Code was given."""
+
+    def __init__(self, port):
+        self.port = port
+
+    def run(self, event, facts, verdict):
+        notes = []
+        if event.kind == "PostToolUse":
+            notes += approvals(self.port, event.session, facts.get("answers") or {})
+            notes += delivery(self.port, event.session, facts.get("git_commit"), facts.get("plan"))
+        for finding in verdict.findings:
+            self.port.decision(event, facts.get("plan"), finding, CLAUDE_DECISION.get(verdict.decision, verdict.decision))
+        return notes
