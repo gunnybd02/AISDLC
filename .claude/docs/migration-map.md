@@ -194,6 +194,10 @@ Done in 7d:
   `maint.grant` and its trace in `pl_logs`, existing tables of schema v5, so the schema still matches the real
   ledger. `entry/hook.py` reads and writes them with plain `sqlite3`, so the grant works when the harness is broken
   (the user's decision); `pause.json` and `pause.log` are gone.
+- The state is shut (section 6, row "Reading the data"): `read.state` refuses every tool that names a place in
+  `state/`, reads too (`utils/shell/mentions.py`, `gear/detect/planfiles.py`); `run("ledger", "db_query")`
+  (`mcp/actions/ledger.py`, `query` in `utils/ledger/db.py`) is the one read-only door, and never reads `tx_*`.
 
-Left for 7d, each changes what the guards do:
-- One store (section 6): `tx_*`, overlay and image tables, the `state/` shell guard, `db_query` without `tx_*`.
+Left for 7d, each waits for the feature it stores:
+- One store, the rest of section 6: transcripts in `tx_*` tables, overlays, Jira/Confluence images as BLOBs. None
+  of these features is in this harness yet; each lands in `harness.db` when it moves in.

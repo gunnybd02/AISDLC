@@ -110,5 +110,47 @@ class RulesTest(unittest.TestCase):
         self.assertLessEqual({"forms", "tracked", "planfiles"}, set(recipe["detectors"]))
 
 
+class StateReadTest(unittest.TestCase):
+    """Real folders, so the paths are the system's own on every machine."""
+
+    def setUp(self):
+        self.home = tree(self, {"repo/a.py": "", ".claude/state/harness.db": "", ".claude/entry/doctor.py": ""})
+        self.repo, self.state = str(self.home / "repo"), str(self.home / ".claude" / "state")
+
+    def found(self, tool, tool_input, cwd=None):
+        event = Event("PreToolUse", tool, tool_input, "s1", cwd or self.repo)
+        facts = {**Places().translate(event), "plan": None, "state_dir": self.state.replace("\\", "/")}
+        return [f.kind for f in PlanFiles().detect(event, facts) if f.kind.endswith(".state")]  # not the shell's asks
+
+    def test_the_state_is_never_read_by_any_tool(self):
+        db = f"{self.state}/harness.db"
+        for tool, tool_input in (("Bash", {"command": f"cat {db}"}), ("Bash", {"command": f"sqlite3 {db} .tables"}),
+                                 ("Bash", {"command": "cat ../.claude/sta*/harness.db"}),
+                                 ("Bash", {"command": f"cd {self.state} && ls"}),
+                                 ("Bash", {"command": f"grep -r x --include=*.db {self.state}"}),
+                                 ("PowerShell", {"command": f"Get-Content {db}"}),
+                                 ("Read", {"file_path": db}), ("Grep", {"pattern": "x", "path": self.state}),
+                                 ("Glob", {"pattern": ".claude/state/*", "path": str(self.home)}),
+                                 ("LS", {"path": self.state})):
+            with self.subTest(tool=tool, tool_input=tool_input):
+                self.assertEqual(self.found(tool, tool_input), ["read.state"])
+        self.assertEqual(Decide.load(CLAUDE_DIR).rules["read.state"]["verdict"], "refuse")
+        self.assertIn("db_query", Decide.load(CLAUDE_DIR).rules["read.state"]["why"])
+
+    def test_a_tool_inside_the_state_folder_reads_it(self):
+        self.assertEqual(self.found("Grep", {"pattern": "x"}, cwd=self.state), ["read.state"])
+
+    def test_other_places_and_the_harness_own_commands_pass(self):
+        for tool, tool_input in (("Bash", {"command": "cat a.py && grep -r harness.db docs"}),
+                                 ("Read", {"file_path": f"{self.repo}/a.py"}), ("Grep", {"pattern": "state"}),
+                                 ("Bash", {"command": f"HARNESS_DB={self.state}/harness.db python3 -m entry.cli verify"}),
+                                 ("Bash", {"command": f"python3 {self.home}/.claude/entry/doctor.py"})):
+            with self.subTest(tool=tool, tool_input=tool_input):
+                self.assertEqual(self.found(tool, tool_input), [])
+
+    def test_a_write_into_the_state_is_reported_once_as_a_write(self):
+        self.assertEqual(self.found("Bash", {"command": f"echo x > {self.state}/harness.db"}), ["write.state"])
+
+
 if __name__ == "__main__":
     unittest.main()

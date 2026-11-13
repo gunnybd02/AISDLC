@@ -1,6 +1,8 @@
 """PlanFiles: the files a call writes, against the approved plan and the harness's state.
 - write.state: a write into the harness's own state (its ledger, its maint grant), approved plan or not;
 - plan.outside: a write to a file the approved plan does not name (its files and tests, under its root);
+- read.state: a call that names a place in the harness's own state, read or written by any tool (the shell, Read,
+  Grep, Glob...): the ledger is read only through run('ledger', 'db_query');
 - shell.unread: a shell call the reader cannot see whole, with the agent's words on what it does, the command, the
   files the reader did see and what it could not read: the user is the one to say;
 - shell.unexplained: the same call with no words of the agent that explain it (fewer than three words, or the command
@@ -27,6 +29,11 @@ class PlanFiles(Detector):
                 out.append(Finding("write.state", path))
             elif plan is not None and relative(path, plan["root"]) not in named(plan):
                 out.append(Finding("plan.outside", f"{path} is not a file of plan {plan['plan_id']}"))
+        written = set(facts.get("writes", []))
+        for path in facts.get("mentions", []):
+            if path not in written and in_state(path, state):
+                out.append(Finding("read.state", path))
+                break
         if facts.get("shell_unread"):
             out.append(shell_finding(facts))
         return out

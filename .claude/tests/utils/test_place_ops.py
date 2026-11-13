@@ -156,7 +156,7 @@ class ShellPlacesTest(unittest.TestCase):
 
     def test_only_a_shell_call_before_it_runs_is_read(self):
         self.assertEqual(shell_facts("make", kind="PostToolUse"), {})
-        self.assertEqual(Places().translate(Event("PreToolUse", "Grep", {"command": "make"})), {})
+        self.assertNotIn("writes", Places().translate(Event("PreToolUse", "Grep", {"command": "make"})))
 
     def shell_kinds(self, command, said=SAID, plan=PLAN, tool="Bash"):
         event = shell(command, tool=tool, said=said)

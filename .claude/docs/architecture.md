@@ -74,6 +74,13 @@ A Bash or PowerShell call is read before it runs, so a write by the shell meets 
 - An unread call asks the user (`shell.unread`) in Claude Code's own prompt, with the agent's words on what it does
   (the tool's `description`), the command, the files the reader saw and what it could not read. With no such words
   (fewer than three, or the command copied back) it is refused (`shell.unexplained`), and the agent writes them.
+- The harness's state is shut to every tool, reads too (`read.state`): every place a shell line names
+  (`utils/shell/mentions.py`: words, option values, variables, redirections, wildcards expanded on the disk, both
+  folders after `cd`) and the path of Read, Grep, Glob, LS and NotebookRead. The harness's own commands
+  (`python -m entry.<x>`, `python .../entry/<x>.py`) name nothing. The ledger is read only through
+  `run("ledger", "db_query", {sql})`: one SELECT, opened read only, an authorizer that refuses writes, PRAGMA, ATTACH
+  and the transcript tables (`tx_*`), at most 200 rows. A path the shell makes from a variable (`$D/harness.db`)
+  cannot be told and gets past the reader.
 - A refused write wins over the question: a write to `state/` or outside the plan is refused even when the rest of
   the line is unread.
 
@@ -153,6 +160,7 @@ loader reads these by the file's syntax tree; `engine/wire_mcp.py` gives each ac
 | `plan` | `plan_present`, `plan_status` |
 | `verify` | `run` |
 | `steps` | `step_done` |
+| `ledger` | `db_query` |
 | `maint` | `grant`, `status` |
 | `health` | `items`, `doctor` |
 

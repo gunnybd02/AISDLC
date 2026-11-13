@@ -42,7 +42,7 @@ class PlacesTest(unittest.TestCase):
         for tool in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
             with self.subTest(tool=tool):
                 self.assertEqual(Places().translate(write("src/a.py", tool))["writes"], ["C:/repo/src/a.py"])
-        self.assertEqual(Places().translate(Event("PreToolUse", "Read", {"file_path": "x"})), {})
+        self.assertNotIn("writes", Places().translate(Event("PreToolUse", "Read", {"file_path": "x"})))  # a read names, never writes
 
 
 SAID = "Delete the build folder of the project"
