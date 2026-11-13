@@ -1,5 +1,5 @@
 """run: call one action of the action table with its arguments; nothing outside the table can be called."""
-from harness.mcp.tool import Result, Tool
+from harness.mcp.server.tool import Result, Tool
 
 
 class Run(Tool):

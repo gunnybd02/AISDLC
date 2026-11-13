@@ -76,7 +76,7 @@ def run_mcp(instream, outstream, claude_dir=CLAUDE_DIR):
     claude_dir = Path(claude_dir)
     items = items_of(claude_dir)
     table = action_table(items, claude_dir)
-    skills = Loader.resolve(items["skills"])(claude_dir / "skills")
+    skills = Loader.resolve(items["skills"])(claude_dir / "project" / "skills")
     tools = [Loader.resolve(items[n])(skills, table) for n in ("find", "guide")] + [Loader.resolve(items["run"])(table)]
     Loader.resolve(items["stdio"])(*SERVER, tools).serve(instream, outstream)
 
@@ -107,7 +107,7 @@ def built(claude_dir):
         return out
     try:
         build_runner(claude_dir, items)
-        out += Loader.resolve(items["skills"])(claude_dir / "skills").problems()
+        out += Loader.resolve(items["skills"])(claude_dir / "project" / "skills").problems()
     except Exception as e:
         out.append(f"build: {type(e).__name__}: {e}")
     return out

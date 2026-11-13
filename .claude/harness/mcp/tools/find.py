@@ -2,7 +2,7 @@
 of the request their name and description hold."""
 import re
 
-from harness.mcp.tool import Result, Tool
+from harness.mcp.server.tool import Result, Tool
 
 MODES = ("skills", "mcp")
 

@@ -25,7 +25,7 @@ class LayoutNetTest(unittest.TestCase):
                 self.assertIn(rel, joined(layout_net, self, {rel: ""}))
 
     def test_declared_places_pass_and_double_star_crosses_folders(self):
-        files = {"harness/gear/decide/arbiter.py": "", "tests/gear/deep/test_x.py": "", "skills/a/SKILL.md": ""}
+        files = {"harness/gear/decide/arbiter.py": "", "tests/gear/deep/test_x.py": "", "project/skills/a/SKILL.md": ""}
         self.assertEqual(layout_net.check(tree(self, files)), [])
 
     def test_state_and_caches_are_not_read(self):

@@ -11,7 +11,11 @@
     "harness/utils/git/*.py",
     "harness/utils/ledger/schema.sql",
     "harness/hooks/*.py",
-    "harness/mcp/*.py",
+    "harness/mcp/__init__.py",
+    "harness/mcp/server/*.py",
+    "harness/mcp/tools/*.py",
+    "harness/mcp/skills/*.py",
+    "harness/mcp/actions/*.py",
     "harness/gear/__init__.py",
     "harness/gear/translate/*.py",
     "harness/gear/detect/*.py",
@@ -21,7 +25,7 @@
     "harness/assemble/recipes/*.json",
     "nets/*.py",
     "nets/layout.json",
-    "skills/*/SKILL.md",
+    "project/skills/*/SKILL.md",
     "docs/*.md",
     "tests/**"
   ]

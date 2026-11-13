@@ -1,5 +1,5 @@
 """guide: read a skill of the library, or the actions of a block with their arguments (one action with topic)."""
-from harness.mcp.tool import Result, Tool
+from harness.mcp.server.tool import Result, Tool
 
 
 class Guide(Tool):

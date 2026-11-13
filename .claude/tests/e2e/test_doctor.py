@@ -14,7 +14,7 @@ BAD = {
     "config": {"project.json": "{}"},
     "ref": {"harness/gear/__init__.py": '"""x"""\nITEMS = [{"kind": "rule", "name": "decide", '
                                         '"ref": "harness.gear.decide.arbiter:Typo"}]\n'},
-    "skill": {"skills/bad/SKILL.md": "# no frontmatter\n"},
+    "skill": {"project/skills/bad/SKILL.md": "# no frontmatter\n"},
 }
 
 

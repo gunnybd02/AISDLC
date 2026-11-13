@@ -3,12 +3,12 @@ import io
 import json
 import unittest
 
-from harness.mcp.actions import ActionTable
-from harness.mcp.find_tool import Find
-from harness.mcp.guide_tool import Guide
-from harness.mcp.run_tool import Run
-from harness.mcp.skills import SkillError, Skills
-from harness.mcp.stdio import StdioServer
+from harness.mcp.actions.table import ActionTable
+from harness.mcp.server.stdio import StdioServer
+from harness.mcp.skills.library import SkillError, Skills
+from harness.mcp.tools.find import Find
+from harness.mcp.tools.guide import Guide
+from harness.mcp.tools.run import Run
 from tests import tree
 
 SKILL = "---\nname: {name}\ndescription: {about}\n---\n# {name}\nThe body of {name}.\n"
