@@ -3,7 +3,7 @@ import json
 import unittest
 
 import harness.gear as gear_block
-from harness.gear.decide import Decide, RuleError
+from harness.gear.decide.arbiter import Decide, RuleError
 from harness.utils.contracts import ALLOW, ASK, REFUSE, Finding
 from tests import CLAUDE_DIR, tree
 
@@ -68,7 +68,7 @@ class DecideTest(unittest.TestCase):
         Decide.load(CLAUDE_DIR)
 
     def test_gear_declares_decide_as_its_rule(self):
-        self.assertIn({"kind": "rule", "name": "decide", "ref": "harness.gear.decide:Decide"}, gear_block.ITEMS)
+        self.assertIn({"kind": "rule", "name": "decide", "ref": "harness.gear.decide.arbiter:Decide"}, gear_block.ITEMS)
 
 
 if __name__ == "__main__":

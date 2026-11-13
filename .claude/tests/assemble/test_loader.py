@@ -4,12 +4,12 @@ import unittest
 from harness.assemble.loader import Loader, LoaderError
 from tests import CLAUDE_DIR, tree
 
-GOOD_GEAR = '"""Block gear."""\nITEMS = [{"kind": "rule", "name": "decide", "ref": "harness.gear.decide:Decide"}]\n'
+GOOD_GEAR = '"""Block gear."""\nITEMS = [{"kind": "rule", "name": "decide", "ref": "harness.gear.decide.arbiter:Decide"}]\n'
 GOOD_MCP = '"""Block mcp."""\nITEMS = []\n'
 
 
 def fake(test, gear=GOOD_GEAR, mcp=GOOD_MCP, extra=None):
-    files = {"harness/gear/__init__.py": gear, "harness/gear/decide.py": "", "harness/mcp/__init__.py": mcp}
+    files = {"harness/gear/__init__.py": gear, "harness/gear/decide/arbiter.py": "", "harness/mcp/__init__.py": mcp}
     files.update(extra or {})
     return tree(test, files)
 
@@ -51,7 +51,7 @@ class LoaderTest(unittest.TestCase):
                 self.assertIn("ref", " ".join(self.problems(gear=gear)))
 
     def test_a_block_without_index_is_refused(self):
-        root = tree(self, {"harness/gear/__init__.py": GOOD_GEAR, "harness/gear/decide.py": ""})
+        root = tree(self, {"harness/gear/__init__.py": GOOD_GEAR, "harness/gear/decide/arbiter.py": ""})
         self.assertIn("harness/mcp/__init__.py", " ".join(Loader(root).problems()))
 
     def test_an_index_written_with_a_bom_reads(self):

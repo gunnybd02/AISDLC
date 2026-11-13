@@ -1,5 +1,5 @@
 {
   "about": "The recipe every unit starts from.",
   "translators": ["answers", "places", "git_commands"],
-  "detectors": ["plan_gate", "commit_gate"]
+  "detectors": ["forms", "tracked", "planfiles", "commit_gate"]
 }

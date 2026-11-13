@@ -8,9 +8,9 @@ import harness.gear as gear_block
 from harness.assemble.blocks import verify
 from harness.assemble.build import build_runner
 from harness.assemble.ports import LedgerPort
-from harness.gear.decide import Decide
-from harness.gear.detect_commit import CommitGate
-from harness.gear.translate_git import GitCommands
+from harness.gear.decide.arbiter import Decide
+from harness.gear.detect.commit import CommitGate
+from harness.gear.translate.git import GitCommands
 from harness.utils.contracts import Event
 from harness.utils.git.facts import staged, top
 from harness.utils.git.run import GitError, git

@@ -25,7 +25,7 @@ class LayoutNetTest(unittest.TestCase):
                 self.assertIn(rel, joined(layout_net, self, {rel: ""}))
 
     def test_declared_places_pass_and_double_star_crosses_folders(self):
-        files = {"harness/gear/decide.py": "", "tests/gear/deep/test_x.py": "", "skills/a/SKILL.md": ""}
+        files = {"harness/gear/decide/arbiter.py": "", "tests/gear/deep/test_x.py": "", "skills/a/SKILL.md": ""}
         self.assertEqual(layout_net.check(tree(self, files)), [])
 
     def test_state_and_caches_are_not_read(self):
@@ -65,8 +65,8 @@ class ImportsNetTest(unittest.TestCase):
 
     def test_a_file_that_does_not_decode_breaks_no_net_and_is_reported_once(self):
         root = tree(self, {})
-        (root / "harness" / "gear").mkdir(parents=True)
-        (root / "harness" / "gear" / "a.py").write_bytes(b"x = '\xe9'\n")
+        (root / "harness" / "gear" / "detect").mkdir(parents=True)
+        (root / "harness" / "gear" / "detect" / "a.py").write_bytes(b"x = '\xe9'\n")
         found = [p for net in NETS for p in net.check(root)]
         self.assertEqual(len(found), 1)
         self.assertIn("does not decode", found[0])
@@ -95,8 +95,8 @@ class ImportsNetTest(unittest.TestCase):
 
 class BridgesNetTest(unittest.TestCase):
     def test_a_file_that_only_re_exports_is_reported(self):
-        for text in ("from harness.gear.decide import Decide\n",
-                     "from harness.gear.decide import Decide\nD2 = Decide\n__all__ = ['D2']\n"):
+        for text in ("from harness.gear.decide.arbiter import Decide\n",
+                     "from harness.gear.decide.arbiter import Decide\nD2 = Decide\n__all__ = ['D2']\n"):
             with self.subTest(text=text):
                 self.assertIn("harness/gear/b.py", joined(bridges_net, self, {"harness/gear/b.py": text}))
 
@@ -132,7 +132,7 @@ class VerdictNetTest(unittest.TestCase):
                 self.assertIn("harness/gear/a.py", joined(verdict_net, self, {"harness/gear/a.py": text}))
 
     def test_decide_contracts_and_longer_text_pass(self):
-        files = {"harness/gear/decide.py": "X = 'ask'\n", "harness/utils/contracts.py": "Y = 'deny'\n",
+        files = {"harness/gear/decide/arbiter.py": "X = 'ask'\n", "harness/utils/contracts.py": "Y = 'deny'\n",
                  "harness/mcp/a.py": '"""We ask nothing."""\nX = "ask the user"\n'}
         self.assertEqual(verdict_net.check(tree(self, files)), [])
 

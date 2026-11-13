@@ -7,7 +7,7 @@ from harness.assemble.build import build_runner
 from harness.assemble.config import Config, ConfigError
 from harness.assemble.recipe import RecipeBook, RecipeError
 from harness.assemble.runner import Runner, RunnerError
-from harness.gear.decide import Decide
+from harness.gear.decide.arbiter import Decide
 from harness.utils.contracts import ALLOW, ASK, Detector, Event, Finding, Port, Translator
 from tests import CLAUDE_DIR, tree
 from tests.e2e import copy_tree

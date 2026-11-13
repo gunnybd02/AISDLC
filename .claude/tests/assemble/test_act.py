@@ -6,7 +6,7 @@ import unittest
 import harness.gear as gear_block
 from harness.assemble.act import Act
 from harness.assemble.ports import LedgerPort, question
-from harness.gear.translate_answer import Answers
+from harness.gear.translate.answer import Answers
 from harness.utils.contracts import Event, Finding, Verdict
 from harness.utils.ledger.recorder import Recorder
 from tests import tree

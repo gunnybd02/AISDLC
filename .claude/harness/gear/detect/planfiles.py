@@ -1,15 +1,11 @@
-"""PlanGate: the findings of the approval gate.
+"""PlanFiles: the files a call writes, against the approved plan and the harness's state.
 - write.state: a write into the harness's own state (its ledger, its pause), approved plan or not;
-- plan.none: a write while the session has no approved plan;
 - plan.outside: a write to a file the approved plan does not name (its files and tests, under its root);
-- form.prefilled: an AskUserQuestion whose answers the model filled in itself (only the user answers a form);
-- form.forged: an AskUserQuestion with a question built to look like an answer ('"="' in it);
 - shell.unread: a shell call the reader cannot see whole, with the agent's words on what it does, the command, the
   files the reader did see and what it could not read: the user is the one to say;
 - shell.unexplained: the same call with no words of the agent that explain it (fewer than three words, or the command
   copied back).
-Paths are compared as the file system resolves them: real paths (8.3 short names expanded), no \\\\?\\ prefix, case
-folded where the system folds it."""
+A write with no approved plan is tracked.py's (plan.none). Paths are compared as utils/plan/files.py resolves them."""
 import re
 
 from harness.utils.contracts import Detector, Finding
@@ -17,20 +13,19 @@ from harness.utils.plan.files import named, relative
 
 LONGEST_COMMAND = 500  # characters of the command shown in the question; Claude Code shows the whole of it too
 
-class PlanGate(Detector):
+
+def in_state(path, state):
+    return bool(state) and relative(path, state) is not None
+
+
+class PlanFiles(Detector):
     def detect(self, event, facts):
         out = []
-        if facts.get("form_prefilled"):
-            out.append(Finding("form.prefilled", ", ".join(facts["form_prefilled"])))
-        if facts.get("form_forged"):
-            out.append(Finding("form.forged", ", ".join(facts["form_forged"])))
         plan, state = facts.get("plan"), facts.get("state_dir")
         for path in facts.get("writes", []):
-            if state and relative(path, state) is not None:
+            if in_state(path, state):
                 out.append(Finding("write.state", path))
-            elif plan is None:
-                out.append(Finding("plan.none", path))
-            elif relative(path, plan["root"]) not in named(plan):
+            elif plan is not None and relative(path, plan["root"]) not in named(plan):
                 out.append(Finding("plan.outside", f"{path} is not a file of plan {plan['plan_id']}"))
         if facts.get("shell_unread"):
             out.append(shell_finding(facts))
@@ -52,6 +47,6 @@ def shell_finding(facts):
     if not explained(said, command):
         return Finding("shell.unexplained", "; ".join(unread))
     shown = command if len(command) <= LONGEST_COMMAND else command[:LONGEST_COMMAND] + "..."
-    files = ", ".join(facts.get("writes", [])) or "không file nào"
-    return Finding("shell.unread", f'Agent giải thích: "{said.strip()}". Lệnh: {shown}. Harness thấy lệnh ghi: '
-                                   f'{files}. Phần harness không đọc được: {"; ".join(unread)}')
+    files = ", ".join(facts.get("writes", [])) or "kh\u00f4ng file n\u00e0o"
+    return Finding("shell.unread", f'Agent gi\u1ea3i th\u00edch: "{said.strip()}". L\u1ec7nh: {shown}. Harness th\u1ea5y l\u1ec7nh ghi: '
+                                   f'{files}. Ph\u1ea7n harness kh\u00f4ng \u0111\u1ecdc \u0111\u01b0\u1ee3c: {"; ".join(unread)}')

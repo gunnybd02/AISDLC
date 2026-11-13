@@ -1,5 +1,5 @@
 """What the blocks share: the event of a hook, a finding, a verdict, and the base classes of a translator, a detector
-and a port. The verdict words live here and in gear/decide.py only (verdict_net)."""
+and a port. The verdict words live here and in gear/decide/arbiter.py only (verdict_net)."""
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 

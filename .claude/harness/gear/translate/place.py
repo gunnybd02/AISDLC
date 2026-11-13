@@ -1,4 +1,4 @@
-"""Places: the files a call writes, as absolute paths with forward slashes, for the edit gate (detect_plan).
+"""Places: the files a call writes, as absolute paths with forward slashes, for the edit gate (detect/tracked.py, detect/planfiles.py).
 - An editing tool (Write, Edit, MultiEdit, NotebookEdit) writes its file; a relative path is read from the cwd.
 - A shell call (Bash, PowerShell) before it runs is read whole (utils/shell) and each command that really runs is
   looked up in the tables below: a known read writes nothing; a known write names its files (its operands, a
