@@ -169,7 +169,7 @@ def main():
             trace("passed", data)
             return 0
         sys.path.insert(0, str(CLAUDE_DIR))
-        from harness.assemble.build import run_hook
+        from harness.assemble.engine.build import run_hook
         out = run_hook(raw)
     except BaseException as e:
         if asking:

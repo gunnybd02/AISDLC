@@ -5,9 +5,9 @@ import subprocess
 import unittest
 
 import harness.gear as gear_block
-from harness.assemble.blocks import verify
-from harness.assemble.build import build_runner
-from harness.assemble.ports import LedgerPort
+from harness.assemble.engine.blocks import verify
+from harness.assemble.engine.build import build_runner
+from harness.assemble.engine.ports import LedgerPort
 from harness.gear.decide.arbiter import Decide
 from harness.gear.detect.commit import CommitGate
 from harness.gear.translate.git import GitCommands

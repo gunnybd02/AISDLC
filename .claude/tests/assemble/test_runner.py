@@ -3,10 +3,10 @@ and the config are read only by assemble."""
 import json
 import unittest
 
-from harness.assemble.build import build_runner
-from harness.assemble.config import Config, ConfigError
-from harness.assemble.recipe import RecipeBook, RecipeError
-from harness.assemble.runner import Runner, RunnerError
+from harness.assemble.engine.build import build_runner
+from harness.assemble.engine.config import Config, ConfigError
+from harness.assemble.engine.pipeline import RecipeBook, RecipeError
+from harness.assemble.engine.runner import Runner, RunnerError
 from harness.gear.decide.arbiter import Decide
 from harness.utils.contracts import ALLOW, ASK, Detector, Event, Finding, Port, Translator
 from tests import CLAUDE_DIR, tree
@@ -84,7 +84,7 @@ class RecipeTest(unittest.TestCase):
         self.assertEqual(book.resolve("x").name, "x")
 
     def test_the_real_base_recipe_resolves(self):
-        RecipeBook(CLAUDE_DIR / "harness" / "assemble" / "recipes").resolve("base")
+        RecipeBook(CLAUDE_DIR / "harness" / "assemble" / "pipelines").resolve("base")
 
 
 class ConfigTest(unittest.TestCase):

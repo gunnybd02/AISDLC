@@ -32,7 +32,7 @@ class DoctorEntryTest(unittest.TestCase):
                 self.assertIn("ERROR", out)
 
     def test_a_harness_that_exits_quietly_is_still_an_error(self):
-        root = copy_tree(self, {"harness/assemble/build.py": "raise SystemExit(0)\n"})
+        root = copy_tree(self, {"harness/assemble/engine/build.py": "raise SystemExit(0)\n"})
         code, out, _ = run(root / "entry" / "doctor.py")
         self.assertEqual(code, 2)
         self.assertIn("ERROR", out)

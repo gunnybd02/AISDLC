@@ -5,9 +5,10 @@ import os
 import re
 import unittest
 
-from harness.assemble.blocks import verify
-from harness.assemble.build import action_table, items_of
-from harness.assemble.ports import LedgerPort
+from harness.assemble.engine.blocks import verify
+from harness.assemble.engine.build import items_of
+from harness.assemble.engine.wire_mcp import action_table
+from harness.assemble.engine.ports import LedgerPort
 from tests import CLAUDE_DIR, tree
 from tests.e2e import copy_tree, git_repo
 

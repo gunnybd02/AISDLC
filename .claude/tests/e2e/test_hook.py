@@ -17,7 +17,7 @@ FAKE = {
     "harness/gear/__init__.py": (
         '"""x"""\nITEMS = [{"kind": "rule", "name": "decide", "ref": "harness.gear.decide.arbiter:Decide"},\n'
         '         {"kind": "detector", "name": "fake", "ref": "harness.gear.fake_detect:Fake"}]\n'),
-    "harness/assemble/recipes/base.json": json.dumps({"translators": [], "detectors": ["fake"]}),
+    "harness/assemble/pipelines/base.json": json.dumps({"translators": [], "detectors": ["fake"]}),
 }
 
 
@@ -58,13 +58,13 @@ class HookEntryTest(unittest.TestCase):
         self.assertEqual(hook(copy_tree(self), payload)[:2], (0, ""))
 
     def test_a_broken_harness_exits_2(self):
-        root = copy_tree(self, {"harness/assemble/build.py": "raise RuntimeError('broken')\n"})
+        root = copy_tree(self, {"harness/assemble/engine/build.py": "raise RuntimeError('broken')\n"})
         code, out, err = hook(root, PAYLOAD)
         self.assertEqual((code, out), (2, ""))
         self.assertIn("broken", err)
 
     def test_a_harness_that_exits_quietly_still_blocks(self):
-        root = copy_tree(self, {"harness/assemble/build.py": "raise SystemExit(0)\n"})
+        root = copy_tree(self, {"harness/assemble/engine/build.py": "raise SystemExit(0)\n"})
         self.assertEqual(hook(root, PAYLOAD)[0], 2)
 
     def test_a_payload_that_is_not_json_exits_2(self):

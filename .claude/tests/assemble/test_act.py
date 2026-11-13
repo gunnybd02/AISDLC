@@ -4,8 +4,8 @@ import json
 import unittest
 
 import harness.hooks as hooks_block
-from harness.assemble.act import Act
-from harness.assemble.ports import LedgerPort, question
+from harness.assemble.engine.act import Act
+from harness.assemble.engine.ports import LedgerPort, question
 from harness.hooks.forms import Answers
 from harness.utils.contracts import Event, Finding, Verdict
 from harness.utils.ledger.recorder import Recorder

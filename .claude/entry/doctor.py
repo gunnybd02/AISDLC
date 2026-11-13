@@ -10,7 +10,7 @@ def main():
     sys.stdout.reconfigure(encoding="utf-8")
     try:
         sys.path.insert(0, str(CLAUDE_DIR))
-        from harness.assemble.build import doctor, report
+        from harness.assemble.engine.checks import doctor, report
         problems = doctor()
     except BaseException as e:
         print(f"ERROR the harness does not load: {type(e).__name__}: {e}")

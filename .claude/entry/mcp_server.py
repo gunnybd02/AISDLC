@@ -11,7 +11,7 @@ def main():
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
     try:
         sys.path.insert(0, str(CLAUDE_DIR))
-        from harness.assemble.build import run_mcp
+        from harness.assemble.engine.wire_mcp import run_mcp
         run_mcp(sys.stdin, sys.stdout)
     except BaseException as e:
         sys.stderr.write(f"harness MCP server failed: {type(e).__name__}: {e}\n")

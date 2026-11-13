@@ -5,8 +5,8 @@ import json
 import unittest
 
 import harness.gear as gear_block
-from harness.assemble.build import build_runner
-from harness.assemble.ports import LedgerPort, question
+from harness.assemble.engine.build import build_runner
+from harness.assemble.engine.ports import LedgerPort, question
 from harness.gear.decide.arbiter import Decide
 from harness.gear.detect.forms import Forms
 from harness.gear.detect.planfiles import PlanFiles
@@ -255,7 +255,7 @@ class RulesTest(unittest.TestCase):
     def test_gear_declares_the_gate_and_the_recipe_runs_it(self):
         names = {i["name"] for i in gear_block.ITEMS}
         self.assertLessEqual({"places", "forms", "tracked", "planfiles"}, names)
-        recipe = json.loads((CLAUDE_DIR / "harness" / "assemble" / "recipes" / "base.json").read_text(encoding="utf-8"))
+        recipe = json.loads((CLAUDE_DIR / "harness" / "assemble" / "pipelines" / "base.json").read_text(encoding="utf-8"))
         self.assertLessEqual({"forms", "tracked", "planfiles"}, set(recipe["detectors"]))
 
 

@@ -5,11 +5,12 @@ import json
 import time
 import unittest
 
-from harness.assemble.build import action_table, items_of
+from harness.assemble.engine.build import items_of
+from harness.assemble.engine.wire_mcp import action_table
 from tests import CLAUDE_DIR, tree
 from tests.e2e import WINDOWS_CONSOLE, copy_tree, run
 
-BROKEN = {"harness/assemble/build.py": "raise RuntimeError('broken')\n"}
+BROKEN = {"harness/assemble/engine/build.py": "raise RuntimeError('broken')\n"}
 Q = "Tắt guard 15 phút: sửa harness?"
 
 

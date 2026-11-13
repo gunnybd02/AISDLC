@@ -83,14 +83,14 @@ class ImportsNetTest(unittest.TestCase):
 
     def test_entry_imports_only_assemble(self):
         self.assertIn("entry/hook.py", joined(imports_net, self, {"entry/hook.py": "from harness.gear import decide\n"}))
-        ok = "def main():\n    from harness.assemble.build import run_hook\n"
+        ok = "def main():\n    from harness.assemble.engine.build import run_hook\n"
         self.assertEqual(joined(imports_net, self, {"entry/hook.py": ok}), "")
 
     def test_a_dynamic_import_outside_the_loader_is_reported(self):
         for text in ("import importlib", "from importlib import import_module", "__import__('harness.mcp')"):
             with self.subTest(text=text):
                 self.assertIn("dynamic", joined(imports_net, self, {"harness/assemble/runner.py": text + "\n"}))
-        self.assertEqual(joined(imports_net, self, {"harness/assemble/loader.py": "import importlib\n"}), "")
+        self.assertEqual(joined(imports_net, self, {"harness/assemble/engine/loader.py": "import importlib\n"}), "")
 
 
 class BridgesNetTest(unittest.TestCase):
@@ -139,8 +139,8 @@ class VerdictNetTest(unittest.TestCase):
 
 class EntryNetTest(unittest.TestCase):
     def test_a_harness_import_at_the_top_of_an_entry_script_is_reported(self):
-        for text in ("from harness.assemble.build import run_hook\n", "import json\nimport harness.assemble.build\n",
-                     "try:\n    import harness.assemble.build\nexcept ImportError:\n    pass\n",
+        for text in ("from harness.assemble.engine.build import run_hook\n", "import json\nimport harness.assemble.engine.build\n",
+                     "try:\n    import harness.assemble.engine.build\nexcept ImportError:\n    pass\n",
                      "if True:\n    from harness.assemble import build\n"):
             with self.subTest(text=text):
                 self.assertIn("imports harness", joined(entry_net, self, {"entry/hook.py": MAIN + text}))
@@ -158,7 +158,7 @@ class EntryNetTest(unittest.TestCase):
         self.assertEqual(joined(entry_net, self, {"entry/hook.py": text}), "")
 
 
-MAIN = ("def main():\n    try:\n        from harness.assemble.build import run_hook\n"
+MAIN = ("def main():\n    try:\n        from harness.assemble.engine.build import run_hook\n"
         "    except BaseException:\n        return 2\n\n\n")
 
 
@@ -168,7 +168,7 @@ class ConfigNetTest(unittest.TestCase):
         self.assertIn("harness/gear/a.py", found)
 
     def test_the_config_door_and_docstrings_pass(self):
-        files = {"harness/assemble/config.py": "P = 'project.json'\n",
+        files = {"harness/assemble/engine/config.py": "P = 'project.json'\n",
                  "harness/gear/a.py": '"""Never reads project.json."""\n'}
         self.assertEqual(config_net.check(tree(self, files)), [])
 

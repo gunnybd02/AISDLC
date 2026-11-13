@@ -12,8 +12,8 @@ import subprocess
 import time
 from pathlib import Path
 
-from harness.assemble.config import Config
-from harness.assemble.ports import LedgerPort
+from harness.assemble.engine.config import Config
+from harness.assemble.engine.ports import LedgerPort
 from harness.utils.git.facts import blob
 from harness.utils.git.run import GitError
 

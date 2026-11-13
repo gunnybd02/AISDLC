@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-RECIPES_DIR = Path(__file__).with_name("recipes")
+RECIPES_DIR = Path(__file__).parents[1] / "pipelines"
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 LISTS = ("translators", "detectors")
 KEYS = ("about", "extends") + LISTS

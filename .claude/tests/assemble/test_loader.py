@@ -1,7 +1,7 @@
 """h1.blocks-and-nets: the loader reads the ITEMS of hooks, mcp and gear without importing them, and refuses a wrong index."""
 import unittest
 
-from harness.assemble.loader import Loader, LoaderError
+from harness.assemble.engine.loader import Loader, LoaderError
 from tests import CLAUDE_DIR, tree
 
 GOOD_GEAR = '"""Block gear."""\nITEMS = [{"kind": "rule", "name": "decide", "ref": "harness.gear.decide.arbiter:Decide"}]\n'
