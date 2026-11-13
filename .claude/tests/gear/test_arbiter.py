@@ -7,7 +7,7 @@ from harness.gear.decide.arbiter import Decide, RuleError
 from harness.utils.contracts import ALLOW, ASK, REFUSE, Finding
 from tests import CLAUDE_DIR, tree
 
-TEST = "tests/gear/test_decide.py#test_a_finding_with_a_rule_takes_its_verdict"
+TEST = "tests/gear/test_arbiter.py#test_a_finding_with_a_rule_takes_its_verdict"
 
 
 def rules(test, *rows, name="r.json"):
@@ -53,7 +53,7 @@ class DecideTest(unittest.TestCase):
         self.assertEqual(Decide.load(root).decide([Finding("a")]).decision, REFUSE)
 
     def test_a_wrong_rule_does_not_load(self):
-        bad = (row("a", "maybe"), row("a", ASK, test="tests/gear/test_decide.py#test_not_there"),
+        bad = (row("a", "maybe"), row("a", ASK, test="tests/gear/test_arbiter.py#test_not_there"),
                row("a", ASK, test="tests/gear/missing.py#test_x"), {"finding": "a", "verdict": ASK},
                row("a", ASK, test="tests/../harness/gear/decide.py#judge"))
         for r in bad:

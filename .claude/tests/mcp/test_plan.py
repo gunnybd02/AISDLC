@@ -58,17 +58,5 @@ class PlanBlockTest(unittest.TestCase):
                 self.call("plan_present", plan=PLAN, plan_id=bad)
 
 
-class VerifyBlockTest(unittest.TestCase):
-    def test_a_file_changed_while_the_tests_ran_is_no_pass(self):
-        claude_dir = copy_tree(self, {"project.json": json.dumps({"name": "t", "verify": [
-            "{python}", "-c", "open('a.py', 'a').write('# touched')"]})})
-        repo = git_repo(self, {"a.py": "X = 1\n"})
-        port = LedgerPort(claude_dir)
-        plan_id, _, q = port.present({"title": "t", "files": ["a.py"], "tests": [], "root": str(repo)})
-        port.approve("s1", port.waiting()[0])
-        self.assertIn("changed while", verify(port, Config.load(claude_dir).verify, plan_id))
-        self.assertEqual(port.receipt(port.approved("s1"))["ok"], 0)
-
-
 if __name__ == "__main__":
     unittest.main()

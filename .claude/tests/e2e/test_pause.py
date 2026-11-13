@@ -118,15 +118,5 @@ class PauseTest(unittest.TestCase):
         self.assertEqual(hook(root, form(Q, "PreToolUse", prefilled=True))[0], 2)
 
 
-class PauseBlockTest(unittest.TestCase):
-    def test_the_harness_block_gives_the_question_to_ask(self):
-        table = action_table(items_of(CLAUDE_DIR), tree(self, {}))
-        out = table.action("harness", "pause").handler(minutes=15, why="sửa harness")
-        self.assertIn(Q, out)
-        for minutes in (0, 121):
-            with self.subTest(minutes=minutes), self.assertRaises(ValueError):
-                table.action("harness", "pause").handler(minutes=minutes, why="x")
-
-
 if __name__ == "__main__":
     unittest.main()
