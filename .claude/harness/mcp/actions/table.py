@@ -1,7 +1,23 @@
-"""ActionTable: the blocks `run` can reach and their typed actions. An action declares its arguments as
+"""McpAction: one action `run` can reach, a class in a file of mcp/actions/ that lists it in ACTIONS. It gets only
+the ports it names in needs. ActionTable: the blocks `run` can reach and their typed actions. An action declares its arguments as
 {"name": type, "optional?": type}; a call with a missing, extra or mistyped argument is refused before the handler."""
 from dataclasses import dataclass
 from typing import Callable
+
+
+class McpAction:
+    """name, about, args ({"name": type, "optional?": type}) and needs (the names of the ports it is given)."""
+    name = ""
+    about = ""
+    args = {}
+    needs = ()
+
+    def __init__(self, ports):
+        self.ports = ports
+
+    def __call__(self, **args):
+        raise NotImplementedError
+
 
 TYPES = {"string": str, "object": dict, "boolean": bool, "number": (int, float), "array": list}
 

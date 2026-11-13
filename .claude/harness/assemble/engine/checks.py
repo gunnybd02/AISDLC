@@ -29,6 +29,11 @@ def built(claude_dir):
             Loader.resolve(item)
         except Exception as e:
             out.append(f"item {item.name}: {item.ref} does not load ({type(e).__name__}: {e})")
+    for action_file in Loader(claude_dir).action_files():
+        try:
+            Loader.actions(action_file)
+        except Exception as e:
+            out.append(f"actions {action_file.module} do not load ({type(e).__name__}: {e})")
     if out:
         return out
     try:

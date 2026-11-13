@@ -69,5 +69,33 @@ class LoaderTest(unittest.TestCase):
             Loader(fake(self, gear="import os\n")).items()
 
 
+class ActionFilesTest(unittest.TestCase):
+    def problems(self, text):
+        return Loader(tree(self, {"harness/mcp/actions/a.py": text})).read_actions()[1]
+
+    def test_the_real_action_files_are_read_without_a_problem(self):
+        files, problems = Loader(CLAUDE_DIR).read_actions()
+        self.assertEqual(problems, [])
+        self.assertLessEqual({"plan", "verify", "harness", "health"}, {f.block for f in files})
+        plan = next(f for f in files if f.block == "plan")
+        self.assertEqual((plan.module, plan.names), ("harness.mcp.actions.plan", ("PlanPresent", "PlanStatus")))
+
+    def test_an_action_file_declares_block_about_and_actions(self):
+        good = 'BLOCK = "b"\nABOUT = "x"\n\n\nclass A:\n    pass\n\n\nACTIONS = [A]\n'
+        self.assertEqual(self.problems(good), [])
+        for text, why in ((good.replace('BLOCK = "b"\n', ""), "declares"),
+                          (good.replace("ACTIONS = [A]", "ACTIONS = [B]"), "does not define"),
+                          (good.replace("ACTIONS = [A]", "ACTIONS = list()"), "literal list"),
+                          (good.replace('BLOCK = "b"', "BLOCK = name()"), "literal name"),
+                          ("def (:\n", "does not parse")):
+            with self.subTest(why=why):
+                self.assertIn(why, " ".join(self.problems(text)))
+
+    def test_two_files_may_not_declare_one_block(self):
+        text = 'BLOCK = "b"\nABOUT = "x"\n\n\nclass A:\n    pass\n\n\nACTIONS = [A]\n'
+        root = tree(self, {"harness/mcp/actions/a.py": text, "harness/mcp/actions/c.py": text})
+        self.assertIn("declared by", " ".join(Loader(root).read_actions()[1]))
+
+
 if __name__ == "__main__":
     unittest.main()

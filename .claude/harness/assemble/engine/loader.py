@@ -1,5 +1,7 @@
 """Loader: reads the ITEMS of the hooks, mcp and gear blocks without importing them, and resolves an item's ref to its object.
 An index (a block's __init__.py) only declares: a docstring and one literal `ITEMS = [{kind, name, ref}, ...]`.
+The actions of mcp are read from their own files (mcp/actions/*.py): each says BLOCK, ABOUT and ACTIONS = [Class, ...],
+the classes it defines; action_files() reads them without importing, actions() imports one.
 This is the one module allowed to import dynamically (imports_net)."""
 import ast
 import importlib
@@ -11,6 +13,17 @@ KINDS = {"hooks": ("hook", "translator"), "mcp": ("server", "tool", "source", "t
          "gear": ("translator", "detector", "rule")}
 FIELDS = ("kind", "name", "ref")
 NAME = re.compile(r"^[a-z][a-z0-9_]*$")
+ACTIONS_DIR = ("harness", "mcp", "actions")
+NOT_ACTIONS = ("__init__.py", "table.py")
+DECLARES = ("BLOCK", "ABOUT", "ACTIONS")
+
+
+@dataclass(frozen=True)
+class ActionFile:
+    module: str
+    block: str
+    about: str
+    names: tuple
 
 
 @dataclass(frozen=True)
@@ -32,7 +45,64 @@ class Loader:
         self.root = Path(claude_dir)
 
     def problems(self):
-        return self.read()[1]
+        return self.read()[1] + self.read_actions()[1]
+
+    def action_files(self):
+        files, problems = self.read_actions()
+        if problems:
+            raise LoaderError(problems)
+        return files
+
+    @staticmethod
+    def actions(action_file):
+        module = importlib.import_module(action_file.module)
+        return [getattr(module, name) for name in action_file.names]
+
+    def read_actions(self):
+        files, problems, blocks = [], [], {}
+        folder = self.root.joinpath(*ACTIONS_DIR)
+        for path in sorted(folder.glob("*.py")) if folder.is_dir() else []:
+            if path.name in NOT_ACTIONS:
+                continue
+            rel = path.relative_to(self.root).as_posix()
+            found, why = Loader.action_file(path, rel)
+            if why:
+                problems.append(f"{rel}: {why}")
+            elif found.block in blocks:
+                problems.append(f"{rel}: block {found.block} is declared by {blocks[found.block]} already")
+            else:
+                blocks[found.block] = rel
+                files.append(found)
+        return files, problems
+
+    @staticmethod
+    def action_file(path, rel):
+        """What an action file declares, read from its syntax tree, or why it does not declare it."""
+        try:
+            body = ast.parse(path.read_text(encoding="utf-8-sig")).body
+        except (SyntaxError, UnicodeDecodeError, ValueError) as e:
+            return None, f"does not parse ({type(e).__name__})"
+        values = {}
+        for node in body:
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) \
+                    and node.targets[0].id in DECLARES:
+                values[node.targets[0].id] = node.value
+        classes = {n.name for n in body if isinstance(n, ast.ClassDef)}
+        if sorted(values) != sorted(DECLARES):
+            return None, f"an action file declares {', '.join(DECLARES)} at its top level"
+        block, about, listed = values["BLOCK"], values["ABOUT"], values["ACTIONS"]
+        if not (isinstance(block, ast.Constant) and isinstance(block.value, str) and NAME.match(block.value)):
+            return None, "BLOCK is a literal name: lower case letters, digits and _"
+        if not (isinstance(about, ast.Constant) and isinstance(about.value, str) and about.value.strip()):
+            return None, "ABOUT is a literal sentence"
+        if not (isinstance(listed, ast.List) and listed.elts and all(isinstance(e, ast.Name) for e in listed.elts)):
+            return None, "ACTIONS is a literal list of the action classes of the file"
+        names = tuple(e.id for e in listed.elts)
+        missing = [n for n in names if n not in classes]
+        if missing:
+            return None, f"ACTIONS names {', '.join(missing)}, which the file does not define"
+        module = rel[:-3].replace("/", ".")
+        return ActionFile(module, block.value, about.value, names), ""
 
     def items(self):
         items, problems = self.read()

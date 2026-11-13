@@ -5,7 +5,8 @@ import os
 import re
 import unittest
 
-from harness.assemble.engine.blocks import verify
+from harness.assemble.engine.config import Config
+from harness.utils.plan.verify import verify
 from harness.assemble.engine.build import items_of
 from harness.assemble.engine.wire_mcp import action_table
 from harness.assemble.engine.ports import LedgerPort
@@ -65,7 +66,7 @@ class VerifyBlockTest(unittest.TestCase):
         port = LedgerPort(claude_dir)
         plan_id, _, q = port.present({"title": "t", "files": ["a.py"], "tests": [], "root": str(repo)})
         port.approve("s1", port.waiting()[0])
-        self.assertIn("changed while", verify(port, claude_dir, plan_id))
+        self.assertIn("changed while", verify(port, Config.load(claude_dir).verify, plan_id))
         self.assertEqual(port.receipt(port.approved("s1"))["ok"], 0)
 
 
