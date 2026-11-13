@@ -5,8 +5,9 @@ import unittest
 
 from harness.assemble.engine.build import build_runner
 from harness.assemble.engine.config import Config, ConfigError
-from harness.assemble.engine.pipeline import RecipeBook, RecipeError
+from harness.assemble.engine.pipeline import PipelineBook, PipelineError
 from harness.assemble.engine.runner import Runner, RunnerError
+from harness.assemble.engine.select import select
 from harness.gear.decide.arbiter import Decide
 from harness.utils.contracts import ALLOW, ASK, Detector, Event, Finding, Port, Translator
 from tests import CLAUDE_DIR, tree
@@ -60,7 +61,7 @@ class RunnerTest(unittest.TestCase):
 
 class RecipeTest(unittest.TestCase):
     def book(self, **recipes):
-        return RecipeBook(tree(self, {f"{n}.json": json.dumps(r) for n, r in recipes.items()}))
+        return PipelineBook(tree(self, {f"{n}.json": json.dumps(r) for n, r in recipes.items()}))
 
     def test_an_overlay_only_adds_to_its_base(self):
         book = self.book(base={"translators": ["t1"], "detectors": ["d1"]},
@@ -72,40 +73,54 @@ class RecipeTest(unittest.TestCase):
         cases = (("missing", {}), ("cut", {"base": {}, "cut": {"extends": "base", "remove": ["d1"]}}),
                  ("a", {"a": {"extends": "b"}, "b": {"extends": "a"}}), ("bad", {"bad": {"detectors": "d1"}}))
         for name, recipes in cases:
-            with self.subTest(name=name), self.assertRaises(RecipeError):
+            with self.subTest(name=name), self.assertRaises(PipelineError):
                 self.book(**recipes).resolve(name)
 
     def test_a_recipe_name_cannot_leave_the_recipes_folder(self):
         root = tree(self, {"base.json": "{}", "a/b.json": "{}", "recipes/x.json": "{}"})
-        book = RecipeBook(root / "recipes")
+        book = PipelineBook(root / "recipes")
         for name in ("../base", "../a/b", ""):
-            with self.subTest(name=name), self.assertRaises(RecipeError):
+            with self.subTest(name=name), self.assertRaises(PipelineError):
                 book.resolve(name)
         self.assertEqual(book.resolve("x").name, "x")
 
     def test_the_real_base_recipe_resolves(self):
-        RecipeBook(CLAUDE_DIR / "harness" / "assemble" / "pipelines").resolve("base")
+        PipelineBook(CLAUDE_DIR / "harness" / "assemble" / "pipelines").resolve("base")
+
+    def test_select_gives_the_floor_without_a_plan_and_never_less(self):
+        book = self.book(base={"translators": ["t"], "detectors": ["d"]},
+                         ui={"extends": "base", "detectors": ["ui"]}, loose={"detectors": ["ui"]})
+        self.assertEqual(select(book, None).name, "base")
+        self.assertEqual(select(book, {"plan_id": "p"}).name, "base")
+        self.assertEqual(select(book, {"pipeline": "ui"}).detectors, ("d", "ui"))
+        with self.assertRaises(PipelineError):
+            select(book, {"pipeline": "loose"})
 
 
 class ConfigTest(unittest.TestCase):
     def test_the_real_config_loads(self):
-        self.assertEqual(Config.load(CLAUDE_DIR).recipe, "base")
+        self.assertEqual(Config.load(CLAUDE_DIR).name, "AI-harness")
+
+    def test_the_recipe_key_is_gone_and_says_why(self):
+        with self.assertRaises(ConfigError) as caught:
+            Config.load(tree(self, {"project.json": json.dumps({"name": "x", "recipe": "base"})}))
+        self.assertIn("select.py", str(caught.exception))
 
     def test_the_verify_command_is_a_list_of_words_and_may_name_this_python(self):
-        good = Config.load(tree(self, {"project.json": json.dumps({"name": "x", "recipe": "base",
+        good = Config.load(tree(self, {"project.json": json.dumps({"name": "x",
                                                                    "verify": ["{python}", "-m", "unittest"]})}))
         self.assertEqual(good.verify[1:], ("-m", "unittest"))
         self.assertNotEqual(good.verify[0], "{python}")
         for bad in ("python -m unittest", [], [1]):
             with self.subTest(bad=bad), self.assertRaises(ConfigError):
-                Config.load(tree(self, {"project.json": json.dumps({"name": "x", "recipe": "base", "verify": bad})}))
+                Config.load(tree(self, {"project.json": json.dumps({"name": "x", "verify": bad})}))
 
     def test_a_config_written_with_a_bom_loads(self):
-        root = tree(self, {"project.json": "﻿" + json.dumps({"name": "x", "recipe": "base"})})
+        root = tree(self, {"project.json": "﻿" + json.dumps({"name": "x"})})
         self.assertEqual(Config.load(root).name, "x")
 
     def test_a_wrong_config_is_refused(self):
-        for text in ("{", json.dumps({"name": "x"}), json.dumps({"name": "x", "recipe": "base", "extra": 1}), "[]"):
+        for text in ("{", json.dumps({}), json.dumps({"name": 1}), json.dumps({"name": "x", "extra": 1}), "[]"):
             with self.subTest(text=text), self.assertRaises(ConfigError):
                 Config.load(tree(self, {"project.json": text}))
         with self.assertRaises(ConfigError):

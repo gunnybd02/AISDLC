@@ -1,6 +1,5 @@
 {
   "name": "AI-harness",
-  "recipe": "base",
   "verify": ["{python}", "-m", "unittest", "discover", "-s", ".claude/tests", "-t", ".claude"],
   "ledger": "C:/AI-autonomous/.claude/.state/harness.db"
 }

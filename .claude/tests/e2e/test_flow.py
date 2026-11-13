@@ -9,7 +9,7 @@ from harness.utils.ledger.db import Ledger
 from harness.utils.ledger.recorder import Recorder
 from tests.e2e import copy_tree, git_repo, run
 
-CONFIG = {"name": "flow", "recipe": "base", "verify": ["{python}", "-m", "unittest", "discover", "-s", "."]}
+CONFIG = {"name": "flow", "verify": ["{python}", "-m", "unittest", "discover", "-s", "."]}
 TEST_A = "import unittest\n\nimport a\n\n\nclass T(unittest.TestCase):\n    def test_x(self):\n        self.assertEqual(a.X, 2)\n"
 
 

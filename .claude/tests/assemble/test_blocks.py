@@ -60,7 +60,7 @@ class PlanBlockTest(unittest.TestCase):
 
 class VerifyBlockTest(unittest.TestCase):
     def test_a_file_changed_while_the_tests_ran_is_no_pass(self):
-        claude_dir = copy_tree(self, {"project.json": json.dumps({"name": "t", "recipe": "base", "verify": [
+        claude_dir = copy_tree(self, {"project.json": json.dumps({"name": "t", "verify": [
             "{python}", "-c", "open('a.py', 'a').write('# touched')"]})})
         repo = git_repo(self, {"a.py": "X = 1\n"})
         port = LedgerPort(claude_dir)

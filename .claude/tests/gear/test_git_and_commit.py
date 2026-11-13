@@ -159,7 +159,7 @@ class CommitFlowTest(unittest.TestCase):
 
     def setUp(self):
         self.claude_dir = copy_tree(self, {"project.json": json.dumps(
-            {"name": "t", "recipe": "base", "verify": ["{python}", "-m", "unittest", "discover", "-s", "."]})})
+            {"name": "t", "verify": ["{python}", "-m", "unittest", "discover", "-s", "."]})})
         self.repo = git_repo(self, {"a.py": "X = 1\n", "test_a.py": "import unittest\n\nclass T(unittest.TestCase):\n"
                                                                    "    def test_x(self):\n        pass\n"})
         self.port, self.runner = LedgerPort(self.claude_dir), build_runner(self.claude_dir)

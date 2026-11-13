@@ -1,6 +1,6 @@
 """Runner: one event through facts (ports, then translators) -> detect (findings) -> decide (the verdict) -> act (what
 the harness writes back, such as an approval, and the notes it gives the model). Each fact has one giver: two that
-give the same fact are an error of the recipe, never a silent overwrite."""
+give the same fact are an error of the pipeline, never a silent overwrite."""
 from dataclasses import dataclass
 
 from harness.utils.contracts import CLAUDE_DECISION, Port

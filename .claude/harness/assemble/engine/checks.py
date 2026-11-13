@@ -8,7 +8,7 @@ from harness.utils.ledger.db import compare_real
 
 
 def doctor(claude_dir=CLAUDE_DIR):
-    """Every problem of the tree: the indexes, each item's ref, the build (config, recipe, rules), the skills, the real
+    """Every problem of the tree: the indexes, each item's ref, the build (config, pipeline, rules), the skills, the real
     ledger's schema, the nets. The nets are dev-time code, imported here only, so they never weigh on a hook call."""
     from nets import bridges_net, config_net, entry_net, imports_net, layout_net, size_net, verdict_net
     claude_dir = Path(claude_dir)
