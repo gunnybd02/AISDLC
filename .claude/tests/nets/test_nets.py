@@ -107,13 +107,13 @@ class BridgesNetTest(unittest.TestCase):
 
 class SizeNetTest(unittest.TestCase):
     def test_a_long_python_or_markdown_file_is_reported(self):
-        files = {"harness/gear/a.py": "x = 1\n" * 501, "docs/a.md": "x\n" * 301}
+        files = {"harness/gear/a.py": "x = 1\n" * 401, "docs/a.md": "x\n" * 301}
         found = joined(size_net, self, files)
         self.assertIn("harness/gear/a.py", found)
         self.assertIn("docs/a.md", found)
 
     def test_files_at_the_limit_pass(self):
-        files = {"harness/gear/a.py": "x = 1\n" * 500, "docs/a.md": "x\n" * 300}
+        files = {"harness/gear/a.py": "x = 1\n" * 400, "docs/a.md": "x\n" * 300}
         self.assertEqual(size_net.check(tree(self, files)), [])
 
 

@@ -4,17 +4,19 @@ Everything lives under `.claude/`. Python 3.13, standard library only.
 
 ```
 .claude/
-  entry/        hook.py, mcp_server.py, doctor.py: what Claude Code runs; they call only assemble
+  entry/        hook.py, mcp_server.py, doctor.py: what Claude Code runs; they call only assemble/engine
   harness/
-    mcp/        block 1: the door to and from Claude Code; decides nothing
-    gear/       block 2: translate -> detect -> decide
-    assemble/   block 3: loads mcp and gear, reads the config and the recipes, runs them
-    utils/      the library: shared code any block may import; it knows no rule
+    hooks/      hook JSON in and out (io.py), the answers of a form (forms.py); decides nothing
+    gear/       translate/ -> detect/ -> decide/arbiter.py, with the rule rows in rules/*.json
+    mcp/        what the model calls: server/ (stdio, tool base), tools/ (find, guide, run), skills/ (library),
+                actions/ (one file per block of actions, ACTIONS = [...])
+    assemble/   engine/ (loader, config, ports, runner, select, pipeline, build, wire_mcp, checks) and pipelines/
+    utils/      shared code with no policy: contracts, ledger/, plan/, shell/, git/
   nets/         the rules of the tree, checked by the doctor
-  project.json  the values of the user (name, recipe, verify: the unit's test command, ledger: the real ledger)
-  skills/       the skill library, served by find and guide
-  docs/         this file and transfer.md
-  tests/        one folder per block, plus e2e/
+  project.json  the values of the user (name, verify: the unit's test command, ledger: the real ledger)
+  project/skills/  the skill library, served by find and guide
+  docs/         this file, transfer.md, migration-map.md
+  tests/        tests/<block>/test_<module>.py, plus nets/ and e2e/
   state/        private, not in git: harness.db (the ledger), pause.json and pause.log
 ```
 
@@ -24,12 +26,12 @@ run("plan", "plan_present", {plan})      the revision waits in the ledger; its r
                                          project); the answer is the form question, which names the files and the root
                                          (with plan_id: a new revision of a waiting plan; only the newest is approvable)
 AskUserQuestion                          the user answers; only "Duyệt" to that exact question approves it
-Write / Edit, or a write by the shell     allowed only for the files of the approved plan (plan_gate)
+Write / Edit, or a write by the shell     allowed only for the files of the approved plan (detect/tracked.py, detect/planfiles.py)
 run("verify", "run", {plan})             the unit's tests in the plan's root; the receipt keeps each file's blob id,
                                          read before and after the tests (a file that changed under them: no pass)
 git add, then git commit -m "..."        the commit alone, in the plan's repository, after a passing verify, with the
-                                         plan's files unchanged since (commit_gate)
-delivery (act.py)                        by what the commit holds, however it was made: HEAD's parent is the commit of
+                                         plan's files unchanged since (detect/commit.py)
+delivery (utils/plan/closing.py)                      by what the commit holds, however it was made: HEAD's parent is the commit of
                                          the approval, and it changes only plan files (paths as git names them, case
                                          kept), each as the passing verify saw it, a plain file whose mode does not
                                          change; anything else is not delivered, and the model is told
@@ -57,10 +59,10 @@ What the gates refuse, so they always see what they judge:
 
 ## The shell reader
 A Bash or PowerShell call is read before it runs, so a write by the shell meets the same gate as Write/Edit.
-- `utils/shell_scan.py` splits the line as its shell does (bash, PowerShell, cmd): commands, quotes, escapes,
-  redirections, heredocs. `utils/shell.py` takes the wrappers off (`sudo`, `env`, `timeout`, `xargs`...) and reads
+- `utils/shell/scan.py` splits the line as its shell does (bash, PowerShell, cmd): commands, quotes, escapes,
+  redirections, heredocs. `utils/shell/words.py` takes the wrappers off (`sudo`, `env`, `timeout`, `xargs`...) and reads
   again the string a shell runs (`sh -c`, `eval`, `powershell -Command`, `cmd /c`, a shell fed a heredoc).
-- `gear/translate_place.py` looks each real command up: a known read writes nothing; a known write names its files
+- `utils/shell/place_ops.py` (git lines: `git_ops.py`) looks each real command up: a known read writes nothing; a known write names its files
   (operands, redirections, the destination of a copy, the file of a download); after `cd X` a relative path is
   read from both folders. Text in quotes or in a heredoc body is no command.
 - What it cannot see whole is unread: an unknown command or script, a target the shell makes (`$F`, `*.py`, `~`),
@@ -72,17 +74,18 @@ A Bash or PowerShell call is read before it runs, so a write by the shell meets 
   the line is unread.
 
 ## The connection rule
-- `mcp` and `gear` import only themselves and `utils`. They never import each other or `assemble`.
+- `hooks`, `gear` and `mcp` import only themselves and `utils`. They never import each other or `assemble`.
 - `utils` imports no block.
-- `assemble` connects: `loader.py` reads the `ITEMS` of `mcp` and `gear` and loads them by name. It is the one place
-  of a dynamic import.
-- `entry/` imports only `assemble` (its doors in `build.py`), and only inside `main()`: the top of an entry script
+- `assemble` connects: `engine/loader.py` reads the `ITEMS` of `hooks`, `mcp` and `gear` and the action files of
+  `mcp/actions/`, and loads them by name. It is the one place of a dynamic import.
+- `entry/` imports only `assemble` (its doors: `engine/build.py`, `engine/wire_mcp.py`, `engine/checks.py`), and only
+  inside `main()`: the top of an entry script
   imports only the standard library. A harness that does not load, or quits (SystemExit), still answers: the hook
   exits 2.
-- `assemble` imports `nets` only inside `doctor()`. The nets are dev-time code and never weigh on a hook call.
+- `assemble` imports `nets` only inside `doctor()` (`engine/checks.py`). The nets are dev-time code and never weigh on a hook call.
 
 ## Indexes
-`harness/mcp/__init__.py` and `harness/gear/__init__.py` only declare: a docstring and one literal
+`harness/hooks/__init__.py`, `harness/mcp/__init__.py` and `harness/gear/__init__.py` only declare: a docstring and one literal
 `ITEMS = [{"kind", "name", "ref"}]`. The loader reads them as text and refuses:
 - a kind the block does not hold;
 - a missing or extra field;
@@ -92,25 +95,28 @@ A Bash or PowerShell call is read before it runs, so a write by the shell meets 
 
 | Block | Kinds |
 |---|---|
-| `mcp` | `hook`, `server`, `tool`, `source`, `table` |
+| `hooks` | `hook`, `translator` |
+| `mcp` | `server`, `tool`, `source`, `table` |
 | `gear` | `translator`, `detector`, `rule` |
 
 ## The run of a hook
 ```
 Claude Code -> entry/hook.py   (standard library: the pause, the form, then the harness)
-  -> assemble.build.run_hook
-  mcp/hooks.py: JSON -> Event
-  config.py (recipe name) + recipe.py (translators, detectors by name)
-  runner.py: translators + ports -> facts -> detectors -> findings -> gear/decide.py -> Verdict -> act.py
-  mcp/hooks.py: Verdict -> permissionDecision (allow says nothing); the notes of act -> additionalContext
+  -> assemble/engine/build.run_hook
+  hooks/io.py: JSON -> Event
+  select.py: the session's approved plan picks the pipeline (none: base, the floor); pipeline.py names the
+             translators and detectors
+  runner.py: translators + ports -> facts -> detectors -> findings -> gear/decide/arbiter.py -> Verdict -> Act
+  hooks/io.py: Verdict -> permissionDecision (allow says nothing); the notes of Act -> additionalContext
 ```
-- Only `gear/decide.py` judges. A finding is looked up in `gear/rules/*.json`, and the strongest verdict wins.
+- Only `gear/decide/arbiter.py` judges. A finding is looked up in `gear/rules/*.json`, and the strongest verdict wins.
 - A finding that no rule names asks the user, and the question names the finding.
 - A rule row names its test (`tests/.../test_x.py#test_y`), and a row whose test does not exist does not load.
 - Each fact has one giver. Two that give the same fact are an error, never an overwrite.
-- Ports (`assemble/ports.py`) read the world for the gears: the approved plan, the state folder, and `commit_view`,
+- Ports (`assemble/engine/ports.py`) read the world for the gears: the approved plan, the state folder, and `commit_view`,
   which reads git only when the call is a commit.
-- `act.py` writes back: an approval from the form, a delivered plan after a commit, each finding as a rule decision.
+- `Act` (in `runner.py`) writes back: an approval from the form (`utils/plan/approval.py`), a delivered plan after a
+  commit (`utils/plan/closing.py`), each finding as a rule decision.
 - A broken harness exits 2, which blocks the call.
 
 ## The pause
@@ -129,7 +135,9 @@ bytes, whatever the console's code page.
 - `guide`: a skill, or the actions of a block.
 - `run`: one action of the action table, with its arguments checked.
 
-The handlers live in `assemble/` (`blocks.py`, `build.py`):
+Each block of actions is a file of `mcp/actions/` that declares `BLOCK`, `ABOUT` and `ACTIONS = [Class, ...]`. The
+loader reads these by the file's syntax tree; `engine/wire_mcp.py` gives each action only the ports it names in
+`needs` (`plans`, `verify_command`, `state_dir`, `items`, `doctor`). The logic sits in `utils/plan/`:
 
 | Block | Actions |
 |---|---|
@@ -158,7 +166,7 @@ ERROR, never a match. The path is this machine's: where it does not exist, the d
 `entry/doctor.py` (also `run("health", "doctor")`) reports every problem as an ERROR, in this order:
 - the indexes;
 - each item's ref, which must load;
-- the build (config, recipe, rules);
+- the build (config, pipeline, rules), and each action file, which must load;
 - the skill library: each skill reads, its name is its folder's, and no name is used twice;
 - the real ledger's schema, when `project.json` names it;
 - then every net.
@@ -171,9 +179,9 @@ The nets read the whole tree except two places, and only these: `state/` (the pr
 | `layout` | a file is only where `nets/layout.json` allows (`*` stays in one folder, `**` crosses folders) |
 | `imports` | the connection rule above, aliases and relative imports included; dynamic imports only in the loader; a file that does not parse |
 | `bridges` | no file only passes names on |
-| `size` | `.py` at most 500 lines, `.md` at most 300 |
-| `verdict` | outside `gear/decide.py` and `utils/contracts.py`: no verdict word (allow, ask, refuse, deny), no `ALLOW`/`ASK`/`REFUSE`, no `Verdict` |
-| `config` | `project.json` is named only in `assemble/config.py` |
+| `size` | `.py` at most 400 lines, `.md` at most 300 |
+| `verdict` | outside `gear/decide/arbiter.py` and `utils/contracts.py`: no verdict word (allow, ask, refuse, deny), no `ALLOW`/`ASK`/`REFUSE`, no `Verdict` |
+| `config` | `project.json` is named only in `assemble/engine/config.py` |
 | `entry` | an entry script imports only the standard library at load time (in `try`, `if`... too); its `main()` catches `BaseException` |
 
 The nets read the code as written, not as it runs. A name built at run time (`getattr(m, "AL" + "LOW")`) gets past
@@ -185,8 +193,8 @@ need it. The nets read `harness/`, `entry/` and `nets/`. A test file that does n
 itself.
 
 ## How to add a thing
-1. Write the test first, in the block's folder under `tests/`.
+1. Write the test first, in `tests/<block>/test_<module>.py` (`tests/nets/test_tests_layout.py` checks the name).
 2. Write the class in its block, a translator or a detector on the base classes of `utils/contracts.py`.
 3. Declare it with one line in the block's `ITEMS`.
-4. Name it in a recipe, and give each finding it reports a rule row in `gear/rules/`, with its test.
+4. Name it in a pipeline (`assemble/pipelines/`), and give each finding it reports a rule row in `gear/rules/`, with its test.
 5. Run the tests and `entry/doctor.py` until both are clean.

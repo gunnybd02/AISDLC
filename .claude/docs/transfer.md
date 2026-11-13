@@ -19,12 +19,12 @@ One flow runs end to end in its smallest form (`tests/e2e/test_flow.py`):
 ## Order of what is left
 | # | What | Lands in |
 |---|---|---|
-| 1 | Done: the shell reader (`utils/shell_scan.py`, `utils/shell.py`, `gear/translate_place.py`); the commit gate reads git lines with it | — |
-| 2 | Git guards: a command becomes a git action, with rules P1-P8 | `gear/translate_git.py`, `gear/git_cli.py`, `gear/rules/git.json` |
-| 3 | Commit guards: secrets, AI marks, agent files | `gear/detect_secret.py`, `detect_mark.py`, `detect_agent.py` |
-| 4 | Plans in full: steps, revisions, feedback, units and scope | `assemble/blocks.py`, `assemble/ports.py`, gears |
-| 5 | Places and network: zones of a path, hosts of a command | `gear/zones.py`, `net_hosts.py`, `translate_net.py`, rules |
-| 6 | The other blocks of the MCP server (session, notes, ledger reads...) | handlers in `assemble/`, the action table of `mcp/` |
+| 1 | Done: the shell reader (`utils/shell/scan.py`, `utils/shell/words.py`, `utils/shell/place_ops.py`, `gear/translate/place.py`); the commit gate reads git lines with it | — |
+| 2 | Git guards: a command becomes a git action, with rules P1-P8 | `gear/translate/git.py`, `gear/translate/git_cli.py`, `gear/rules/git.json` |
+| 3 | Commit guards: secrets, AI marks, agent files | `gear/detect/secret.py`, `mark.py`, `agent.py` |
+| 4 | Plans in full: steps, revisions, feedback, units and scope | `mcp/actions/plan.py`, `utils/plan/`, `assemble/engine/ports.py`, gears |
+| 5 | Places and network: zones of a path, hosts of a command | `gear/translate/zones.py`, `net.py`, `net_hosts.py`, rules |
+| 6 | The other blocks of the MCP server (session, notes, ledger reads...) | one file per block in `mcp/actions/`, logic in `utils/` |
 | 7 | The skills | `skills/` |
 | 8 | Wire this harness into a Claude Code session on a trial repository, then replay real sessions and compare verdicts | a plan of its own |
 

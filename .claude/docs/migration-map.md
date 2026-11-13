@@ -171,3 +171,23 @@ Moves in section 1 that change because of this:
 - No `transcripts.db` or `overlay.db` is ever created; `utils/ledger/db.py` is the only code that opens SQLite, a net
   (`nets/imports_net.py`, or a new `sqlite_net.py`) keeps it so.
 
+
+## 7. Status
+
+Steps 1 to 9 are done on branch `refactor/block-folders`, except the behaviour changes of step 7 (7d below). Tests:
+the same 20 fail as before the move, all because they expect Windows paths (`C:/`) and the Windows ledger path of
+`project.json`; nothing new fails, and every net passes.
+
+Where the result differs from section 1:
+- `gear/detect/forms.py` holds `form.prefilled` and `form.forged`: detectors live only in gear.
+- `mcp/actions/health.py` keeps `items` and `doctor`; `mcp/actions/verify.py` keeps `run` (decision 4).
+- `Act` sits in `assemble/engine/runner.py` (no `act.py`); its logic is `utils/plan/approval.py` and `closing.py`.
+- `mcp/actions/maint.py` still serves `pause` and `pause_status` until the maint grant (7d).
+- The size net is 400 lines for `.py`, as the target says (it was 500).
+
+Left for 7d, each changes what the guards do:
+- Commits only through `step_done`: the model calls it, the harness checks verify, plan files and secrets, then
+  commits or refuses; `git.json` refuses a raw `git commit`; `detect/commit.py` goes.
+- The maint grant replaces pause, as a row of `harness.db`; open: whether `entry/hook.py` still reads it when the
+  harness is broken.
+- One store (section 6): `tx_*`, overlay and image tables, the `state/` shell guard, `db_query` without `tx_*`.

@@ -1,8 +1,8 @@
-"""size: a .py file has at most 500 lines, a .md file at most 300. A file that does not decode as UTF-8 is reported
+"""size: a .py file has at most 400 lines, a .md file at most 300. A file that does not decode as UTF-8 is reported
 here, the one net that reads every .py and .md."""
 from nets import files, read
 
-LIMITS = {".py": 500, ".md": 300}
+LIMITS = {".py": 400, ".md": 300}
 
 
 def check(claude_dir):
