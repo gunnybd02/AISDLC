@@ -145,6 +145,29 @@ harness works from there on other folders. Paths stay relative to `.claude/`; no
 | 4 | Verify | Stays an MCP action too (`run('verify', 'run', {plan})`), next to the CLI `verify` |
 | 5 | Pipeline key | Follow the target: `select.py` picks the pipeline from the plan state; the `recipe` key leaves `project.json` |
 | 6 | Entry logic, nets import | Pause logic leaves `entry/hook.py` for `hooks/forms.py`; `engine/checks.py` keeps importing `nets`, the one exception, listed in `imports_net.ALLOWED` |
-| 7 | State storage | All state stays under `.claude/state/` of the install, split by kind as the target draws it: `harness.db` (decisions, plans, steps, commits, sessions, audit chain), `transcripts.db`, `overlay.db`, `live/`, `twg/`, plus `overlays/<session>/`. Today the code writes only `state/harness.db` and `state/pause.json`; `pause.json` moves into `harness.db` with the maint grant. The `ledger` key of `project.json` is read only by the doctor (schema compare with the old harness), never written |
+| 7 | State storage | One file, `state/harness.db`; every read and write goes through it. See section 6 |
 | 8 | `nets/entry_net.py` | Kept (default, not chosen by the user) |
 | 9 | `translate_answer.py` | Moves to `hooks/forms.py` as the target says (default, not chosen by the user) |
+
+## 6. One store, and the guards around it
+
+| Topic | Before | After | Lands in |
+|---|---|---|---|
+| Harness data | 3 SQLite files (`harness.db`, `transcripts.db`, `overlay.db`) + JSON (`pause.json`) + image files | One file, `state/harness.db`; every read and write goes through `utils/ledger/db.py` | `utils/ledger/schema.sql` gains the `tx_*`, overlay, grant and source tables; `utils/sessions/archive.py`, `utils/overlay/journal.py`, `utils/maint/grant.py` write there |
+| Reading the data | The shell can read `state/` (by accident) | Only `run("ledger", "db_query")`; a shell line that touches `state/` is refused | `gear/rules/place.json` (read and write of `state/` refused); `mcp/actions/ledger.py` |
+| Transcripts | `transcripts.db` | `tx_*` tables in `harness.db`; `sessions.reopen` works as before; `db_query` cannot read the `tx_*` tables | `utils/sessions/archive.py`; `mcp/actions/ledger.py` refuses a query naming `tx_` (checked on the parsed SQL, with an authorizer, not on the text) |
+| Jira/Confluence images | Files in `state/twg/sources/` | BLOBs in SQL; when one must be seen, the harness writes it to a temp file | `utils/twg/open.py`, `utils/twg/page.py`; temp file outside `state/`, removed after use |
+| Writes into `.claude/rules/`, `memory/`, the registry (block `__init__.py`, `ACTIONS`) | Passed silently | Refused, with the right way named: a skill, the notes tool, `add test` | `gear/detect/agent.py` or a new rows set in `gear/rules/place.json`, each with its own `why` |
+| Playwright / CDP into a signed-in browser | Allowed freely | A UAT plan names `cdp` in its network section; a plan that has it runs the whole plan without asks; without it, refused | `gear/translate/net.py` + `net_hosts.py` (find CDP: `connect_over_cdp`, `--remote-debugging-port`, `ws://.../devtools`); `gear/rules/net.json`; `utils/plan/desk.py` (network section) |
+| Harness commands, e.g. `HARNESS_DB=... python3 -m entry.cli verify` | Run | Still run as before | `gear/translate/place.py` keeps reading the harness's own CLI as a known command, so the `state/` refusal does not catch it |
+
+What stays a file, because it is not data:
+- `state/live/<sha>/`: the built releases are Python code that `entry/boot.py` imports.
+- `project.json`: config, written by the maintainer.
+
+Moves in section 1 that change because of this:
+- `assemble/ports.py:38` keeps `state/harness.db`, but the path comes from `HARNESS_DB` through `engine/config.py` only.
+- `pause.json` (`assemble/blocks.py:119`, `entry/hook.py`) is gone; the maint grant is a row.
+- No `transcripts.db` or `overlay.db` is ever created; `utils/ledger/db.py` is the only code that opens SQLite, a net
+  (`nets/imports_net.py`, or a new `sqlite_net.py`) keeps it so.
+
