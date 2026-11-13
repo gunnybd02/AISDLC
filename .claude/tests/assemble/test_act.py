@@ -3,10 +3,10 @@ ledger keeps the revision, the approval and its events."""
 import json
 import unittest
 
-import harness.gear as gear_block
+import harness.hooks as hooks_block
 from harness.assemble.act import Act
 from harness.assemble.ports import LedgerPort, question
-from harness.gear.translate.answer import Answers
+from harness.hooks.forms import Answers
 from harness.utils.contracts import Event, Finding, Verdict
 from harness.utils.ledger.recorder import Recorder
 from tests import tree
@@ -98,8 +98,8 @@ class ApprovalTest(unittest.TestCase):
         self.assertIsNone(LedgerPort(root).approved("s1"))
         self.assertFalse((root / "state" / "harness.db").exists())
 
-    def test_gear_declares_the_answer_translator(self):
-        self.assertIn("answers", {i["name"] for i in gear_block.ITEMS})
+    def test_hooks_declares_the_answer_translator(self):
+        self.assertIn("answers", {i["name"] for i in hooks_block.ITEMS})
 
 
 if __name__ == "__main__":

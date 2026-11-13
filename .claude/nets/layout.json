@@ -10,6 +10,7 @@
     "harness/utils/shell/*.py",
     "harness/utils/git/*.py",
     "harness/utils/ledger/schema.sql",
+    "harness/hooks/*.py",
     "harness/mcp/*.py",
     "harness/gear/__init__.py",
     "harness/gear/translate/*.py",

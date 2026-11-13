@@ -2,8 +2,8 @@
 import json
 import unittest
 
-import harness.mcp as mcp_block
-from harness.mcp.hooks import HookError, HookIO
+import harness.hooks as hooks_block
+from harness.hooks.io import HookError, HookIO
 from harness.utils.contracts import ALLOW, ASK, REFUSE, Event, Verdict
 
 PAYLOAD = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "ls"},
@@ -41,8 +41,8 @@ class HookIOTest(unittest.TestCase):
         decided = json.loads(HookIO.write(Event("PreToolUse"), Verdict(REFUSE, "why"), ["note"]))["hookSpecificOutput"]
         self.assertEqual(decided["permissionDecision"], "deny")
 
-    def test_mcp_declares_hook_io_as_its_hook(self):
-        self.assertIn({"kind": "hook", "name": "hook_io", "ref": "harness.mcp.hooks:HookIO"}, mcp_block.ITEMS)
+    def test_hooks_declares_hook_io_as_its_hook(self):
+        self.assertIn({"kind": "hook", "name": "hook_io", "ref": "harness.hooks.io:HookIO"}, hooks_block.ITEMS)
 
 
 if __name__ == "__main__":

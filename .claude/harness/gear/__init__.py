@@ -1,7 +1,6 @@
 """Block gear: translate a tool call, detect findings, decide the verdict."""
 ITEMS = [
     {"kind": "rule", "name": "decide", "ref": "harness.gear.decide.arbiter:Decide"},
-    {"kind": "translator", "name": "answers", "ref": "harness.gear.translate.answer:Answers"},
     {"kind": "translator", "name": "places", "ref": "harness.gear.translate.place:Places"},
     {"kind": "translator", "name": "git_commands", "ref": "harness.gear.translate.git:GitCommands"},
     {"kind": "detector", "name": "forms", "ref": "harness.gear.detect.forms:Forms"},

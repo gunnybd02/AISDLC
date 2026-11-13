@@ -1,4 +1,4 @@
-"""Loader: reads the ITEMS of the mcp and gear blocks without importing them, and resolves an item's ref to its object.
+"""Loader: reads the ITEMS of the hooks, mcp and gear blocks without importing them, and resolves an item's ref to its object.
 An index (a block's __init__.py) only declares: a docstring and one literal `ITEMS = [{kind, name, ref}, ...]`.
 This is the one module allowed to import dynamically (imports_net)."""
 import ast
@@ -7,7 +7,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-KINDS = {"mcp": ("hook", "server", "tool", "source", "table"), "gear": ("translator", "detector", "rule")}
+KINDS = {"hooks": ("hook", "translator"), "mcp": ("server", "tool", "source", "table"),
+         "gear": ("translator", "detector", "rule")}
 FIELDS = ("kind", "name", "ref")
 NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 

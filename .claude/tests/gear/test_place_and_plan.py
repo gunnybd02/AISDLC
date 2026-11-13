@@ -11,7 +11,7 @@ from harness.gear.decide.arbiter import Decide
 from harness.gear.detect.forms import Forms
 from harness.gear.detect.planfiles import PlanFiles
 from harness.gear.detect.tracked import Tracked
-from harness.gear.translate.answer import Answers
+from harness.hooks.forms import Answers
 from harness.gear.translate.place import Places
 from harness.utils.contracts import Event, Finding
 from tests import CLAUDE_DIR, tree

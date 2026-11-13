@@ -7,6 +7,7 @@ import ast
 from nets import files, module_level, read
 
 ALLOWED = {
+    "hooks": ("harness.hooks", "harness.utils"),
     "mcp": ("harness.mcp", "harness.utils"),
     "gear": ("harness.gear", "harness.utils"),
     "utils": ("harness.utils",),

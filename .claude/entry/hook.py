@@ -60,7 +60,7 @@ def into_state(data):
 
 
 def labels(data):
-    """{question: label} of an answered form, where Claude Code puts the answers (as gear/translate_answer.py reads
+    """{question: label} of an answered form, where Claude Code puts the answers (as harness/hooks/forms.py reads
     them: the response text only when no question holds '"="' and each question is in it once)."""
     found, text = {}, ""
     for source in ((data.get("tool_input") or {}).get("answers"), data.get("tool_response")):

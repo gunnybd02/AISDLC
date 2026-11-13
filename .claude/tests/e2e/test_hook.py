@@ -4,7 +4,7 @@ import json
 import unittest
 
 import harness.gear as gear_block
-import harness.mcp as mcp_block
+import harness.hooks as hooks_block
 from tests.e2e import copy_tree, run
 
 PAYLOAD = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "ls"}, "session_id": "s",
@@ -27,7 +27,7 @@ def hook(root, payload):
 
 class HookEntryTest(unittest.TestCase):
     def test_the_hook_path_is_declared_by_the_blocks(self):
-        names = {i["name"] for i in gear_block.ITEMS + mcp_block.ITEMS}
+        names = {i["name"] for i in gear_block.ITEMS + hooks_block.ITEMS}
         self.assertLessEqual({"decide", "hook_io"}, names)
 
     def test_a_plain_call_says_nothing(self):

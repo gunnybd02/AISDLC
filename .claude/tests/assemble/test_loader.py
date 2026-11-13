@@ -1,4 +1,4 @@
-"""h1.blocks-and-nets: the loader reads the ITEMS of mcp and gear without importing them, and refuses a wrong index."""
+"""h1.blocks-and-nets: the loader reads the ITEMS of hooks, mcp and gear without importing them, and refuses a wrong index."""
 import unittest
 
 from harness.assemble.loader import Loader, LoaderError
@@ -6,10 +6,12 @@ from tests import CLAUDE_DIR, tree
 
 GOOD_GEAR = '"""Block gear."""\nITEMS = [{"kind": "rule", "name": "decide", "ref": "harness.gear.decide.arbiter:Decide"}]\n'
 GOOD_MCP = '"""Block mcp."""\nITEMS = []\n'
+GOOD_HOOKS = '"""Block hooks."""\nITEMS = []\n'
 
 
 def fake(test, gear=GOOD_GEAR, mcp=GOOD_MCP, extra=None):
-    files = {"harness/gear/__init__.py": gear, "harness/gear/decide/arbiter.py": "", "harness/mcp/__init__.py": mcp}
+    files = {"harness/gear/__init__.py": gear, "harness/gear/decide/arbiter.py": "", "harness/mcp/__init__.py": mcp,
+             "harness/hooks/__init__.py": GOOD_HOOKS}
     files.update(extra or {})
     return tree(test, files)
 
