@@ -10,7 +10,6 @@ from harness.utils.plan.verify import verify
 from harness.assemble.engine.build import build_runner
 from harness.assemble.engine.ports import LedgerPort
 from harness.gear.decide.arbiter import Decide
-from harness.gear.detect.commit import CommitGate
 from harness.gear.translate.git import GitCommands
 from harness.utils.contracts import Event
 from harness.utils.git.facts import staged, top
@@ -42,14 +41,6 @@ class GitRunTest(unittest.TestCase):
         git(repo, "mv", "secret.txt", "b.py")
         self.assertEqual(sorted(staged(repo)), ["b.py", "secret.txt"])
         self.assertIsNone(staged(repo)["secret.txt"])
-
-
-PLAN = {"id": 7, "plan_id": "pd-1", "rev": 1, "root": "C:/r", "title": "t", "files": ["a.py"], "tests": ["test_a.py"]}
-
-
-def kinds(commit, plan=PLAN, unsafe=""):
-    facts = {"plan": plan, "git_commit": {"repo": "C:/r", "unsafe": unsafe}, "commit_view": lambda repo, plan_row: commit}
-    return [f.kind for f in CommitGate().detect(bash("git commit", "C:/r"), facts)]
 
 
 if __name__ == "__main__":

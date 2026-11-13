@@ -1,16 +1,7 @@
 {
   "rules": [
-    {"finding": "commit.unsafe", "verdict": "refuse",
-     "why": "Commit alone, as the gate sees it: stage with git add in its own command, then `git commit -m \"...\"` with no paths, -a, cd, variables or another shell around it.",
-     "test": "tests/gear/test_commit.py#test_an_unsafe_commit_is_refused_before_anything_else"},
-    {"finding": "commit.unverified", "verdict": "refuse",
-     "why": "The plan has no passing verify: run('verify', 'run', {plan}) and commit when it passes.",
-     "test": "tests/gear/test_commit.py#test_a_commit_without_a_passing_verify_is_refused"},
-    {"finding": "commit.changed", "verdict": "refuse",
-     "why": "A staged file changed after the verify: verify again, then commit.",
-     "test": "tests/gear/test_commit.py#test_a_file_changed_after_the_verify_is_refused"},
-    {"finding": "commit.outside", "verdict": "refuse",
-     "why": "The commit is outside the approved plan (another repository, or a file it does not name): unstage it, or present a revision.",
-     "test": "tests/gear/test_commit.py#test_a_staged_file_outside_the_plan_is_refused"}
+    {"finding": "commit.raw", "verdict": "refuse",
+     "why": "Commits go through the harness: after a passing verify, run('steps', 'step_done', {plan, message}); it checks the plan's change and commits its files itself.",
+     "test": "tests/gear/test_commit.py#test_every_commit_from_the_shell_is_refused"}
   ]
 }

@@ -1,75 +1,43 @@
-"""h9.commit-gate: a commit goes through only when the plan's verify passed and no staged file changed since, and only
-with files the plan names; a commit that went through is kept and delivers the plan."""
-import json
-import subprocess
+"""h9.commit-gate: a commit from the shell is refused, safe to read or not; commits go through step_done, where the
+harness checks the plan's change and commits it (tests/utils/test_steps.py)."""
 import unittest
 
 import harness.gear as gear_block
-from harness.assemble.engine.config import Config
-from harness.utils.plan.verify import verify
-from harness.assemble.engine.build import build_runner
-from harness.assemble.engine.ports import LedgerPort
 from harness.gear.decide.arbiter import Decide
-from harness.gear.detect.commit import CommitGate
+from harness.gear.detect.commit import RawCommit
 from harness.gear.translate.git import GitCommands
 from harness.utils.contracts import Event
-from harness.utils.git.facts import staged, top
-from harness.utils.git.run import GitError, git
-from tests import CLAUDE_DIR, tree
-from tests.e2e import copy_tree, git_repo
+from tests import CLAUDE_DIR
 
 
-def bash(command, cwd, kind="PreToolUse"):
-    return Event(kind, "Bash", {"command": command}, "s1", str(cwd))
+def bash(command, kind="PreToolUse"):
+    return Event(kind, "Bash", {"command": command}, "s1", "C:/r")
 
 
-def commit_fact(command):
-    return GitCommands().translate(bash(command, "C:/r")).get("git_commit")
+def kinds(command, kind="PreToolUse"):
+    event = bash(command, kind)
+    return [f.kind for f in RawCommit().detect(event, GitCommands().translate(event))]
 
 
-PLAN = {"id": 7, "plan_id": "pd-1", "rev": 1, "root": "C:/r", "title": "t", "files": ["a.py"], "tests": ["test_a.py"]}
+class RawCommitTest(unittest.TestCase):
+    def test_every_commit_from_the_shell_is_refused(self):
+        for command in ("git commit -m x", "git -C sub commit -q -m x", "git add a && git commit -m x",
+                        "env A=1 git commit -m x", "git merge feature"):
+            with self.subTest(command=command):
+                self.assertEqual(kinds(command), ["commit.raw"])
+        self.assertEqual(Decide.load(CLAUDE_DIR).rules["commit.raw"]["verdict"], "refuse")
+        self.assertIn("step_done", Decide.load(CLAUDE_DIR).rules["commit.raw"]["why"])
 
+    def test_a_line_that_does_not_commit_is_no_finding(self):
+        for command in ("git status", "git add a.py", "git diff --cached", "ls"):
+            with self.subTest(command=command):
+                self.assertEqual(kinds(command), [])
 
-def kinds(commit, plan=PLAN, unsafe=""):
-    facts = {"plan": plan, "git_commit": {"repo": "C:/r", "unsafe": unsafe}, "commit_view": lambda repo, plan_row: commit}
-    return [f.kind for f in CommitGate().detect(bash("git commit", "C:/r"), facts)]
+    def test_only_a_call_before_it_runs_is_judged(self):
+        self.assertEqual(kinds("git commit -m x", "PostToolUse"), [])
 
-
-class CommitGateTest(unittest.TestCase):
-    def commit(self, receipt, staged_files, repo="C:/r"):
-        return {"repo": repo, "plan_repo": "C:/r", "staged": staged_files, "receipt": receipt}
-
-    def test_an_unsafe_commit_is_refused_before_anything_else(self):
-        self.assertEqual(kinds(self.commit({"ok": 1, "files": {}}, {}), unsafe="compound"), ["commit.unsafe"])
-        self.assertEqual(kinds(None, plan=None, unsafe="compound"), ["commit.unsafe"])
-
-    def test_a_commit_in_another_repository_than_the_plans_is_refused(self):
-        self.assertEqual(kinds(self.commit({"ok": 1, "files": {"a.py": "h1"}}, {"a.py": "h1"}, repo="C:/other")),
-                         ["commit.outside"])
-
-    def test_a_commit_without_a_passing_verify_is_refused(self):
-        self.assertEqual(kinds(self.commit(None, {"a.py": "h1"})), ["commit.unverified"])
-        self.assertEqual(kinds(self.commit({"ok": 0, "files": {"a.py": "h1"}}, {"a.py": "h1"})), ["commit.unverified"])
-
-    def test_a_file_changed_after_the_verify_is_refused(self):
-        self.assertEqual(kinds(self.commit({"ok": 1, "files": {"a.py": "h1"}}, {"a.py": "h2"})), ["commit.changed"])
-
-    def test_a_staged_file_outside_the_plan_is_refused(self):
-        found = kinds(self.commit({"ok": 1, "files": {"a.py": "h1"}}, {"a.py": "h1", "b.py": "h9"}))
-        self.assertEqual(found, ["commit.outside"])
-
-    def test_a_commit_without_a_plan_is_refused(self):
-        self.assertEqual(kinds(self.commit(None, {"a.py": "h1"}), plan=None), ["plan.none"])
-
-    def test_a_verified_commit_of_plan_files_passes(self):
-        self.assertEqual(kinds(self.commit({"ok": 1, "files": {"a.py": "h1"}}, {"a.py": "h1"})), [])
-
-    def test_the_rules_refuse_each_finding_and_the_recipe_runs_the_gate(self):
-        rules = Decide.load(CLAUDE_DIR).rules
-        for kind in ("commit.unverified", "commit.changed", "commit.outside", "commit.unsafe"):
-            self.assertEqual(rules[kind]["verdict"], "refuse")
-        names = {i["name"] for i in gear_block.ITEMS}
-        self.assertLessEqual({"git_commands", "commit_gate"}, names)
+    def test_gear_declares_the_detector_and_the_floor_runs_it(self):
+        self.assertIn("raw_commit", {i["name"] for i in gear_block.ITEMS})
 
 
 if __name__ == "__main__":

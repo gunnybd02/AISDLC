@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 
 from harness.utils.contracts import YES, Port
-from harness.utils.git.facts import head, staged, top
+from harness.utils.git.facts import head, top
 from harness.utils.ledger.db import Ledger
 from harness.utils.ledger.recorder import Recorder
 
@@ -147,19 +147,10 @@ class LedgerPort:
 
 
 class PlanState(Port):
-    """The gears' view of the ledger and git: the approved plan, the harness's own state folder, and commit_view, which
-    reads what a commit stages and the plan's latest verify only when the call is a commit."""
+    """The gears' view of the ledger: the approved plan and the harness's own state folder."""
 
     def __init__(self, port):
         self.port = port
 
     def read(self, event):
-        return {"plan": self.port.approved(event.session), "state_dir": str(self.port.path.parent).replace("\\", "/"),
-                "commit_view": self.commit_view}
-
-    def commit_view(self, repo, plan):
-        """The repository the commit runs in (none when its folder does not exist), the plan's own repository, what is
-        staged and the latest receipt."""
-        root = top(repo) if Path(repo).is_dir() else None
-        return {"repo": root or str(repo).replace("\\", "/"), "plan_repo": top(plan["root"]),
-                "staged": staged(root) if root else {}, "receipt": self.port.receipt(plan)}
+        return {"plan": self.port.approved(event.session), "state_dir": str(self.port.path.parent).replace("\\", "/")}

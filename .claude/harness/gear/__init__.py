@@ -6,5 +6,5 @@ ITEMS = [
     {"kind": "detector", "name": "forms", "ref": "harness.gear.detect.forms:Forms"},
     {"kind": "detector", "name": "tracked", "ref": "harness.gear.detect.tracked:Tracked"},
     {"kind": "detector", "name": "planfiles", "ref": "harness.gear.detect.planfiles:PlanFiles"},
-    {"kind": "detector", "name": "commit_gate", "ref": "harness.gear.detect.commit:CommitGate"},
+    {"kind": "detector", "name": "raw_commit", "ref": "harness.gear.detect.commit:RawCommit"},
 ]

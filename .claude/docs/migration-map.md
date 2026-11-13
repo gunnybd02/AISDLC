@@ -185,9 +185,13 @@ Where the result differs from section 1:
 - `mcp/actions/maint.py` still serves `pause` and `pause_status` until the maint grant (7d).
 - The size net is 400 lines for `.py`, as the target says (it was 500).
 
+Done in 7d:
+- Commits only through `step_done` (`mcp/actions/steps.py`, `utils/plan/steps.py`, `utils/git/commit.py`): the model
+  calls it, the harness checks verify, plan files and secrets, then commits or refuses. `gear/detect/commit.py` stays
+  as one finding, `commit.raw`, which `git.json` refuses for every commit from the shell. The secret scan is a short
+  list of patterns for now; `gear/detect/secret.py` (transfer.md row 3) replaces it.
+
 Left for 7d, each changes what the guards do:
-- Commits only through `step_done`: the model calls it, the harness checks verify, plan files and secrets, then
-  commits or refuses; `git.json` refuses a raw `git commit`; `detect/commit.py` goes.
-- The maint grant replaces pause, as a row of `harness.db`; open: whether `entry/hook.py` still reads it when the
-  harness is broken.
+- The maint grant replaces pause, as a row of `harness.db`; `entry/hook.py` still reads it when the harness is
+  broken (the user's decision), the one place outside `utils/ledger/db.py` that opens SQLite.
 - One store (section 6): `tx_*`, overlay and image tables, the `state/` shell guard, `db_query` without `tx_*`.

@@ -10,7 +10,6 @@ from harness.utils.plan.verify import verify
 from harness.assemble.engine.build import build_runner
 from harness.assemble.engine.ports import LedgerPort
 from harness.gear.decide.arbiter import Decide
-from harness.gear.detect.commit import CommitGate
 from harness.gear.translate.git import GitCommands
 from harness.utils.contracts import Event
 from harness.utils.git.facts import staged, top
@@ -25,14 +24,6 @@ def bash(command, cwd, kind="PreToolUse"):
 
 def commit_fact(command):
     return GitCommands().translate(bash(command, "C:/r")).get("git_commit")
-
-
-PLAN = {"id": 7, "plan_id": "pd-1", "rev": 1, "root": "C:/r", "title": "t", "files": ["a.py"], "tests": ["test_a.py"]}
-
-
-def kinds(commit, plan=PLAN, unsafe=""):
-    facts = {"plan": plan, "git_commit": {"repo": "C:/r", "unsafe": unsafe}, "commit_view": lambda repo, plan_row: commit}
-    return [f.kind for f in CommitGate().detect(bash("git commit", "C:/r"), facts)]
 
 
 class CommitFlowTest(unittest.TestCase):
@@ -131,7 +122,8 @@ class CommitFlowTest(unittest.TestCase):
         commit = bash("git commit -m change", repo)
         self.assertEqual(runner.run(commit).verdict.decision, "refuse")
         self.assertIn("passed", verify(port, Config.load(claude_dir).verify, plan_id))
-        self.assertEqual(runner.run(commit).verdict.decision, "allow")
+        self.assertEqual(runner.run(commit).verdict.decision, "refuse")  # from the shell never, verified or not
+        # a commit made some other way is still judged by what it holds: exactly the verified change delivers
         subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", "change"], check=True)
         notes = runner.run(bash("git commit -m change", repo, "PostToolUse")).notes
         self.assertIn("delivered", " ".join(notes))

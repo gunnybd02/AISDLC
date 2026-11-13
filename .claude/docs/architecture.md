@@ -29,23 +29,27 @@ AskUserQuestion                          the user answers; only "Duyệt" to tha
 Write / Edit, or a write by the shell     allowed only for the files of the approved plan (detect/tracked.py, detect/planfiles.py)
 run("verify", "run", {plan})             the unit's tests in the plan's root; the receipt keeps each file's blob id,
                                          read before and after the tests (a file that changed under them: no pass)
-git add, then git commit -m "..."        the commit alone, in the plan's repository, after a passing verify, with the
-                                         plan's files unchanged since (detect/commit.py)
-delivery (utils/plan/closing.py)                      by what the commit holds, however it was made: HEAD's parent is the commit of
-                                         the approval, and it changes only plan files (paths as git names them, case
+run("steps", "step_done", {plan, message})
+                                         the harness checks, then commits: the plan approved and its repository still
+                                         on the commit of the approval, a passing verify, each plan file as the verify
+                                         saw it, no secret in a changed file; it stages and commits only the plan's
+                                         changed files (utils/plan/steps.py, the one writer of commits)
+delivery (utils/plan/closing.py)         the commit is judged by what it holds: HEAD's parent is the commit of the
+                                         approval, and it changes only plan files (paths as git names them, case
                                          kept), each as the passing verify saw it, a plain file whose mode does not
                                          change; anything else is not delivered, and the model is told
 ```
-The commit gate refuses before a commit; delivery checks the result after it. A commit made around the gate (a
-shell form the reader does not know) can still land in the repository, but it is never delivered as the plan's.
+Every commit from the shell is refused (`commit.raw`): `git commit`, and any line that may commit another way. A
+commit made around the gate (a shell form the reader does not know) can still land in the repository; delivery
+judges it by what it holds, and anything but the verified change is never delivered as the plan's.
 `tests/e2e/test_flow.py` runs this whole flow with the hook and the MCP server as processes, on a git repository.
 
 What the gates refuse, so they always see what they judge:
 - A form whose answers the model filled in, or with a question or option label that holds `"="` (built to look like
   an answer). The response text is read for an answer only when nothing holds `"="` and each question is found once,
   at the start or after `: ` or `, `.
-- Every line with git (in Bash or PowerShell) that may commit, unless it is one plain `git [-C dir] commit` with
-  options from a short list
+- Every line with git (in Bash or PowerShell) that may commit. Before step_done the reader let through one plain
+  `git [-C dir] commit` with options from a short list
   (`-m`, `-F`, `-q`, `-s`, `-v`, `--message`, `--file`, `--quiet`, `--signoff`, `--verbose`, `--allow-empty`). So:
   a commit joined to another command or `cd`, with environment variables, run by another program (`env`, `sudo`,
   `xargs`, `eval`, `bash -c`, `python -c`...), in a group or `if`, with a newline, `$(` or a backtick, with paths or
@@ -113,8 +117,7 @@ Claude Code -> entry/hook.py   (standard library: the pause, the form, then the 
 - A finding that no rule names asks the user, and the question names the finding.
 - A rule row names its test (`tests/.../test_x.py#test_y`), and a row whose test does not exist does not load.
 - Each fact has one giver. Two that give the same fact are an error, never an overwrite.
-- Ports (`assemble/engine/ports.py`) read the world for the gears: the approved plan, the state folder, and `commit_view`,
-  which reads git only when the call is a commit.
+- Ports (`assemble/engine/ports.py`) read the world for the gears: the approved plan, and the state folder.
 - `Act` (in `runner.py`) writes back: an approval from the form (`utils/plan/approval.py`), a delivered plan after a
   commit (`utils/plan/closing.py`), each finding as a rule decision.
 - A broken harness exits 2, which blocks the call.
@@ -143,6 +146,7 @@ loader reads these by the file's syntax tree; `engine/wire_mcp.py` gives each ac
 |---|---|
 | `plan` | `plan_present`, `plan_status` |
 | `verify` | `run` |
+| `steps` | `step_done` |
 | `harness` | `pause`, `pause_status` |
 | `health` | `items`, `doctor` |
 

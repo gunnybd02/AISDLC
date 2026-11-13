@@ -10,7 +10,6 @@ from harness.utils.plan.verify import verify
 from harness.assemble.engine.build import build_runner
 from harness.assemble.engine.ports import LedgerPort
 from harness.gear.decide.arbiter import Decide
-from harness.gear.detect.commit import CommitGate
 from harness.gear.translate.git import GitCommands
 from harness.utils.contracts import Event
 from harness.utils.git.facts import staged, top
@@ -90,14 +89,6 @@ class GitCommandsTest(unittest.TestCase):
     def test_a_commit_through_powershell_is_read_too(self):
         event = Event("PreToolUse", "PowerShell", {"command": "git add a.py; git commit -m x"}, "s1", "C:/r")
         self.assertTrue(GitCommands().translate(event)["git_commit"]["unsafe"])
-
-
-PLAN = {"id": 7, "plan_id": "pd-1", "rev": 1, "root": "C:/r", "title": "t", "files": ["a.py"], "tests": ["test_a.py"]}
-
-
-def kinds(commit, plan=PLAN, unsafe=""):
-    facts = {"plan": plan, "git_commit": {"repo": "C:/r", "unsafe": unsafe}, "commit_view": lambda repo, plan_row: commit}
-    return [f.kind for f in CommitGate().detect(bash("git commit", "C:/r"), facts)]
 
 
 if __name__ == "__main__":

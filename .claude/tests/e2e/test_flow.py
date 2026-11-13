@@ -66,15 +66,12 @@ class OneFlowTest(unittest.TestCase):
         self.assertEqual(flow.decision("Write", {"file_path": str(repo / "b.py"), "content": "x"}), "deny")
         (repo / "a.py").write_text("X = 2\n", encoding="utf-8")
         (repo / "test_a.py").write_text(TEST_A, encoding="utf-8")
-        subprocess.run(["git", "-C", str(repo), "add", "a.py", "test_a.py"], check=True)
 
-        # commit: refused before the verify, allowed after it
-        commit = {"command": "git commit -m 'Set X'"}
-        self.assertEqual(flow.decision("Bash", commit), "deny")
+        # commit: never from the shell; step_done refuses before the verify and commits after it
+        self.assertEqual(flow.decision("Bash", {"command": "git commit -m 'Set X'"}), "deny")
+        self.assertIn("no passing verify", flow.mcp("steps", "step_done", {"plan": plan_id, "message": "Set X"}))
         self.assertIn("verify passed", flow.mcp("verify", "run", {"plan": plan_id}))
-        self.assertEqual(flow.decision("Bash", commit), "allow")
-        subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", "Set X"], check=True)
-        self.assertIn("delivered", flow.hook("PostToolUse", "Bash", commit, {"stdout": ""})["additionalContext"])
+        self.assertIn("delivered", flow.mcp("steps", "step_done", {"plan": plan_id, "message": "Set X"}))
 
         # delivered: a new edit needs a new plan
         self.assertEqual(flow.decision("Write", write_a), "deny")
@@ -88,7 +85,7 @@ class OneFlowTest(unittest.TestCase):
         head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout
         self.assertEqual(ledger.one("SELECT commit_sha FROM rec_commits")["commit_sha"], head.strip())
         rules = {r["rule"] for r in ledger.all("SELECT rule FROM act_rule_decisions")}
-        self.assertLessEqual({"plan.none", "plan.outside", "commit.unverified"}, rules)
+        self.assertLessEqual({"plan.none", "plan.outside", "commit.raw"}, rules)
         for table in ("rec_plans", "rec_commits", "pl_verify"):
             self.assertTrue(Recorder.chain_ok(ledger, table), table)
         ledger.close()
