@@ -8,8 +8,8 @@ the port's commit_view, called only for a safe commit:
 - commit.changed: a staged file whose content is not the one the verify saw."""
 import os
 
-from harness.gear.detect_plan import key, named, rel_key, relative
 from harness.utils.contracts import Detector, Finding
+from harness.utils.plan.files import key, named, rel_key, relative
 
 
 class CommitGate(Detector):

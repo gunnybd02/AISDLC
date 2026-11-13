@@ -14,13 +14,12 @@ import time
 import uuid
 from pathlib import Path
 
-from harness.utils.contracts import Port
+from harness.utils.contracts import YES, Port
 from harness.utils.git_run import head, staged, top
 from harness.utils.ledger.db import Ledger
 from harness.utils.ledger.recorder import Recorder
 
-YES = "Duyệt"
-HEAD = "Duyệt plan "
+HEAD = f"{YES} plan "
 
 
 def question(items, plan_id, rev):

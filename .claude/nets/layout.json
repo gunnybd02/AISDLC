@@ -6,6 +6,7 @@
     "harness/__init__.py",
     "harness/utils/*.py",
     "harness/utils/ledger/*.py",
+    "harness/utils/plan/*.py",
     "harness/utils/ledger/schema.sql",
     "harness/mcp/*.py",
     "harness/gear/*.py",

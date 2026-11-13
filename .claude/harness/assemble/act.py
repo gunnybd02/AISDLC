@@ -8,8 +8,7 @@
 - A call with findings: each finding is kept as a rule decision, with the word Claude Code was given."""
 import os
 
-from harness.assemble.ports import YES
-from harness.utils.contracts import CLAUDE_DECISION
+from harness.utils.contracts import CLAUDE_DECISION, YES
 from harness.utils.git_run import committed, head, parent, top
 
 APPROVED = "GATE: the user approved plan {plan} rev {rev} in the form. You may edit its files: {files}."

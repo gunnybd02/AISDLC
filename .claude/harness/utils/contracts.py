@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 ALLOW, ASK, REFUSE = "allow", "ask", "refuse"
 VERDICTS = (ALLOW, ASK, REFUSE)  # from the weakest to the strongest
 CLAUDE_DECISION = {ASK: "ask", REFUSE: "deny"}  # what Claude Code reads; allow says nothing
+YES = "Duy\u1ec7t"  # the user's word in a form that approves (a plan, a grant)
 
 
 @dataclass(frozen=True)
