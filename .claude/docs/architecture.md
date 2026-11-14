@@ -34,8 +34,14 @@ AskUserQuestion                          the user answers; only "Duyệt" to tha
                                          rec_plans, pl_behaviors with tests, the ticket, pl_approval, the events
                                          approved and executing, pl_logs gate-open and form
 Write / Edit, or a write by the shell     allowed only for the files of the approved plan (detect/tracked.py, detect/planfiles.py)
-run("verify", "run", {plan})             the unit's tests in the plan's root; the receipt keeps each file's blob id,
-                                         read before and after the tests (a file that changed under them: no pass)
+python3 -m entry.cli verify [--in F] [--timeout S] [-- cmd]  (or run("verify", "run", {plan})): the test command
+                                         (after --, else the config's verify) of the session's plan, no shell, under
+                                         a lock in the git common dir (shared with worktrees), with HARNESS_DB set to
+                                         a copy of the live ledger; exit 124 on the timeout (600 s, 1..3600), 127 when
+                                         it cannot start; the receipt keeps each file's blob id read before and after
+                                         the tests (a file that changed under them: no pass). The doors add file,
+                                         add test, add drop-file, add retire-test and behaviors add|list|check|retire
+                                         widen or shrink the plan with chained pl_file_grants and pl_behaviors rows
 run("plan", "step_done", {message})      the current step of the session's plan (utils/plan/steps.py): refused
                                          with no message, nothing changed, a file of another step, what the step
                                          owes (its behaviours' tests, a green verify of the current files), a

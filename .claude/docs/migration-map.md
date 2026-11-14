@@ -222,6 +222,12 @@ Done in 7d:
   (`utils/plan/files.py`). Schema v5 has no `pl_commits` or `pl_verify_proofs`: step commits go to `rec_commits`, and
   a green verify of the full test command proves every active behaviour.
 
+- Plan lifecycle, part 5: `entry/cli.py` and `engine/cli_wire.py` with `verify` (lock `utils/plan/verify_lock.py`,
+  ledger copy, timeout codes) and the doors of `utils/plan/grants.py` (add file, add test, add drop-file, add
+  retire-test, behaviors add, list, check, retire) and the behaviour registry `step_done` reads. Not yet: per-unit
+  verify rules (no units declared), `--full` is the config command, and the harness itself does not read HARNESS_DB
+  (it only hands the copy to the tests).
+
 Left for 7d, each waits for the feature it stores:
 - One store, the rest of section 6: transcripts in `tx_*` tables, overlays, Jira/Confluence images as BLOBs. None
   of these features is in this harness yet; each lands in `harness.db` when it moves in.

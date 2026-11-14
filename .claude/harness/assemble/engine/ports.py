@@ -19,7 +19,8 @@ from harness.assemble.engine.config import Config, ConfigError
 from harness.utils.contracts import YES, Port
 from harness.utils.git.branches import DEFAULT_PROTECTED, current, is_protected
 from harness.utils.git.facts import head, top, unpushed_files
-from harness.utils.plan import opening, render, request, revisions, tickets
+from harness.utils.plan import grants, opening, render, request, revisions, tickets
+from harness.utils.plan.verify import dirty
 from harness.utils.plan.desk import new_id
 from harness.utils.plan.files import key, relative
 from harness.utils.ledger.db import Ledger
@@ -165,13 +166,28 @@ class LedgerPort:
             patterns = DEFAULT_PROTECTED
         return is_protected(branch, patterns)
 
-    def behavior_status(self, plan):
-        """{behaviour id: active | skipped | retired} of the plan, replayed from pl_behaviors in the order written."""
-        out = {}
-        for r in self.rows("SELECT id, op FROM pl_behaviors WHERE plan_id IN (?, ?) ORDER BY rowid",
-                           (plan["id"], plan.get("rootId", plan["id"]))):
-            out[r["id"]] = {"add": "active", "skip": "skipped", "retire": "retired"}.get(r["op"], out.get(r["id"]))
-        return out
+    def registry(self, plan):
+        """The behaviour registry of the plan (utils/plan/grants.replay), from pl_behaviors in the order written."""
+        ids = sorted({plan["id"], plan.get("rootId", plan["id"])})
+        rows = self.rows(f"SELECT op, id, entry FROM pl_behaviors WHERE plan_id IN ({', '.join('?' * len(ids))}) "
+                         "ORDER BY rowid", ids)
+        return grants.replay([(r["op"], r["id"], r["entry"]) for r in rows])
+
+    def changed_files(self, plan):
+        return dirty(plan)
+
+    def door(self, sid, plan, grants=(), behaviors=()):
+        """The rows of one CLI door, in one transaction: file grants (op, absolute path, why) and behaviour rows
+        (op, id, entry), all chained."""
+        def change(con, rec):
+            for op, path, why in grants:
+                rec.insert(con, "pl_file_grants", {"uid": uuid.uuid4().hex, "sid": sid, "plan_id": plan["id"],
+                                                   "op": op, "file": path, "why": why, "at": now()})
+            for op, bid, entry in behaviors:
+                rec.insert(con, "pl_behaviors", {"uid": uuid.uuid4().hex, "sid": sid, "plan_id": plan["id"],
+                                                 "repo": plan["root"], "op": op, "id": bid,
+                                                 "entry": json.dumps(entry, ensure_ascii=False), "at": now()})
+        self.write(change)
 
     def step_commit(self, sid, ticket, plan, repo, sha, fixing):
         """The step's commit is made: keep it; the ticket moves on (after the last step: deliver, and a home plan

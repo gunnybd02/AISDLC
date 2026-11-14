@@ -17,6 +17,7 @@ from harness.utils.git.branches import current
 from harness.utils.git.commit import commit
 from harness.utils.git.facts import blob, head, top
 from harness.utils.plan.files import matches
+from harness.utils.plan.grants import test_missing
 from harness.utils.plan.tickets import EXECUTE, approved_plan, steps_of
 from harness.utils.plan.verify import dirty
 
@@ -64,22 +65,28 @@ def step_behaviors(plan, n):
 
 
 def owed(port, plan, n, files):
-    """What the step n still owes before its commit of files (paths from the root)."""
-    out, status = [], port.behavior_status(plan)
-    for b in step_behaviors(plan, n):
-        if status.get(b["id"]) in ("skipped", "retired"):
+    """What the step n still owes before its commit of files (paths from the root): each behaviour of the step active
+    with tests that exist (the registry's, else the plan's), every pending or gone behaviour of the plan, and a green
+    verify that saw the current content of every file to commit."""
+    out, registry = [], port.registry(plan)
+    mine = {b["id"] for b in step_behaviors(plan, n)}
+    for bid in sorted(mine | set(registry)):
+        b = registry.get(bid, {})
+        if b.get("status") in ("skipped", "retired"):
             continue
-        if not b.get("test"):
-            out.append(f"behaviour {b['id']} has no test: add one with add test")
-        elif not os.path.isfile(os.path.join(plan["root"], b["test"].split("#")[0])):
-            out.append(f"behaviour {b['id']}: its test {b['test']} is not written yet")
-    for b in plan.get("behaviors", []):
-        if b.get("test") and status.get(b["id"]) == "active" and b not in step_behaviors(plan, n) and \
-                not os.path.isfile(os.path.join(plan["root"], b["test"].split("#")[0])):
-            out.append(f"behaviour {b['id']}: its test {b['test']} is gone")
+        plan_b = next((x for x in plan.get("behaviors", []) if x["id"] == bid), {})
+        tests = b.get("tests") or ([plan_b["test"]] if plan_b.get("test") else [])
+        if bid in mine and not tests:
+            out.append(f"behaviour {bid} has no test: add one with add test")
+            continue
+        for test in tests:
+            missing = test_missing(plan["root"], test)
+            if missing:
+                out.append(f"behaviour {bid}: its test {test} is not written yet ({missing})" if bid in mine or
+                           b.get("status") == "pending" else f"behaviour {bid}: its test {test} is gone ({missing})")
     receipt = port.receipt(plan)
     if not receipt or not receipt.get("ok"):
-        out.append(f"no green verify: run('verify', 'run', {{'plan': '{plan['plan_id']}'}})")
+        out.append(f"no green verify: run('verify', 'run', {{'plan': '{plan['plan_id']}'}}) or python3 -m entry.cli verify")
     else:
         moved = [f for f in files if receipt["files"].get(f) != blob(plan["root"], f)]
         if moved:
