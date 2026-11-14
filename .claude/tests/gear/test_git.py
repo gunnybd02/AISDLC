@@ -95,7 +95,8 @@ class GitCommandsTest(unittest.TestCase):
 
 
 class GitRulesTest(unittest.TestCase):
-    """The git rules P1-P8 on real repositories: one remote, a branch of work and a protected main."""
+    """The git rules P1-P8 on real repositories: one remote, a free branch (work) and a protected main. They hold only
+    where a protected branch is touched, and each one asks."""
 
     def setUp(self):
         self.repo = git_repo(self, {"a.py": "X = 1\n"})  # on branch work
@@ -110,83 +111,82 @@ class GitRulesTest(unittest.TestCase):
         facts = {**GitCommands().translate(event), "git_view": view or self.view}
         return sorted({f.kind for f in GitRules().detect(event, facts)})
 
-    def test_p1_adding_everything_is_refused(self):
+    def on_main(self):
+        git(self.repo, "checkout", "-q", "-b", "main")
+
+    def test_a_free_branch_is_free(self):
+        for command in ("git add -A", "git commit -nm x", "git reset --hard HEAD~1", "git push --force origin work",
+                        "git push -f", "git -c core.hooksPath=/x push origin work", "git add CLAUDE.md", "git merge x"):
+            with self.subTest(command=command):
+                self.assertEqual(self.found(command), [])
+
+    def test_p1_adding_everything_is_asked(self):
+        self.on_main()
         for command in ("git add -A", "git add .", "git add --all", "git add :/", "git -C . add -A"):
             with self.subTest(command=command):
                 self.assertEqual(self.found(command), ["git.add_all"])
         self.assertEqual(self.found("git add a.py b.py"), [])
 
-    def test_p2_skipping_the_hooks_is_refused(self):
-        for command in ("git push --no-verify origin work", "git merge --no-verify x"):
-            with self.subTest(command=command):
-                self.assertIn("git.no_verify", self.found(command))
-        self.assertIn("git.no_verify", self.found("git commit -nm x"))
-        self.assertNotIn("git.no_verify", self.found("git push -n origin work"))  # push -n is a dry run
+    def test_p2_skipping_the_hooks_is_asked(self):
+        self.assertIn("git.no_verify", self.found("git push --no-verify origin main"))
+        self.on_main()
+        self.assertIn("git.no_verify", self.found("git merge --no-verify x"))
+        self.assertNotIn("git.no_verify", self.found("git push -n origin main"))  # push -n is a dry run
 
-    def test_p3_reset_hard_is_refused(self):
-        self.assertEqual(self.found("git reset --hard HEAD~1"), ["git.reset_hard"])
-        self.assertEqual(self.found("git reset a.py"), [])
+    def test_p3_reset_hard_is_asked(self):
+        self.on_main()
+        self.assertIn("git.reset_hard", self.found("git reset --hard HEAD~1"))
 
-    def test_p4_a_force_push_is_refused(self):
-        for command in ("git push --force origin work", "git push -f", "git push -fu origin work",
-                        "git push --force-with-lease origin work", "git push --force-with-lease=work origin work",
-                        "git push origin +work"):
+    def test_p4_a_force_push_is_asked(self):
+        for command in ("git push --force origin main", "git push -fu origin work:main", "git push origin +main",
+                        "git push --force-with-lease=main origin main", "git push --mirror origin"):
             with self.subTest(command=command):
                 self.assertIn("git.force_push", self.found(command))
-        self.assertEqual(self.found("git push origin work"), [])
 
-    def test_p5_a_write_on_a_protected_branch_is_refused(self):
+    def test_p5_a_write_on_a_protected_branch_is_asked(self):
         for command in ("git push origin main", "git push origin work:main", "git push origin HEAD:refs/heads/main",
                         "git push origin release/2.1", "git push --all origin", "git push --delete origin main",
                         "git branch -D main"):
             with self.subTest(command=command):
                 self.assertIn("git.protected_write", self.found(command))
-        git(self.repo, "checkout", "-q", "-b", "main")
-        for command in ("git push", "git merge work", "git rebase work", "git pull", "git reset HEAD~1",
-                        "git cherry-pick abc"):
+        self.on_main()
+        for command in ("git push", "git merge work", "git rebase work", "git pull", "git reset HEAD~1"):
             with self.subTest(on="main", command=command):
                 self.assertIn("git.protected_write", self.found(command))
-        git(self.repo, "checkout", "-q", "work")
-        for command in ("git push", "git merge main", "git push origin work", "git branch -d old"):
-            with self.subTest(on="work", command=command):
-                self.assertNotIn("git.protected_write", self.found(command))
 
-    def test_p6_the_home_never_pushes(self):
+    def test_p6_the_home_asks_before_it_pushes_to_a_protected_branch(self):
         home = GitView(self.repo / ".claude", ("main",))
-        self.assertIn("push.never_repo", self.found("git push origin work", home))
-        self.assertNotIn("push.never_repo", self.found("git push origin work"))
+        self.assertIn("push.never_repo", self.found("git push origin work:main", home))
+        self.assertEqual(self.found("git push origin work", home), [])
 
-    def test_p7_agent_files_never_reach_a_remote(self):
-        for command in ("git add .claude/settings.json", "git add CLAUDE.md", "git add sub/.mcp.json"):
-            with self.subTest(command=command):
-                self.assertEqual(self.found(command), ["push.agent_files"])
-        self.assertEqual(self.found("git push origin work"), [])
+    def test_p7_agent_files_to_a_protected_branch_are_asked(self):
         (self.repo / ".claude").mkdir()
         (self.repo / ".claude" / "notes.md").write_text("x", encoding="utf-8")
         git(self.repo, "add", ".claude/notes.md")
         git(self.repo, "commit", "-q", "-m", "agent file")
-        for command in ("git push origin work", "git push", "git push origin HEAD:other"):
-            with self.subTest(command=command):
-                self.assertIn("push.agent_files", self.found(command))
+        self.assertIn("push.agent_files", self.found("git push origin work:main"))
+        self.assertEqual(self.found("git push origin work"), [])
+        self.on_main()
+        self.assertEqual(self.found("git add CLAUDE.md"), ["push.agent_files"])
 
     def test_p8_a_global_option_the_gate_does_not_follow_is_asked(self):
-        for command in ("git -c core.hooksPath=/dev/null push origin work", "git --git-dir=/x/.git status",
-                        "git --work-tree=/x add a.py"):
+        self.on_main()
+        for command in ("git -c core.hooksPath=/dev/null push", "git --work-tree=/x add a.py"):
             with self.subTest(command=command):
                 self.assertIn("git.unread", self.found(command))
         self.assertEqual(self.found("git -C . status"), [])
 
-    def test_the_rules_say_why_and_the_floor_runs_them(self):
+    def test_the_rules_ask_and_never_refuse(self):
         rules = Decide.load(CLAUDE_DIR).rules
         for kind in ("git.add_all", "git.no_verify", "git.reset_hard", "git.force_push", "git.protected_write",
-                     "push.never_repo", "push.agent_files"):
+                     "push.never_repo", "push.agent_files", "git.unread"):
             with self.subTest(kind=kind):
-                self.assertEqual(rules[kind]["verdict"], "refuse")
-        self.assertEqual(rules["git.unread"]["verdict"], "ask")
+                self.assertEqual(rules[kind]["verdict"], "ask")
+                self.assertIn("run('git', 'run'", rules[kind]["why"])
         self.assertIn("git_rules", PipelineBook(CLAUDE_DIR / "harness" / "assemble" / "pipelines").resolve("base").detectors)
 
     def test_only_a_call_before_it_runs_is_judged(self):
-        event = Event("PostToolUse", "Bash", {"command": "git push --force"}, "s1", str(self.repo))
+        event = Event("PostToolUse", "Bash", {"command": "git push --force origin main"}, "s1", str(self.repo))
         self.assertEqual(GitRules().detect(event, {**GitCommands().translate(event), "git_view": self.view}), [])
 
 

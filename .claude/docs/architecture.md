@@ -59,14 +59,16 @@ What the gates refuse, so they always see what they judge:
   A first word that is git spelled another way (`g\it`) or `git-<subcommand>` is refused; a commit in a folder that
   does not exist is outside the plan.
 - The git rules (`gear/detect/git.py` on the git commands `gear/translate/git_cli.py` reads, rows in
-  `gear/rules/git.json`): `git add -A`/`--all`/`.` (P1), `--no-verify` or `commit -n` (P2), `reset --hard` (P3), a
-  force push: `--force`, `-f`, `--force-with-lease`, `--mirror`, `+refspec` (P4), a write on a protected branch: a
-  push to one or `--all`, a merge, rebase, cherry-pick, revert, am, pull or reset while on one, a `branch -d/-D/-f/-m`
-  of one (P5; `protected` in `project.json`, main and master by default), a push from the home, the repository of the
-  harness (P6, `push.never_repo`), agent files (`.claude/`, `CLAUDE.md`, `.mcp.json`, `AGENTS.md`) staged or in the
-  commits a push would send (P7, `push.agent_files`) are refused; git with a global option the gate does not follow
-  (`-c`, `--git-dir`, `--work-tree`) is asked (P8). The git facts come from the port's `GitView`, read only when a
-  command needs them.
+  `gear/rules/git.json`) hold only where a protected branch is touched (`protected` in `project.json`, main and master
+  by default): the repository is on one, a push names one or `--all`/`--mirror`, a `branch -d/-D/-f/-m` names one.
+  There each one asks, never refuses: `git add -A`/`.` (P1), `--no-verify` or `commit -n` (P2), `reset --hard` (P3),
+  a force push (P4), any write on the branch (P5), a push from the home (P6), agent files staged or pushed (P7), git
+  with `-c`/`--git-dir`/`--work-tree` (P8). Elsewhere git is free.
+- The git block, `run("git", "run", {repo, args})`, runs git through the harness. It judges the command as the hook
+  does (`HarnessGit`, so the shell reader asks nothing of it): nothing to ask, it runs; asked, it gives the form
+  question `Duyệt git <args> trong <repo> [<code>]?`, the user's approval word is kept in `pl_asks` (`utils/git/asks.py`,
+  through `Act`), and the next run of exactly that command uses it up; refused (`git commit`: step_done), it never runs.
+  Every run is kept in `pl_git_runs` with the rules that asked and the code of the user's word.
 - A plan path inside `.git`, with `~`, `%` or a comma, or a title with a double quote.
 - Paths are compared as the system resolves them: real paths (8.3 short names expanded), without a `\\?\` prefix.
 
@@ -179,6 +181,7 @@ judged.
 | `plan` | `plan_present`, `plan_status` |
 | `verify` | `run` |
 | `steps` | `step_done` |
+| `git` | `run` |
 | `ledger` | `db_query` |
 | `maint` | `grant`, `status` |
 | `health` | `items`, `doctor` |

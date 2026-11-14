@@ -2,6 +2,7 @@
 the classes of the ACTIONS literals of mcp/actions/*.py; the ports are SERVER_PORTS (engine/ports.py), built here, and
 run hands each action only those it names in needs. The judge port is the hook's own runner: a write action is judged
 by the same rules as a tool call."""
+import shlex
 from pathlib import Path
 
 from harness.assemble.engine.build import CLAUDE_DIR, build_runner, items_of
@@ -9,8 +10,15 @@ from harness.assemble.engine.checks import doctor, report
 from harness.assemble.engine.config import Config
 from harness.assemble.engine.loader import Loader
 from harness.assemble.engine.ports import SERVER_PORTS, LedgerPort
+from harness.utils.contracts import Event
 
 SERVER = ("harness", "0.1")
+
+
+def git_event(repo, words):
+    """The event the git block's command is judged as: a git line in repo, as the git rules read one (HarnessGit: not
+    a shell of the user's, so the shell reader asks nothing of it)."""
+    return Event("PreToolUse", "HarnessGit", {"command": shlex.join(["git", *words])}, "", str(repo))
 
 
 def ports_of(items, claude_dir):
@@ -18,6 +26,7 @@ def ports_of(items, claude_dir):
     ledger = LedgerPort(claude_dir)
     ports = {"plans": ledger, "ledger": ledger, "verify_command": lambda: Config.load(claude_dir).verify,
              "items": items, "doctor": lambda: report(doctor(claude_dir)),
+             "git_judge": lambda repo, words: build_runner(claude_dir, items).run(git_event(repo, words)).verdict,
              "judge": lambda event: build_runner(claude_dir, items).run(event).verdict}
     assert tuple(ports) == SERVER_PORTS, "ports_of builds exactly SERVER_PORTS"
     return ports

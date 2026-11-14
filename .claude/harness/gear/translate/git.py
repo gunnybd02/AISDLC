@@ -34,7 +34,7 @@ SAFE_SHORT = set("qsv")
 VALUE_SHORT = set("mF")
 SAFE_LONG = {"--quiet", "--signoff", "--verbose", "--allow-empty"}
 VALUE_LONG = {"--message", "--file"}
-SHELL_TOOLS = {"Bash": "bash", "PowerShell": "powershell"}
+SHELL_TOOLS = {"Bash": "bash", "PowerShell": "powershell", "HarnessGit": "bash"}  # HarnessGit: the git block's own
 
 
 def commit_flags(args):

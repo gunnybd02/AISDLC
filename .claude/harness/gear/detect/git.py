@@ -1,5 +1,7 @@
 """GitRules: the findings of every git command of a shell line before it runs (gear/translate/git_cli.py), against the
-git rules of docs/architecture.md (gear/rules/git.json):
+git rules of docs/architecture.md (gear/rules/git.json). They hold only where a protected branch is touched: the
+repository is on one, a push names one (or --all, --mirror), a branch -d/-D/-f/-m names one. Elsewhere git is free.
+Each one asks the user, never refuses: the git block (run('git', 'run')) keeps the user's word in SQL.
 - git.add_all: git add -A / --all / . / :/ / * - stage the files by name;
 - git.no_verify: --no-verify, or commit -n - the repository's own hooks are never skipped;
 - git.reset_hard: git reset --hard - uncommitted work is never thrown away;
@@ -63,6 +65,8 @@ class GitRules(Detector):
 
     def check(self, action, view):
         sub, args, repo = action["sub"], action["args"], action["repo"]
+        if view is None or not self.touches_protected(sub, args, repo, view):
+            return []
         out = []
         if action["globals"]:
             out.append(Finding("git.unread", f"git {' '.join(action['globals'])} {sub}"))
@@ -85,6 +89,17 @@ class GitRules(Detector):
             if named:
                 out.append(Finding("git.protected_write", f"git branch {' '.join(args)}"))
         return out
+
+    @staticmethod
+    def touches_protected(sub, args, repo, view):
+        if view.protected(view.branch_of(repo)):
+            return True
+        if sub == "push":
+            options, _, refspecs = push_parts(args)
+            dsts = [s.lstrip("+").partition(":")[2] or s.lstrip("+") for s in refspecs]
+            return bool({"--all", "--mirror"} & set(options)) or any(view.protected(d.removeprefix("refs/heads/"))
+                                                                    for d in dsts)
+        return sub == "branch" and any(not a.startswith("-") and view.protected(a) for a in args)
 
     def push(self, args, repo, view):
         options, remote, refspecs = push_parts(args)

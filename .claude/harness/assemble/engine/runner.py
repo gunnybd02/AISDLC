@@ -4,6 +4,7 @@ give the same fact are an error of the pipeline, never a silent overwrite."""
 from dataclasses import dataclass
 
 from harness.utils.contracts import CLAUDE_DECISION, Port
+from harness.utils.git.asks import accepts
 from harness.utils.plan.approval import approvals
 from harness.utils.plan.closing import delivery
 
@@ -49,6 +50,7 @@ class Act:
         notes = []
         if event.kind == "PostToolUse":
             notes += approvals(self.port, event.session, facts.get("answers") or {})
+            notes += accepts(self.port, facts.get("answers") or {})
             notes += delivery(self.port, event.session, facts.get("git_commit"), facts.get("plan"))
         for finding in verdict.findings:
             self.port.decision(event, facts.get("plan"), finding, CLAUDE_DECISION.get(verdict.decision, verdict.decision))

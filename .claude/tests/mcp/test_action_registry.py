@@ -14,6 +14,7 @@ PINNED = {
     "plan.plan_present": WRITE, "plan.plan_status": READ,
     "steps.step_done": WRITE,
     "verify.run": WRITE,
+    "git.run": WRITE,
 }
 
 

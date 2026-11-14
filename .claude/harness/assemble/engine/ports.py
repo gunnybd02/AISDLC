@@ -25,7 +25,7 @@ HEAD = f"{YES} plan "
 
 # The ports an MCP action may name in needs (built in wire_mcp.ports_of); the server adds the judge, which run uses for
 # a write action. The doctor checks every action's needs against SERVER_PORTS.
-ACTION_PORTS = ("plans", "ledger", "verify_command", "items", "doctor")
+ACTION_PORTS = ("plans", "ledger", "verify_command", "items", "doctor", "git_judge")
 SERVER_PORTS = ACTION_PORTS + ("judge",)
 
 

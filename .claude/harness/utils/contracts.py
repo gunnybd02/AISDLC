@@ -93,3 +93,12 @@ def judged_allow(verdict):
     """Whether a verdict lets a write action run: an allow that a rule row decided. An allow with no finding is no rule's
     decision (write-unjudged), and an ask is not an allow: the server cannot ask the user."""
     return verdict.decision == ALLOW and bool(verdict.findings)
+
+
+def asked(verdict):
+    """Whether the rules want the user's word before the call runs."""
+    return verdict.decision == ASK
+
+
+def refused(verdict):
+    return verdict.decision == REFUSE

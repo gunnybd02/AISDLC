@@ -24,3 +24,12 @@ def git(repo, *args, timeout=TIMEOUT, binary=False):
     if p.returncode != 0:
         raise GitError(f"git {' '.join(args)}: {p.stderr.decode('utf-8', 'replace').strip()}")
     return p.stdout if binary else p.stdout.decode("utf-8", "replace")
+
+
+def run_git(repo, words, timeout=120):
+    """(exit code, output) of `git -C repo words`, stdout and stderr together; -1 when git could not run."""
+    try:
+        p = subprocess.run(["git", "-C", str(repo), *words], capture_output=True, timeout=timeout, env=env())
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return -1, f"{type(e).__name__}: {e}"
+    return p.returncode, (p.stdout + p.stderr).decode("utf-8", "replace")
