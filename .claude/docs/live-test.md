@@ -77,3 +77,15 @@ git clone -q --depth 1 https://github.com/gunnybd02/AISDLC "$HOME/.harness" && p
 
 Checked: a fresh home, the clone, install, then a session in an unrelated repository: the `harness` MCP server
 connected and the first write was refused (no plan).
+
+In a cloud session Claude Code can be started before the setup script runs: the hooks are read when they fire, so they
+govern it, but the MCP server is loaded only at start, so the session has no `mcp__harness__` tools. The same tools
+are a shell command away (the same server, actions and judge; the hook links the session that runs it):
+
+```bash
+python3 ~/.harness/.claude/entry/boot.py cli tool guide plan
+python3 ~/.harness/.claude/entry/boot.py cli tool run plan plan_present '{"plan": {"title": "...", "files": ["a.py"]}}'
+python3 ~/.harness/.claude/entry/boot.py cli tool find verify tests
+```
+
+A refusal that names `run(...)` says so, with the home's own path.

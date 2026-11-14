@@ -2,6 +2,7 @@
 the blocks by name, select.py picks the pipeline by the session's plan, the pipeline names the translators and
 detectors."""
 import os
+from dataclasses import replace
 from pathlib import Path
 
 from harness.assemble.engine.config import Config
@@ -20,6 +21,8 @@ def code_of(claude_dir):
     """The folder whose code runs for the home claude_dir: the release boot chose, or the home itself."""
     return Path(os.environ.get(CODE_ENV) or claude_dir)
 BASES = {"translator": Translator, "detector": Detector}
+SHELL_HINT = (" (No mcp__harness__ tools in this session? The same from the shell: python3 \"{boot}\" cli tool run "
+              "<block> <action> '<args as JSON>'; python3 \"{boot}\" cli tool guide <block> lists a block's actions.)")
 
 
 class BuildError(ValueError):
@@ -55,10 +58,18 @@ def build_runner(claude_dir=CLAUDE_DIR, items=None, plan=None):
                   ports=[PlanState(port, config.protected, config.banned)], act=Act(port))
 
 
+def with_hint(reason, claude_dir):
+    """A reason that names run(...) also says how to call it from the shell (engine/cli_tool.py)."""
+    if "run('" not in reason:
+        return reason
+    return reason + SHELL_HINT.format(boot=(Path(claude_dir) / "entry" / "boot.py").as_posix())
+
+
 def run_hook(text, claude_dir=CLAUDE_DIR):
     """A hook payload in, Claude Code's answer out ("" when the call is allowed and there is nothing to say)."""
     items = items_of(claude_dir)
     hook_io = Loader.resolve(items["hook_io"])
     event = hook_io.read(text)
     outcome = build_runner(claude_dir, items, LedgerPort(claude_dir).approved(event.session)).run(event)
-    return hook_io.write(event, outcome.verdict, outcome.notes)
+    verdict = replace(outcome.verdict, reason=with_hint(outcome.verdict.reason, claude_dir))
+    return hook_io.write(event, verdict, outcome.notes)

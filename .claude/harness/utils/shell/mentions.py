@@ -29,6 +29,12 @@ def harness_own(command):
     return bool(args) and re.search(r"(^|[\\/])entry[\\/]\w+\.py$", args[0]) is not None
 
 
+def runs_harness(command_line, dialect="bash"):
+    """Whether a shell line runs the harness itself in one of its commands (the session's link to the harness's CLI,
+    as a call of its MCP tools is)."""
+    return any(c.words and not c.words[0].dynamic and harness_own(c) for c in read(command_line, dialect).commands)
+
+
 def texts(command):
     """The texts of the words that may name a place, options' values split off."""
     out = []

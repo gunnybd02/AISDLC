@@ -1,12 +1,13 @@
-"""The CLI doors (entry/cli.py): verify and the doors that widen or shrink the approved plan of a session (docs 04,
-sections 4 and 5). The session is --session, else HARNESS_SESSION, else the last one the hook saw. Each door answers
+"""The CLI doors (entry/cli.py): verify, tool (the MCP tools from a terminal, cli_tool.py) and the doors that widen or
+shrink the approved plan of a session (docs 04, sections 4 and 5). The session is --session, else HARNESS_SESSION, else
+the last one the hook saw (tool: always that one, as for the MCP server). Each door answers
 (exit code, text): 0 done, 1 refused."""
 import argparse
 import os
 import shlex
 from pathlib import Path
 
-from harness.assemble.engine import cli_live
+from harness.assemble.engine import cli_live, cli_tool
 from harness.assemble.engine.config import Config, ConfigError
 from harness.assemble.engine.ports import LedgerPort
 from harness.utils.plan import grants
@@ -60,6 +61,7 @@ def parser():
             sub.add_argument("--log", action="store_true")
     for sub in (b_add,):
         sub.add_argument("--session")
+    cli_tool.add_parser(doors)
     return top
 
 
@@ -105,6 +107,8 @@ def run_cli(argv, claude_dir):
     try:
         if args.door == "verify":
             return verify(port, sid, args, Path(claude_dir))
+        if args.door == "tool":  # the session is the one the hook saw run this command, as for the MCP server
+            return cli_tool.tool_door(args, Path(claude_dir))
         if args.door == "live":
             return (0, cli_live.status(Path(claude_dir))) if args.what == "status" else \
                 cli_live.publish_door(port, Path(claude_dir))
