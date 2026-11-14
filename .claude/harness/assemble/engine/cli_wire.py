@@ -42,7 +42,7 @@ def parser():
             else:
                 sub.add_argument(flag, required=True)
     live = doors.add_parser("live", exit_on_error=False).add_subparsers(dest="what", required=True)
-    for name in ("status", "publish"):
+    for name in ("status", "publish", "update"):
         live.add_parser(name, exit_on_error=False).add_argument("--session")
     beh = doors.add_parser("behaviors", exit_on_error=False).add_subparsers(dest="what", required=True)
     b_add = beh.add_parser("add", exit_on_error=False)
@@ -110,8 +110,10 @@ def run_cli(argv, claude_dir):
         if args.door == "tool":  # the session is the one the hook saw run this command, as for the MCP server
             return cli_tool.tool_door(args, Path(claude_dir))
         if args.door == "live":
-            return (0, cli_live.status(Path(claude_dir))) if args.what == "status" else \
-                cli_live.publish_door(port, Path(claude_dir))
+            if args.what == "status":
+                return 0, cli_live.status(Path(claude_dir))
+            door = cli_live.update_door if args.what == "update" else cli_live.publish_door
+            return door(port, Path(claude_dir))
         plan = plan_of(port, sid)
         if args.door == "add":
             text = {"file": lambda: grants.add_file(port, sid, plan, args.target, args.behavior, args.why),
