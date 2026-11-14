@@ -27,6 +27,7 @@ def ports_of(items, claude_dir):
     ports = {"plans": ledger, "ledger": ledger, "verify_command": lambda: Config.load(claude_dir).verify,
              "items": items, "doctor": lambda: report(doctor(claude_dir)),
              "git_judge": lambda repo, words: build_runner(claude_dir, items).run(git_event(repo, words)).verdict,
+             "session": ledger.session,
              "judge": lambda event: build_runner(claude_dir, items).run(event).verdict}
     assert tuple(ports) == SERVER_PORTS, "ports_of builds exactly SERVER_PORTS"
     return ports

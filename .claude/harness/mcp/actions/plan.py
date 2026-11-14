@@ -25,11 +25,19 @@ class PlanPresent(McpAction):
 
 class PlanStatus(McpAction):
     block, name, effect = "plan", "plan_status", READ
-    summary = "The plans that wait for an approval"
-    needs = ("plans",)
+    summary = "The plans that wait for an approval, and the ticket of this session: its phase, plan and commits"
+    needs = ("plans", "session")
 
     def run(self, ctx, args):
-        waiting = ctx.ports["plans"].waiting()
-        if not waiting:
-            return "No plan waits for an approval."
-        return "\n".join(f"{w['plan_id']} rev {w['rev']} waits: {w['items']['title']}" for w in waiting)
+        port, sid = ctx.ports["plans"], ctx.ports["session"]()
+        waiting = port.waiting()
+        lines = [f"{w['plan_id']} rev {w['rev']} waits: {w['items']['title']}" for w in waiting] or \
+            ["No plan waits for an approval."]
+        ticket = port.ticket(sid) if sid else None
+        if ticket is None:
+            return "\n".join(lines + ["This session has no ticket (phase prepare)."])
+        plan = ticket.get("plan") or {}
+        state = ticket["state"] + (f" ({ticket['closeReason']})" if ticket.get("closeReason") else "")
+        lines.append(f"Ticket {ticket['id']}: {state}, phase {ticket['phase']}, plan {ticket.get('draft') or '-'} "
+                     f"(no {plan.get('id', '-')}, rev {plan.get('rev', '-')}), commits {len(ticket['commits'])}")
+        return "\n".join(lines)

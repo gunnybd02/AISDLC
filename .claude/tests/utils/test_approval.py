@@ -83,7 +83,7 @@ class ApprovalTest(unittest.TestCase):
         ledger = self.port.ledger
         events = [e["event"] for e in ledger.all("SELECT event FROM pl_plan_events WHERE plan_id = ? ORDER BY n",
                                                  (self.plan_id,))]
-        self.assertEqual(events, ["waiting", "approved"])
+        self.assertEqual(events, ["waiting", "approved", "executing"])
         self.assertEqual(ledger.one("SELECT status FROM rec_plans")["status"], "approved")
         self.assertTrue(Recorder.chain_ok(ledger, "rec_plans"))
 

@@ -3,8 +3,10 @@
 LedgerPort keeps the plans of the harness in the ledger (state/harness.db):
 - present: a revision of a plan {title, files, tests, root}, waiting (pl_plan_revs, a 'waiting' event);
 - approve: the user's "Duyệt" in the form to that revision's question (a chained rec_plans row, an 'approved' event);
-- approved: the plan a session works under, the newest it approved, until it is delivered.
-A row is never changed after it is written: the state of a plan is its events. Reading never creates the ledger.
+- approved: the plan a session works under: the plan of its ticket while the ticket holds one in force
+  (utils/plan/tickets.py, approved_plan, the one rule).
+The audit rows are never changed after they are written; a ticket is the one body that changes, in place. Reading never
+creates the ledger.
 
 PlanState gives the gears the approved plan of the event's session, and the harness's own state folder."""
 import hashlib
@@ -17,6 +19,7 @@ from pathlib import Path
 from harness.utils.contracts import YES, Port
 from harness.utils.git.branches import DEFAULT_PROTECTED, current, is_protected
 from harness.utils.git.facts import head, top, unpushed_files
+from harness.utils.plan import tickets
 from harness.utils.plan.files import key
 from harness.utils.ledger.db import Ledger
 from harness.utils.ledger.recorder import Recorder
@@ -25,7 +28,7 @@ HEAD = f"{YES} plan "
 
 # The ports an MCP action may name in needs (built in wire_mcp.ports_of); the server adds the judge, which run uses for
 # a write action. The doctor checks every action's needs against SERVER_PORTS.
-ACTION_PORTS = ("plans", "ledger", "verify_command", "items", "doctor", "git_judge")
+ACTION_PORTS = ("plans", "ledger", "verify_command", "items", "doctor", "git_judge", "session")
 SERVER_PORTS = ACTION_PORTS + ("judge",)
 
 
@@ -55,6 +58,27 @@ class LedgerPort:
 
     def rows(self, sql, args=()):
         return self.ledger.all(sql, args) if self.path.exists() else []
+
+    def read(self, look):
+        """look(con) on the ledger, or None when there is no ledger yet (a read never makes one)."""
+        return look(self.ledger.con) if self.path.exists() else None
+
+    def touch_session(self, sid):
+        """The session is at work now: the hook saw its prompt, or its call of the harness's MCP tools."""
+        if sid:
+            self.write(lambda con, rec: con.execute(
+                "INSERT INTO sessions (sid, started_at, last_at) VALUES (?, ?, ?) ON CONFLICT(sid) DO UPDATE SET "
+                "last_at = excluded.last_at", (sid, now(), now())))
+
+    def session(self):
+        """The session calling the MCP server: the one whose call of the harness's tools the hook saw last ("" if none).
+        Claude Code tells an MCP server no session; the hook sees each tool call just before the server runs it."""
+        rows = self.rows("SELECT sid FROM sessions ORDER BY last_at DESC, rowid DESC LIMIT 1")
+        return rows[0]["sid"] if rows else ""
+
+    def ticket(self, sid):
+        """The newest ticket of the session, or None."""
+        return self.read(lambda con: tickets.latest(con, sid))
 
     def present(self, items, plan_id=None):
         """Keep a revision of a plan; give (plan id, revision, the form question)."""
@@ -102,25 +126,19 @@ class LedgerPort:
                                                 "services": "[]", "status": "approved", "at": now(),
                                                 "uid": uuid.uuid4().hex})
             self.event(con, rec, waiting["plan_id"], "approved", waiting["rev"], rid, sid)
+            tickets.open_plan(con, sid, {"id": rid, **scope})
+            self.event(con, rec, waiting["plan_id"], "executing", waiting["rev"], rid, sid)
             return rid
 
         return self.write(change)
 
     def approved(self, sid):
-        """The plan the session works under: its newest approval, unless that plan was delivered. None if there is none."""
-        row = next(iter(self.rows("SELECT id, scope FROM rec_plans WHERE sid = ? ORDER BY id DESC LIMIT 1", (sid,))), None)
-        return self.live(row)
+        """The plan in force in the session: the plan of its newest ticket, while that ticket holds one. None else."""
+        return tickets.approved_plan(self.ticket(sid))
 
     def approved_plan(self, plan_id):
-        """The newest approval of the plan named plan_id (pd-...), unless it was delivered."""
-        rows = [r for r in self.rows("SELECT id, scope FROM rec_plans ORDER BY id DESC")
-                if json.loads(r["scope"]).get("plan_id") == plan_id]
-        return self.live(rows[0] if rows else None)
-
-    def live(self, row):
-        if row is None or self.rows("SELECT 1 FROM pl_plan_events WHERE event = 'delivered' AND ref = ?", (row["id"],)):
-            return None
-        return {"id": row["id"], **json.loads(row["scope"])}
+        """The plan in force whose desk id is plan_id (pd-...), whatever its session; None when no open ticket holds it."""
+        return tickets.approved_plan(self.read(lambda con: tickets.open_with_draft(con, plan_id)))
 
     def decision(self, event, plan, finding, verdict):
         self.write(lambda con, rec: rec.insert(con, "act_rule_decisions", {
@@ -145,11 +163,14 @@ class LedgerPort:
         return bool(self.rows("SELECT 1 FROM rec_commits WHERE commit_sha = ?", (sha,)))
 
     def deliver(self, sid, plan, repo, sha):
-        """A commit of the plan went through the gate: keep it, and the plan is delivered."""
+        """The plan's change is committed: keep the commit; its ticket closes delivered (a home plan needs no form)."""
         def change(con, rec):
             rec.insert(con, "rec_commits", {"plan_id": plan["id"], "service": repo, "commit_sha": sha, "at": now(),
                                             "uid": uuid.uuid4().hex})
-            self.event(con, rec, plan["plan_id"], "delivered", plan["rev"], plan["id"], sid)
+            ticket = tickets.open_with_draft(con, plan["plan_id"])
+            if ticket:
+                tickets.deliver(con, ticket, sha)
+            self.event(con, rec, plan["plan_id"], "delivered", plan["rev"], plan["id"], ticket["sid"] if ticket else sid)
         self.write(change)
 
 

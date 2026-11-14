@@ -38,6 +38,9 @@ class Runner:
         return Outcome(verdict, tuple(notes))
 
 
+HARNESS_TOOLS = "mcp__harness__"  # the tools of the harness's own MCP server, as Claude Code names them
+
+
 class Act:
     """What the harness writes back after the verdict, and the notes it gives the model: an approval of a plan
     (utils/plan/approval.py), a delivery (utils/plan/closing.py), and each finding kept as a rule decision with the word
@@ -48,6 +51,8 @@ class Act:
 
     def run(self, event, facts, verdict):
         notes = []
+        if event.kind == "UserPromptSubmit" or (event.kind == "PreToolUse" and event.tool.startswith(HARNESS_TOOLS)):
+            self.port.touch_session(event.session)
         if event.kind == "PostToolUse":
             notes += approvals(self.port, event.session, facts.get("answers") or {})
             notes += accepts(self.port, facts.get("answers") or {})

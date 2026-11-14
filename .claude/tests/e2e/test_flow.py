@@ -80,7 +80,7 @@ class OneFlowTest(unittest.TestCase):
         ledger = Ledger.open(claude_dir / "state" / "harness.db")
         events = [r["event"] for r in ledger.all("SELECT event FROM pl_plan_events WHERE plan_id = ? ORDER BY n",
                                                  (plan_id,))]
-        self.assertEqual(events, ["waiting", "approved", "delivered"])
+        self.assertEqual(events, ["waiting", "approved", "executing", "delivered"])
         self.assertEqual(ledger.one("SELECT ok FROM pl_verify")["ok"], 1)
         head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout
         self.assertEqual(ledger.one("SELECT commit_sha FROM rec_commits")["commit_sha"], head.strip())

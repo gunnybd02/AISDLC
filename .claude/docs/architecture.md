@@ -39,6 +39,12 @@ delivery (utils/plan/closing.py)         the commit is judged by what it holds: 
                                          kept), each as the passing verify saw it, a plain file whose mode does not
                                          change; anything else is not delivered, and the model is told
 ```
+A ticket (`pl_tickets`, `utils/plan/tickets.py`) runs each approved plan: the approval opens it in phase `execute`
+(an open ticket with no plan is reused, a revision keeps its ticket and `rootId`, another plan closes the open one
+`superseded` and carries its done steps and commits), `step_done` closes it `delivered` (a home plan needs no form).
+`tickets.approved_plan(ticket)` is the one rule for a plan in force; `LedgerPort.approved` reads only it. The MCP
+server knows its session from the hook: the session whose prompt or harness tool call came last (`sessions`).
+
 Every commit from the shell is refused (`commit.raw`): `git commit`, and any line that may commit another way. A
 commit made around the gate (a shell form the reader does not know) can still land in the repository; delivery
 judges it by what it holds, and anything but the verified change is never delivered as the plan's.

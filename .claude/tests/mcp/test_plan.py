@@ -58,5 +58,20 @@ class PlanBlockTest(unittest.TestCase):
                 self.call("plan_present", plan=PLAN, plan_id=bad)
 
 
+class PlanStatusTest(unittest.TestCase):
+    def test_status_shows_the_ticket_of_the_calling_session(self):
+        root = copy_tree(self)
+        port = LedgerPort(root)
+        run = caller(root)
+        port.touch_session("s1")
+        self.assertIn("no ticket (phase prepare)", run("plan", "plan_status").text)
+        plan_id, _, q = port.present({"title": "Add a greeting", "files": ["a.py"], "tests": [], "root": str(root)})
+        from harness.utils.contracts import YES
+        from harness.utils.plan.approval import approvals
+        approvals(port, "s1", {q: YES})
+        out = run("plan", "plan_status").text
+        self.assertIn(f"open, phase execute, plan {plan_id}", out)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -205,6 +205,9 @@ Done in 7d:
   `ActionError` in `utils/contracts.py` with `effect`, `ACTION_PORTS`/`SERVER_PORTS` in `engine/ports.py`, the judge
   of write actions in `mcp/tools/run.py` (rule rows in `gear/rules/actions.json`), the pinned registry test.
 
+- Plan lifecycle (docs 04), part 1: the ticket (`utils/plan/tickets.py`, `pl_tickets`): phases prepare, execute,
+  deliver; close delivered, superseded; `approved_plan` as the one rule; the calling session of the MCP server.
+
 Left for 7d, each waits for the feature it stores:
 - One store, the rest of section 6: transcripts in `tx_*` tables, overlays, Jira/Confluence images as BLOBs. None
   of these features is in this harness yet; each lands in `harness.db` when it moves in.
