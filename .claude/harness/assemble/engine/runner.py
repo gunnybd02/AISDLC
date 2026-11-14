@@ -7,6 +7,7 @@ from harness.utils.contracts import CLAUDE_DECISION, Port
 from harness.utils.git.asks import accepts
 from harness.utils.plan.approval import approvals
 from harness.utils.plan.closing import delivery
+from harness.utils.plan.request import FORM_ONLY
 
 
 class RunnerError(ValueError):
@@ -53,6 +54,10 @@ class Act:
         notes = []
         if event.kind == "UserPromptSubmit" or (event.kind == "PreToolUse" and event.tool.startswith(HARNESS_TOOLS)):
             self.port.touch_session(event.session)
+        if event.kind == "UserPromptSubmit" and event.session:
+            waiting = self.port.prompt(event.session, event.input.get("prompt", ""))
+            if waiting:
+                notes.append(FORM_ONLY.format(plan=waiting["plan_id"], rev=waiting["rev"]))
         if event.kind == "PostToolUse":
             notes += approvals(self.port, event.session, facts.get("answers") or {})
             notes += accepts(self.port, facts.get("answers") or {})

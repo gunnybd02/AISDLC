@@ -10,7 +10,6 @@ The audit rows are never changed after they are written; a ticket is the one bod
 creates the ledger.
 
 PlanState gives the gears the approved plan of the event's session, and the harness's own state folder."""
-import hashlib
 import json
 import time
 import uuid
@@ -19,7 +18,7 @@ from pathlib import Path
 from harness.utils.contracts import YES, Port
 from harness.utils.git.branches import DEFAULT_PROTECTED, current, is_protected
 from harness.utils.git.facts import head, top, unpushed_files
-from harness.utils.plan import render, revisions, tickets
+from harness.utils.plan import opening, render, request, revisions, tickets
 from harness.utils.plan.desk import new_id
 from harness.utils.plan.files import key
 from harness.utils.ledger.db import Ledger
@@ -86,6 +85,11 @@ class LedgerPort:
         def change(con, rec):
             rev = revisions.record(con, rec, plan_id, sid, items, why)
             self.event(con, rec, plan_id, "waiting", rev, sid=sid)
+            if sid:
+                held = (json.loads(r[0]) for r in con.execute("SELECT body FROM pl_approval WHERE sid = ?", (sid,)))
+                opening.approval(con, sid, {**next(held, {"open": False}), "pending": render.block(items, plan_id, rev),
+                                            "pendingAge": 0, "tool": {"planId": plan_id, "rev": rev,
+                                                                      "sha": revisions.newest(con, plan_id)["sha"]}})
             return rev
 
         rev = self.write(change)
@@ -96,7 +100,12 @@ class LedgerPort:
         return self.read(lambda con: revisions.newest(con, plan_id))
 
     def drop(self, plan_id, rev, sid):
-        self.write(lambda con, rec: self.event(con, rec, plan_id, "dropped", rev, sid=sid))
+        def change(con, rec):
+            self.event(con, rec, plan_id, "dropped", rev, sid=sid)
+            held = [json.loads(r[0]) for r in con.execute("SELECT body FROM pl_approval WHERE sid = ?", (sid,))]
+            if held:
+                opening.approval(con, sid, {**held[0], "pending": None, "tool": None})
+        self.write(change)
 
     def feedback(self, plan_id, rev, sid, text):
         self.write(lambda con, rec: revisions.feedback(con, plan_id, rev, sid, text))
@@ -106,9 +115,7 @@ class LedgerPort:
 
     @staticmethod
     def event(con, rec, plan_id, name, rev, ref=None, sid=""):
-        n = 1 + (con.execute("SELECT MAX(n) FROM pl_plan_events WHERE plan_id = ?", (plan_id,)).fetchone()[0] or 0)
-        rec.insert(con, "pl_plan_events", {"plan_id": plan_id, "n": n, "sid": sid, "event": name, "rev": rev,
-                                           "ref": ref, "at": now()})
+        opening.event(con, rec, plan_id, name, rev, ref, sid)
 
     def waiting(self):
         """The newest revision of each desk plan that waits for its approval, with its question."""
@@ -116,24 +123,20 @@ class LedgerPort:
                 for w in self.read(revisions.waiting) or []]
 
     def approve(self, sid, waiting):
-        """The user approved this waiting revision in the session sid. Its root is the one the form showed; base is the
-        commit its repository stands on now, which a delivered commit must come from."""
+        """The user approved this waiting revision in the session sid: open it in one transaction
+        (utils/plan/opening.py). base is the commit its repository stands on now, which a delivered commit must come
+        from."""
         repo = top(waiting["items"]["root"])
-        scope = {"plan_id": waiting["plan_id"], "rev": waiting["rev"], "base": head(repo) if repo else None,
-                 **waiting["items"]}
+        base = head(repo) if repo else None
+        return self.write(lambda con, rec: opening.open_plan(con, rec, sid, waiting, base))
 
-        def change(con, rec):
-            rid = rec.insert(con, "rec_plans", {"sid": sid, "sha": hashlib.sha256(json.dumps(scope, sort_keys=True)
-                                                                                   .encode()).hexdigest()[:8],
-                                                "reason": "form", "scope": json.dumps(scope, ensure_ascii=False),
-                                                "services": "[]", "status": "approved", "at": now(),
-                                                "uid": uuid.uuid4().hex})
-            self.event(con, rec, waiting["plan_id"], "approved", waiting["rev"], rid, sid)
-            tickets.open_plan(con, sid, {"id": rid, **scope})
-            self.event(con, rec, waiting["plan_id"], "executing", waiting["rev"], rid, sid)
-            return rid
-
-        return self.write(change)
+    def prompt(self, sid, text):
+        """Keep the user's prompt; the plan a bare agreement word would wrongly approve, or None."""
+        self.write(lambda con, rec: request.record_prompt(con, sid, text))
+        if request.bare_agreement(text):
+            mine = [w for w in self.waiting() if w["sid"] in (sid, "")]
+            return mine[-1] if mine else None
+        return None
 
     def approved(self, sid):
         """The plan in force in the session: the plan of its newest ticket, while that ticket holds one. None else."""

@@ -29,6 +29,10 @@ run("plan", "plan_present", {plan})      the plan is data (utils/plan/desk.py: c
                                          the given items, plan_drop stops a waiting plan, plan_show and plan_status
                                          read one
 AskUserQuestion                          the user answers; only "Duyệt" to that exact question approves it
+                                         (a bare ok / duyệt / đồng ý typed in the chat approves nothing: FORM_ONLY);
+                                         the approval opens the plan in one transaction (utils/plan/opening.py):
+                                         rec_plans, pl_behaviors with tests, the ticket, pl_approval, the events
+                                         approved and executing, pl_logs gate-open and form
 Write / Edit, or a write by the shell     allowed only for the files of the approved plan (detect/tracked.py, detect/planfiles.py)
 run("verify", "run", {plan})             the unit's tests in the plan's root; the receipt keeps each file's blob id,
                                          read before and after the tests (a file that changed under them: no pass)

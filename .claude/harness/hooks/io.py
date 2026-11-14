@@ -22,6 +22,8 @@ class HookIO:
         if not isinstance(data, dict) or not isinstance(data.get("hook_event_name"), str):
             raise HookError("the hook payload has no hook_event_name")
         tool_input = data.get("tool_input", {})
+        if data["hook_event_name"] == "UserPromptSubmit":  # the prompt is the input of this event
+            tool_input = {"prompt": str(data.get("prompt") or "")}
         if not isinstance(tool_input, dict):
             raise HookError("tool_input of the hook payload is not an object")
         return Event(data["hook_event_name"], str(data.get("tool_name") or ""), tool_input,
