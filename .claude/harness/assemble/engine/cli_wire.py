@@ -6,6 +6,7 @@ import os
 import shlex
 from pathlib import Path
 
+from harness.assemble.engine import cli_live
 from harness.assemble.engine.config import Config, ConfigError
 from harness.assemble.engine.ports import LedgerPort
 from harness.utils.plan import grants
@@ -39,6 +40,9 @@ def parser():
                 sub.add_argument("--what", dest="what_", required=True)
             else:
                 sub.add_argument(flag, required=True)
+    live = doors.add_parser("live", exit_on_error=False).add_subparsers(dest="what", required=True)
+    for name in ("status", "publish"):
+        live.add_parser(name, exit_on_error=False).add_argument("--session")
     beh = doors.add_parser("behaviors", exit_on_error=False).add_subparsers(dest="what", required=True)
     b_add = beh.add_parser("add", exit_on_error=False)
     b_add.add_argument("id")
@@ -101,6 +105,9 @@ def run_cli(argv, claude_dir):
     try:
         if args.door == "verify":
             return verify(port, sid, args, Path(claude_dir))
+        if args.door == "live":
+            return (0, cli_live.status(Path(claude_dir))) if args.what == "status" else \
+                cli_live.publish_door(port, Path(claude_dir))
         plan = plan_of(port, sid)
         if args.door == "add":
             text = {"file": lambda: grants.add_file(port, sid, plan, args.target, args.behavior, args.why),

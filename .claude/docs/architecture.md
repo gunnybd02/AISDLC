@@ -201,6 +201,24 @@ it fails at all: only a form that passed the check may pass a broken harness. A 
 minutes is no grant, and the state folder stays closed to the editing tools while the guards are off. The hook writes
 UTF-8 bytes, whatever the console's code page.
 
+## Releases: the code a session runs
+Claude Code runs `entry/boot.py <entry>` (hook, mcp_server, doctor, cli). Boot runs that entry of the release in force,
+`state/live/<sha>/` named by `state/live/current`, never the work tree a session edits; with no release yet, the work
+tree's own. The entry gets the home (`HARNESS_HOME`: state, config, skills) and the code (`HARNESS_CODE`); the engine
+reads indexes, pipelines and rules from the code (`build.code_of`). A file a session writes into `.claude/harness/`,
+a new action included, runs nowhere until it is published:
+
+- `python3 -m entry.cli live publish` builds the release of the work tree (`utils/gateway/release.py`: the code
+  folders by the sha of their content), runs the release's own doctor (loader, names, argument types, ports,
+  effects, rules, nets) and puts it in force only after the user's Cho phép to `Cho phép phát hành harness <sha>?`
+  (a one-use pass of that sha). `live status` says what is in force.
+- The MCP server (`engine/live_mcp.py`) reads `current` before each call; a new release is checked by its doctor in a
+  process of its own and swapped in without a restart (the harness modules are imported again from it); one whose
+  doctor fails is never taken, and the one in force goes on answering. Hooks start a process per call: they run the
+  new release at once.
+- What decides the code a session runs is never written in a session (agent.anchor): `entry/boot.py`,
+  `.claude/settings.json`, the `.mcp.json` beside `.claude`.
+
 ## The MCP server
 `entry/mcp_server.py` serves three tools over stdio (JSON-RPC 2.0):
 - `find`: skills and blocks ranked by the words of the request.

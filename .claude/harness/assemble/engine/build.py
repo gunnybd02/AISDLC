@@ -1,6 +1,7 @@
 """The hook door entry/hook.py calls: run_hook. It builds what it needs from the tree: the loader gives the items of
 the blocks by name, select.py picks the pipeline by the session's plan, the pipeline names the translators and
 detectors."""
+import os
 from pathlib import Path
 
 from harness.assemble.engine.config import Config
@@ -12,6 +13,12 @@ from harness.assemble.engine.select import select
 from harness.utils.contracts import Detector, Translator
 
 CLAUDE_DIR = Path(__file__).resolve().parents[3]
+CODE_ENV = "HARNESS_CODE"  # the release a session runs (entry/boot.py); unset: the home's own code
+
+
+def code_of(claude_dir):
+    """The folder whose code runs for the home claude_dir: the release boot chose, or the home itself."""
+    return Path(os.environ.get(CODE_ENV) or claude_dir)
 BASES = {"translator": Translator, "detector": Detector}
 
 
@@ -32,7 +39,7 @@ def pick(items, names, kind):
 
 
 def items_of(claude_dir):
-    return {i.name: i for i in Loader(claude_dir).items()}
+    return {i.name: i for i in Loader(code_of(claude_dir)).items()}
 
 
 def build_runner(claude_dir=CLAUDE_DIR, items=None, plan=None):
@@ -40,8 +47,9 @@ def build_runner(claude_dir=CLAUDE_DIR, items=None, plan=None):
     claude_dir = Path(claude_dir)
     items = items or items_of(claude_dir)
     config = Config.load(claude_dir)  # a config that does not load stops the hook, as before
-    pipeline = select(PipelineBook(claude_dir / "harness" / "assemble" / "pipelines"), plan)
-    decide = Loader.resolve(items["decide"]).load(claude_dir)
+    code = code_of(claude_dir)
+    pipeline = select(PipelineBook(code / "harness" / "assemble" / "pipelines"), plan)
+    decide = Loader.resolve(items["decide"]).load(code)
     port = LedgerPort(claude_dir)
     return Runner(pick(items, pipeline.translators, "translator"), pick(items, pipeline.detectors, "detector"), decide,
                   ports=[PlanState(port, config.protected, config.banned)], act=Act(port))

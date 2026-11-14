@@ -11,6 +11,7 @@
     {"finding": "stop.unverified", "verdict": "refuse", "why": "The turn does not end yet: code files of the plan changed since the last green verify. Run python3 -m entry.cli verify (bare, from .claude/) and fix what is red.", "test": "tests/gear/test_stop.py#test_a_turn_with_unverified_code_does_not_end"},
     {"finding": "agent.rules", "verdict": "refuse", "why": "A rule is never a file in .claude/rules/: write it as a skill in project/skills/, read through find and guide.", "test": "tests/gear/test_agent.py#test_rules_memory_and_registry_files_name_their_door"},
     {"finding": "agent.memory", "verdict": "refuse", "why": "A point to keep is never a memory file: keep it as a note in SQL (the notes block).", "test": "tests/gear/test_agent.py#test_rules_memory_and_registry_files_name_their_door"},
-    {"finding": "agent.registry", "verdict": "refuse", "why": "The behaviour registry is written by its doors only: python3 -m entry.cli add test, or behaviors add.", "test": "tests/gear/test_agent.py#test_rules_memory_and_registry_files_name_their_door"}
+    {"finding": "agent.registry", "verdict": "refuse", "why": "The behaviour registry is written by its doors only: python3 -m entry.cli add test, or behaviors add.", "test": "tests/gear/test_agent.py#test_rules_memory_and_registry_files_name_their_door"},
+    {"finding": "agent.anchor", "verdict": "refuse", "why": "What decides which code a session runs (entry/boot.py, .claude/settings.json, .mcp.json) is never written in a session: the user changes it outside one; harness code reaches sessions through live publish.", "test": "tests/gear/test_agent.py#test_the_anchors_of_the_release_are_never_written"}
   ]
 }

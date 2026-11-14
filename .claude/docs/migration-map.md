@@ -238,6 +238,10 @@ Done in 7d:
   user's Cho phép on the full text, GitLab REST with GITLAB_TOKEN or the proxy's credential). Not yet: `mr_update`,
   the gitlab read actions, CI waits. Code text is ASCII: Vietnamese words are \u escapes in every .py file.
 
+- Releases (blue/green): `entry/boot.py`, `utils/gateway/release.py`, `engine/live_mcp.py`, `engine/cli_live.py`;
+  sessions run `state/live/<sha>/`, `live publish` needs a clean doctor and the user's Cho phép, the MCP server swaps
+  without a restart; boot.py, settings.json and .mcp.json are anchors no session writes.
+
 Left for 7d, each waits for the feature it stores:
 - One store, the rest of section 6: transcripts in `tx_*` tables, overlays, Jira/Confluence images as BLOBs. None
   of these features is in this harness yet; each lands in `harness.db` when it moves in.

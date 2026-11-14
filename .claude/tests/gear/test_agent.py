@@ -35,6 +35,17 @@ class AgentTest(unittest.TestCase):
         event = Event("PreToolUse", "Write", {"file_path": "/r/.claude/harness/x.py"}, "s1", "/r")
         self.assertEqual(AgentFiles().detect(event, Places().translate(event)), [])
 
+    def test_the_anchors_of_the_release_are_never_written(self):
+        rules = Decide.load(CLAUDE_DIR).rules
+        for path in ("/r/.claude/entry/boot.py", "/r/.claude/settings.json", "/r/.mcp.json"):
+            with self.subTest(path=path):
+                event = Event("PreToolUse", "Write", {"file_path": path}, "s1", "/r")
+                self.assertEqual([f.kind for f in AgentFiles().detect(event, Places().translate(event))], ["agent.anchor"])
+        self.assertEqual(rules["agent.anchor"]["verdict"], "refuse")
+        self.assertIn("live publish", rules["agent.anchor"]["why"])
+        event = Event("PreToolUse", "Write", {"file_path": "/r/.claude/entry/hook.py"}, "s1", "/r")
+        self.assertEqual(AgentFiles().detect(event, Places().translate(event)), [])  # the gates judge it; publish ships it
+
 
 if __name__ == "__main__":
     unittest.main()

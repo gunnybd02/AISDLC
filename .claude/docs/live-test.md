@@ -15,17 +15,20 @@ The project is a git repository with this `.claude/` folder in it (the home). Ad
 
 ```json
 {"hooks": {
-  "PreToolUse":       [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/hook.py\""}]}],
-  "PostToolUse":      [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/hook.py\""}]}],
-  "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/hook.py\""}]}],
-  "Stop":             [{"hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/hook.py\""}]}]}}
+  "PreToolUse":       [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook"}]}],
+  "PostToolUse":      [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook"}]}],
+  "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook"}]}],
+  "Stop":             [{"hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook"}]}]}}
 ```
 
 `.mcp.json` in the project root gives the model the harness's MCP server (on Windows: `python` and a Windows path):
 
 ```json
-{"mcpServers": {"harness": {"type": "stdio", "command": "python3", "args": [".claude/entry/mcp_server.py"]}}}
+{"mcpServers": {"harness": {"type": "stdio", "command": "python3", "args": [".claude/entry/boot.py", "mcp_server"]}}}
 ```
+
+Then publish the code once (the user answers the form it gives): `python3 -m entry.cli live publish` from
+`.claude/`. Until a release is published, boot runs the work tree.
 
 ## Run it
 
@@ -54,3 +57,6 @@ A headless session cannot answer a form: the user's click on "Duyệt" is the ho
 Three bugs it found, fixed with a test each: the harness's own CLI (`python3 -m entry.cli verify`) was asked of the
 user as an unknown program; `plan_status` counted the approval word as unanswered feedback; the refusal of a shell
 `git commit` still named the old `steps` block.
+
+A second live run (boot wiring): the MCP server and the hooks ran through `entry/boot.py`; writing a new action file
+was refused (no plan), editing `entry/boot.py` was refused as an anchor, and the server's actions did not change.

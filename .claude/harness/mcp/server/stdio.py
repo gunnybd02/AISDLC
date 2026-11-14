@@ -14,17 +14,21 @@ class StdioServer:
 
     def serve(self, instream, outstream):
         for line in instream:
-            if not line.strip():
-                continue
-            try:
-                message = json.loads(line)
-            except (ValueError, RecursionError) as e:
-                answer = StdioServer.error(None, PARSE, f"not JSON: {type(e).__name__}")
-            else:
-                answer = self.handle(message)
-            if answer is not None:
-                outstream.write(json.dumps(answer) + "\n")
-                outstream.flush()
+            self.serve_line(line, outstream)
+
+    def serve_line(self, line, outstream):
+        """Answer one line (nothing for a blank line or a notification)."""
+        if not line.strip():
+            return
+        try:
+            message = json.loads(line)
+        except (ValueError, RecursionError) as e:
+            answer = StdioServer.error(None, PARSE, f"not JSON: {type(e).__name__}")
+        else:
+            answer = self.handle(message)
+        if answer is not None:
+            outstream.write(json.dumps(answer) + "\n")
+            outstream.flush()
 
     def handle(self, message):
         """The answer to one message; a notification gets none. Nothing a client sends stops the server."""

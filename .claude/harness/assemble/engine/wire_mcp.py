@@ -5,7 +5,7 @@ by the same rules as a tool call."""
 import shlex
 from pathlib import Path
 
-from harness.assemble.engine.build import CLAUDE_DIR, build_runner, items_of
+from harness.assemble.engine.build import CLAUDE_DIR, build_runner, code_of, items_of
 from harness.assemble.engine.checks import doctor, report
 from harness.assemble.engine.config import Config
 from harness.assemble.engine.loader import Loader
@@ -43,21 +43,26 @@ def ports_of(items, claude_dir):
     return ports
 
 
-def action_table(items, code_dir=CLAUDE_DIR):
+def action_table(items, code_dir=None):
     """The actions run can reach: every entry of the action files of code_dir (the tree whose code runs)."""
     table = Loader.resolve(items["action_table"])()
-    for action_file in Loader(code_dir).action_files():
+    for action_file in Loader(code_dir or code_of(CLAUDE_DIR)).action_files():
         for _, _, cls in Loader.actions(action_file):
             table.add(cls)
     return table
 
 
-def run_mcp(instream, outstream, claude_dir=CLAUDE_DIR):
-    """Serve find, guide and run over stdio until the input ends."""
+def build_server(claude_dir):
+    """The MCP server of the home claude_dir, over the code that runs (code_of): find, guide and run."""
     claude_dir = Path(claude_dir)
     items = items_of(claude_dir)
-    table = action_table(items, claude_dir)
+    table = action_table(items, code_of(claude_dir))
     skills = Loader.resolve(items["skills"])(claude_dir / "project" / "skills")
     tools = [Loader.resolve(items[n])(skills, table) for n in ("find", "guide")]
     tools.append(Loader.resolve(items["run"])(table, ports_of(items, claude_dir)))
-    Loader.resolve(items["stdio"])(*SERVER, tools).serve(instream, outstream)
+    return Loader.resolve(items["stdio"])(*SERVER, tools)
+
+
+def run_mcp(instream, outstream, claude_dir=CLAUDE_DIR):
+    """Serve find, guide and run over stdio until the input ends."""
+    build_server(claude_dir).serve(instream, outstream)

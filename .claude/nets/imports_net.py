@@ -16,7 +16,7 @@ ALLOWED = {
     "harness": (),
 }
 INTERNAL = ("harness", "nets", "entry", "tests")
-DYNAMIC_OK = ("harness/assemble/engine/loader.py",)
+DYNAMIC_OK = ("harness/assemble/engine/loader.py", "harness/assemble/engine/live_mcp.py")
 
 
 def owner(rel):
