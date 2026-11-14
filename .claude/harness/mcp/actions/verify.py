@@ -1,22 +1,18 @@
 """verify: run the unit's tests for an approved plan; a commit needs a passing verify."""
-from harness.mcp.actions.table import McpAction
+from harness.utils.contracts import WRITE, ActionError, McpAction
 from harness.utils.plan.verify import verify
 
-BLOCK = "verify"
-ABOUT = "Run the unit's tests for an approved plan; a commit needs a passing verify"
+ACTIONS = [("verify.run", "Run")]
 
 
 class Run(McpAction):
-    name = "run"
-    about = "Run the test command in the plan's root and keep the receipt"
-    args = {"plan": "string"}
+    block, name, effect = "verify", "run", WRITE
+    summary = "Run the test command in the plan's root and keep the receipt; a commit needs a passing verify"
+    args_schema = {"type": "object", "properties": {"plan": {"type": "string"}}, "required": ["plan"]}
     needs = ("plans", "verify_command")
 
-    def __call__(self, plan):
-        command = self.ports["verify_command"]()
+    def run(self, ctx, args):
+        command = ctx.ports["verify_command"]()
         if not command:
-            raise ValueError("the config names no verify command")
-        return verify(self.ports["plans"], command, plan)
-
-
-ACTIONS = [Run]
+            raise ActionError("the config names no verify command")
+        return verify(ctx.ports["plans"], command, args["plan"])

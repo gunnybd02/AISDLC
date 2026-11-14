@@ -70,31 +70,34 @@ class LoaderTest(unittest.TestCase):
 
 
 class ActionFilesTest(unittest.TestCase):
+    GOOD = 'class A:\n    pass\n\n\nclass B:\n    pass\n\n\nACTIONS = [("b.one", "A"), ("c.two", "B")]\n'
+
     def problems(self, text):
         return Loader(tree(self, {"harness/mcp/actions/a.py": text})).read_actions()[1]
 
     def test_the_real_action_files_are_read_without_a_problem(self):
         files, problems = Loader(CLAUDE_DIR).read_actions()
         self.assertEqual(problems, [])
-        self.assertLessEqual({"plan", "verify", "maint", "health", "steps"}, {f.block for f in files})
-        plan = next(f for f in files if f.block == "plan")
-        self.assertEqual((plan.module, plan.names), ("harness.mcp.actions.plan", ("PlanPresent", "PlanStatus")))
+        plan = next(f for f in files if f.module == "harness.mcp.actions.plan")
+        self.assertEqual(plan.entries, (("plan", "plan_present", "PlanPresent"), ("plan", "plan_status", "PlanStatus")))
 
-    def test_an_action_file_declares_block_about_and_actions(self):
-        good = 'BLOCK = "b"\nABOUT = "x"\n\n\nclass A:\n    pass\n\n\nACTIONS = [A]\n'
-        self.assertEqual(self.problems(good), [])
-        for text, why in ((good.replace('BLOCK = "b"\n', ""), "declares"),
-                          (good.replace("ACTIONS = [A]", "ACTIONS = [B]"), "does not define"),
-                          (good.replace("ACTIONS = [A]", "ACTIONS = list()"), "literal list"),
-                          (good.replace('BLOCK = "b"', "BLOCK = name()"), "literal name"),
+    def test_a_file_lists_block_name_and_class_and_may_hold_several_blocks(self):
+        files, problems = Loader(tree(self, {"harness/mcp/actions/a.py": self.GOOD})).read_actions()
+        self.assertEqual((problems, files[0].entries), ([], (("b", "one", "A"), ("c", "two", "B"))))
+
+    def test_a_wrong_action_file_is_a_problem(self):
+        for text, why in ((self.GOOD.replace('"B")]', '"Z")]'), "does not define"),
+                          (self.GOOD.replace('ACTIONS = [("b.one", "A"), ("c.two", "B")]', 'ACTIONS = list([("b.one", "A")])'), "one literal"),
+                          (self.GOOD.replace('"b.one"', '"one"'), "is not block.name"),
+                          (self.GOOD.replace('("b.one", "A")', '"A"'), "one literal"),
+                          (self.GOOD + "ACTIONS = []\n", "one literal"),
                           ("def (:\n", "does not parse")):
             with self.subTest(why=why):
                 self.assertIn(why, " ".join(self.problems(text)))
 
-    def test_two_files_may_not_declare_one_block(self):
-        text = 'BLOCK = "b"\nABOUT = "x"\n\n\nclass A:\n    pass\n\n\nACTIONS = [A]\n'
-        root = tree(self, {"harness/mcp/actions/a.py": text, "harness/mcp/actions/c.py": text})
-        self.assertIn("declared by", " ".join(Loader(root).read_actions()[1]))
+    def test_an_action_declared_twice_is_a_problem(self):
+        root = tree(self, {"harness/mcp/actions/a.py": self.GOOD, "harness/mcp/actions/c.py": self.GOOD})
+        self.assertIn("declared already", " ".join(Loader(root).read_actions()[1]))
 
 
 if __name__ == "__main__":

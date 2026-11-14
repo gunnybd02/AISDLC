@@ -1,79 +1,58 @@
-"""McpAction: one action `run` can reach, a class in a file of mcp/actions/ that lists it in ACTIONS. It gets only
-the ports it names in needs. ActionTable: the blocks `run` can reach and their typed actions. An action declares its arguments as
-{"name": type, "optional?": type}; a call with a missing, extra or mistyped argument is refused before the handler."""
-from dataclasses import dataclass
-from typing import Callable
+"""ActionTable: the actions `run` can reach, by block and name. A block is only the prefix of an action's name; the
+actions come from the ACTIONS literals of mcp/actions/*.py (the loader reads them), each a McpAction class
+(utils/contracts.py). args_problem checks the arguments of a call against the action's args_schema before it runs."""
+TYPES = {"string": str, "object": dict, "boolean": bool, "integer": int, "number": (int, float), "array": list}
 
 
-class McpAction:
-    """name, about, args ({"name": type, "optional?": type}) and needs (the names of the ports it is given)."""
-    name = ""
-    about = ""
-    args = {}
-    needs = ()
-
-    def __init__(self, ports):
-        self.ports = ports
-
-    def __call__(self, **args):
-        raise NotImplementedError
+def fields(action):
+    """(argument name, type, required) of each property of the action's args_schema."""
+    schema = action.args_schema
+    required = set(schema.get("required", ()))
+    return [(n, p.get("type", "string"), n in required) for n, p in schema.get("properties", {}).items()]
 
 
-TYPES = {"string": str, "object": dict, "boolean": bool, "number": (int, float), "array": list}
+def signature(action):
+    return f"{action.name}(" + ", ".join(f"{n}{'' if req else '?'}: {t}" for n, t, req in fields(action)) + ")"
 
 
-@dataclass(frozen=True)
-class Action:
-    name: str
-    about: str
-    args: dict
-    handler: Callable
-
-    def spec(self):
-        """(argument name, type, required) for each declared argument."""
-        return [(k.rstrip("?"), t, not k.endswith("?")) for k, t in self.args.items()]
-
-    def signature(self):
-        return f"{self.name}(" + ", ".join(f"{n}{'' if req else '?'}: {t}" for n, t, req in self.spec()) + ")"
-
-    def problem(self, given):
-        if not isinstance(given, dict):
-            return "the arguments are an object"
-        spec = {n: (t, req) for n, t, req in self.spec()}
-        for n, (t, req) in spec.items():
-            if n not in given:
-                if req:
-                    return f"{self.signature()}: {n} is missing"
-            elif (isinstance(given[n], bool) and t != "boolean") or not isinstance(given[n], TYPES[t]):
-                return f"{self.signature()}: {n} is a {t}"
-        extra = sorted(set(given) - set(spec))
-        return f"{self.signature()}: no argument {', '.join(extra)}" if extra else ""
+def args_problem(action, given):
+    """Why the arguments do not fit the action, or "": an object, every required one there, each of its type, no other."""
+    if not isinstance(given, dict):
+        return "the arguments are an object"
+    spec = {n: (t, req) for n, t, req in fields(action)}
+    for n, (t, req) in spec.items():
+        if n not in given:
+            if req:
+                return f"{signature(action)}: {n} is missing"
+        elif (isinstance(given[n], bool) and t != "boolean") or not isinstance(given[n], TYPES[t]):
+            return f"{signature(action)}: {n} is a {t}"
+    extra = sorted(set(given) - set(spec))
+    return f"{signature(action)}: no argument {', '.join(extra)}" if extra else ""
 
 
 class ActionTable:
     def __init__(self):
-        self.blocks = {}  # block name -> (about, {action name: Action})
+        self.entries = {}  # (block, name) -> McpAction class
 
-    def add_block(self, block, about):
-        if block in self.blocks:
-            raise ValueError(f"block {block} is added already")
-        self.blocks[block] = (about, {})
-
-    def add(self, block, name, about, args, handler):
-        if block not in self.blocks:
-            raise KeyError(f"no block {block}")
-        if name in self.blocks[block][1]:
-            raise ValueError(f"{block}.{name} is added already")
-        unknown = [t for t in args.values() if t not in TYPES]
+    def add(self, action):
+        key = (action.block, action.name)
+        if key in self.entries:
+            raise ValueError(f"{action.block}.{action.name} is added already")
+        unknown = [t for _, t, _ in fields(action) if t not in TYPES]
         if unknown:
-            raise ValueError(f"{block}.{name}: unknown argument types {unknown}")
-        self.blocks[block][1][name] = Action(name, about, dict(args), handler)
+            raise ValueError(f"{action.block}.{action.name}: unknown argument types {unknown}")
+        self.entries[key] = action
+
+    @property
+    def blocks(self):
+        return sorted({b for b, _ in self.entries})
 
     def about(self, block):
-        return self.blocks[block][0]
+        """What a block does: the summaries of its actions."""
+        return "; ".join(a.summary for a in self.actions(block))
 
     def actions(self, block):
-        return list(self.blocks[block][1].values())
+        return [a for (b, _), a in sorted(self.entries.items()) if b == block]
 
     def action(self, block, name):
-        return self.blocks[block][1][name]
+        return self.entries[(block, name)]

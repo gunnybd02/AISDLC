@@ -3,12 +3,13 @@ import io
 import json
 import unittest
 
-from harness.mcp.actions.table import ActionTable
+from harness.mcp.actions.table import ActionTable, args_problem, signature
 from harness.mcp.server.stdio import StdioServer
 from harness.mcp.skills.library import SkillError, Skills
 from harness.mcp.tools.find import Find
 from harness.mcp.tools.guide import Guide
 from harness.mcp.tools.run import Run
+from harness.utils.contracts import McpAction
 from tests import tree
 
 SKILL = "---\nname: {name}\ndescription: {about}\n---\n# {name}\nThe body of {name}.\n"
@@ -18,11 +19,18 @@ def library(test, **skills):
     return Skills(tree(test, {f"{n}/SKILL.md": SKILL.format(name=n, about=a) for n, a in skills.items()}))
 
 
+class Echo(McpAction):
+    block, name, summary = "health", "echo", "Say a word back"
+    args_schema = {"type": "object", "properties": {"word": {"type": "string"}, "loud": {"type": "boolean"}},
+                   "required": ["word"]}
+
+    def run(self, ctx, args):
+        return args["word"].upper() if args.get("loud") else args["word"]
+
+
 def table():
     t = ActionTable()
-    t.add_block("health", "The health of the harness")
-    t.add("health", "echo", "Say a word back", {"word": "string", "loud?": "boolean"},
-          lambda word, loud=False: word.upper() if loud else word)
+    t.add(Echo)
     return t
 
 
@@ -48,7 +56,7 @@ class FindGuideRunTest(unittest.TestCase):
         self.assertTrue(guide.call({"name": "nothing", "mode": "skills"}).is_error)
 
     def test_run_calls_only_an_action_of_the_table_with_right_arguments(self):
-        run = Run(table())
+        run = Run(table(), {})
         self.assertEqual(run.call({"block": "health", "action": "echo", "args": {"word": "hi", "loud": True}}).text, "HI")
         for args in ({"block": "health", "action": "rm"}, {"block": "x", "action": "echo"},
                      {"block": "health", "action": "echo", "args": {}}):

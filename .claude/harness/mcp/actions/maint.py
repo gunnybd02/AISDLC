@@ -1,32 +1,29 @@
 """maint: the maint grant, the user's own switch that turns every guard off for a while (utils/maint/grant.py)."""
 import time
 
-from harness.mcp.actions.table import McpAction
+from harness.utils.contracts import READ, McpAction
 from harness.utils.maint.grant import active, question
 
-BLOCK = "maint"
-ABOUT = "Turn the guards off for a while: only the user, in the form, grants it"
+ACTIONS = [("maint.grant", "Grant"), ("maint.status", "Status")]
 
 
 class Grant(McpAction):
-    name = "grant"
-    about = "The form question that asks the user to turn the guards off for N minutes (1 to 120)"
-    args = {"minutes": "number", "why": "string"}
+    block, name, effect = "maint", "grant", READ  # it only gives the question; the user's answer grants
+    summary = "Turn the guards off for a while: the form question that asks the user for N minutes (1 to 120)"
+    args_schema = {"type": "object", "properties": {"minutes": {"type": "integer"}, "why": {"type": "string"}},
+                   "required": ["minutes", "why"]}
 
-    def __call__(self, minutes, why):
-        return question(minutes, why)
+    def run(self, ctx, args):
+        return question(args["minutes"], args["why"])
 
 
 class Status(McpAction):
-    name = "status"
-    about = "Whether the guards are off, and for how long"
+    block, name, effect = "maint", "status", READ
+    summary = "Whether the guards are off, and for how long"
     needs = ("ledger",)
 
-    def __call__(self):
-        grant = active(self.ports["ledger"].rows)
+    def run(self, ctx, args):
+        grant = active(ctx.ports["ledger"].rows)
         if grant is None:
             return "The guards are on."
         return f"The guards are off for {int(grant['until'] - time.time()) // 60} more minutes: {grant['why']}."
-
-
-ACTIONS = [Grant, Status]

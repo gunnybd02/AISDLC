@@ -151,9 +151,19 @@ UTF-8 bytes, whatever the console's code page.
 - `guide`: a skill, or the actions of a block.
 - `run`: one action of the action table, with its arguments checked.
 
-Each block of actions is a file of `mcp/actions/` that declares `BLOCK`, `ABOUT` and `ACTIONS = [Class, ...]`. The
-loader reads these by the file's syntax tree; `engine/wire_mcp.py` gives each action only the ports it names in
-`needs` (`plans`, `verify_command`, `state_dir`, `items`, `doctor`). The logic sits in `utils/plan/`:
+A block is only the prefix of an action's name. Each file of `mcp/actions/` holds one literal
+`ACTIONS = [("block.name", "Class"), ...]` (a file may hold several blocks), read by `engine/loader.py` from its syntax
+tree. Each class is a `McpAction` (`utils/contracts.py`): `block`, `name`, `summary`, `args_schema` (a JSON schema),
+`needs` and `effect` (`read` or `write`); it gets an `ActionContext` and raises `ActionError`. The ports are
+`ACTION_PORTS` and `SERVER_PORTS` (`engine/ports.py`, built in `engine/wire_mcp.py`); the doctor checks each action
+against its entry, its effect and its ports, and `tests/mcp/test_action_registry.py` pins the list.
+
+`run` (`mcp/tools/run.py`): an unknown action, arguments that do not fit `args_schema`, or a port the server lacks is an
+error before anything runs; the action gets only the ports in `needs`. A `write` is judged first: the judge port runs
+the hook's own pipeline on the event `mcp__harness__run` `{block, action, args, effect: write}`; the detector
+`write_action` reports `action.<block>.<name>`, and only an allow a rule row of `gear/rules/actions.json` decided lets
+it run. An ask, a refusal, an allow no rule decided (`write-unjudged`) or a judge that fails stops it. A `read` is never
+judged.
 
 | Block | Actions |
 |---|---|

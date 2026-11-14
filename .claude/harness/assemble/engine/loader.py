@@ -1,7 +1,8 @@
 """Loader: reads the ITEMS of the hooks, mcp and gear blocks without importing them, and resolves an item's ref to its object.
 An index (a block's __init__.py) only declares: a docstring and one literal `ITEMS = [{kind, name, ref}, ...]`.
-The actions of mcp are read from their own files (mcp/actions/*.py): each says BLOCK, ABOUT and ACTIONS = [Class, ...],
-the classes it defines; action_files() reads them without importing, actions() imports one.
+The actions of mcp are read from their own files (mcp/actions/*.py): each holds one literal
+ACTIONS = [("block.name", "Class"), ...] naming classes it defines (a block is only a name prefix, and a file may hold
+several); action_files() reads them without importing, actions() imports one file's.
 This is the one module allowed to import dynamically (imports_net)."""
 import ast
 import importlib
@@ -15,15 +16,13 @@ FIELDS = ("kind", "name", "ref")
 NAME = re.compile(r"^[a-z][a-z0-9_]*$")
 ACTIONS_DIR = ("harness", "mcp", "actions")
 NOT_ACTIONS = ("__init__.py", "table.py")
-DECLARES = ("BLOCK", "ABOUT", "ACTIONS")
+ACTION = re.compile(r"^([a-z][a-z0-9_]*)\.([a-z][a-z0-9_-]*)$")
 
 
 @dataclass(frozen=True)
 class ActionFile:
     module: str
-    block: str
-    about: str
-    names: tuple
+    entries: tuple  # ((block, name, class name), ...)
 
 
 @dataclass(frozen=True)
@@ -55,11 +54,12 @@ class Loader:
 
     @staticmethod
     def actions(action_file):
+        """(block, name, class) of each entry of the file."""
         module = importlib.import_module(action_file.module)
-        return [getattr(module, name) for name in action_file.names]
+        return [(block, name, getattr(module, cls)) for block, name, cls in action_file.entries]
 
     def read_actions(self):
-        files, problems, blocks = [], [], {}
+        files, problems, seen = [], [], {}
         folder = self.root.joinpath(*ACTIONS_DIR)
         for path in sorted(folder.glob("*.py")) if folder.is_dir() else []:
             if path.name in NOT_ACTIONS:
@@ -68,11 +68,13 @@ class Loader:
             found, why = Loader.action_file(path, rel)
             if why:
                 problems.append(f"{rel}: {why}")
-            elif found.block in blocks:
-                problems.append(f"{rel}: block {found.block} is declared by {blocks[found.block]} already")
-            else:
-                blocks[found.block] = rel
-                files.append(found)
+                continue
+            twice = [f"{b}.{n}" for b, n, _ in found.entries if (b, n) in seen]
+            if twice:
+                problems.append(f"{rel}: {', '.join(twice)} declared already (in {seen[tuple(twice[0].split('.', 1))]})")
+                continue
+            seen.update({(b, n): rel for b, n, _ in found.entries})
+            files.append(found)
         return files, problems
 
     @staticmethod
@@ -82,27 +84,28 @@ class Loader:
             body = ast.parse(path.read_text(encoding="utf-8-sig")).body
         except (SyntaxError, UnicodeDecodeError, ValueError) as e:
             return None, f"does not parse ({type(e).__name__})"
-        values = {}
-        for node in body:
-            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) \
-                    and node.targets[0].id in DECLARES:
-                values[node.targets[0].id] = node.value
+        lists = [n.value for n in body if isinstance(n, ast.Assign) and len(n.targets) == 1
+                 and isinstance(n.targets[0], ast.Name) and n.targets[0].id == "ACTIONS"]
+        only = 'an action file holds one literal ACTIONS = [("block.name", "Class"), ...]'
+        if len(lists) != 1:
+            return None, only
+        try:
+            listed = ast.literal_eval(lists[0])
+        except (ValueError, TypeError, SyntaxError, RecursionError):
+            return None, only
+        if not (isinstance(listed, list) and listed and all(
+                isinstance(e, tuple) and len(e) == 2 and all(isinstance(x, str) for x in e) for e in listed)):
+            return None, only
         classes = {n.name for n in body if isinstance(n, ast.ClassDef)}
-        if sorted(values) != sorted(DECLARES):
-            return None, f"an action file declares {', '.join(DECLARES)} at its top level"
-        block, about, listed = values["BLOCK"], values["ABOUT"], values["ACTIONS"]
-        if not (isinstance(block, ast.Constant) and isinstance(block.value, str) and NAME.match(block.value)):
-            return None, "BLOCK is a literal name: lower case letters, digits and _"
-        if not (isinstance(about, ast.Constant) and isinstance(about.value, str) and about.value.strip()):
-            return None, "ABOUT is a literal sentence"
-        if not (isinstance(listed, ast.List) and listed.elts and all(isinstance(e, ast.Name) for e in listed.elts)):
-            return None, "ACTIONS is a literal list of the action classes of the file"
-        names = tuple(e.id for e in listed.elts)
-        missing = [n for n in names if n not in classes]
-        if missing:
-            return None, f"ACTIONS names {', '.join(missing)}, which the file does not define"
-        module = rel[:-3].replace("/", ".")
-        return ActionFile(module, block.value, about.value, names), ""
+        entries = []
+        for full, cls in listed:
+            m = ACTION.match(full)
+            if not m:
+                return None, f"{full} is not block.name (lower case letters, digits, _; - in a name)"
+            if cls not in classes:
+                return None, f"ACTIONS names {cls}, which the file does not define"
+            entries.append((m.group(1), m.group(2), cls))
+        return ActionFile(rel[:-3].replace("/", "."), tuple(entries)), ""
 
     def items(self):
         items, problems = self.read()

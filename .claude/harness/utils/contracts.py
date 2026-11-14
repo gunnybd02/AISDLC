@@ -57,3 +57,39 @@ class Port(ABC):
     @abstractmethod
     def read(self, event: Event) -> dict:
         ...
+
+
+READ, WRITE = "read", "write"
+EFFECTS = (READ, WRITE)
+
+
+class ActionError(Exception):
+    """What an action answers when it will not do what it was asked; the model reads the message."""
+
+
+@dataclass(frozen=True)
+class ActionContext:
+    """What an action is given: only the ports it names in needs."""
+    ports: dict
+
+
+class McpAction(ABC):
+    """One action `run` reaches, a class listed in the ACTIONS literal of its file in mcp/actions/ as ("block.name",
+    "Class"). block and name match that entry; args_schema is a JSON schema of an object; needs names its ports; effect
+    is read or write, and a write is judged by the rules before it runs."""
+    block = ""
+    name = ""
+    summary = ""
+    args_schema = {"type": "object", "properties": {}, "required": []}
+    needs = ()
+    effect = READ
+
+    @abstractmethod
+    def run(self, ctx: ActionContext, args: dict) -> str:
+        ...
+
+
+def judged_allow(verdict):
+    """Whether a verdict lets a write action run: an allow that a rule row decided. An allow with no finding is no rule's
+    decision (write-unjudged), and an ask is not an allow: the server cannot ask the user."""
+    return verdict.decision == ALLOW and bool(verdict.findings)

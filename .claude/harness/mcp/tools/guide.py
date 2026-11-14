@@ -1,4 +1,5 @@
 """guide: read a skill of the library, or the actions of a block with their arguments (one action with topic)."""
+from harness.mcp.actions.table import signature
 from harness.mcp.server.tool import Result, Tool
 
 
@@ -25,5 +26,5 @@ class Guide(Tool):
             actions = [a for a in actions if a.name == topic]
             if not actions:
                 return Result(f"Block {name} has no action {topic}.", True)
-        lines = [f"{name} - {self.table.about(name)}", "Actions (call run(block, action, args)):"]
-        return Result("\n".join(lines + [f"  {a.signature()} - {a.about}" for a in actions]))
+        lines = [f"Block {name}: actions (call run(block, action, args)):"]
+        return Result("\n".join(lines + [f"  {signature(a)} - {a.summary} [{a.effect}]" for a in actions]))

@@ -1,26 +1,22 @@
 """health: the health of the harness, what the blocks declare and every problem of the tree."""
-from harness.mcp.actions.table import McpAction
+from harness.utils.contracts import READ, McpAction
 
-BLOCK = "health"
-ABOUT = "The health of the harness: what the blocks declare"
+ACTIONS = [("health.items", "Items"), ("health.doctor", "Doctor")]
 
 
 class Items(McpAction):
-    name = "items"
-    about = "The items of the blocks, one per line: block, kind, name"
+    block, name, effect = "health", "items", READ
+    summary = "The health of the harness: the items of the blocks, one per line (block, kind, name)"
     needs = ("items",)
 
-    def __call__(self):
-        return "\n".join(f"{i.block} {i.kind} {i.name}" for i in self.ports["items"].values())
+    def run(self, ctx, args):
+        return "\n".join(f"{i.block} {i.kind} {i.name}" for i in ctx.ports["items"].values())
 
 
 class Doctor(McpAction):
-    name = "doctor"
-    about = "Every problem of the tree: the indexes, the build, the skills, the nets"
+    block, name, effect = "health", "doctor", READ
+    summary = "Every problem of the tree: the indexes, the build, the skills, the nets"
     needs = ("doctor",)
 
-    def __call__(self):
-        return self.ports["doctor"]()
-
-
-ACTIONS = [Items, Doctor]
+    def run(self, ctx, args):
+        return ctx.ports["doctor"]()

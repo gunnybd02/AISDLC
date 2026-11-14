@@ -3,10 +3,9 @@ import json
 import time
 import unittest
 
-from harness.assemble.engine.build import items_of
 from harness.assemble.engine.ports import LedgerPort
-from harness.assemble.engine.wire_mcp import action_table
-from tests import CLAUDE_DIR, tree
+from tests import tree
+from tests.mcp import caller
 
 Q = "T\u1eaft guard 15 ph\u00fat: s\u1eeda harness?"
 
@@ -14,16 +13,17 @@ Q = "T\u1eaft guard 15 ph\u00fat: s\u1eeda harness?"
 class MaintBlockTest(unittest.TestCase):
     def setUp(self):
         self.root = tree(self, {})
-        self.table = action_table(items_of(CLAUDE_DIR), self.root)
+        self.run = caller(self.root)
 
     def test_grant_gives_the_question_to_ask(self):
-        self.assertIn(Q, self.table.action("maint", "grant").handler(minutes=15, why="s\u1eeda harness"))
-        for minutes in (0, 121, True):
-            with self.subTest(minutes=minutes), self.assertRaises(ValueError):
-                self.table.action("maint", "grant").handler(minutes=minutes, why="x")
+        self.assertIn(Q, self.run("maint", "grant", minutes=15, why="s\u1eeda harness").text)
+        for minutes in (0, 121, True, 1.5):
+            with self.subTest(minutes=minutes):
+                self.assertTrue(self.run("maint", "grant", minutes=minutes, why="x").is_error)
 
     def test_status_reads_the_grant_of_the_ledger(self):
-        status = self.table.action("maint", "status").handler
+        def status():
+            return self.run("maint", "status").text
         self.assertEqual(status(), "The guards are on.")
         LedgerPort(self.root).write(lambda con, rec: con.execute(
             "INSERT INTO pl_notes (uid, kind, text, why, at) VALUES ('u', 'maint.grant', ?, 'fix', 1)",

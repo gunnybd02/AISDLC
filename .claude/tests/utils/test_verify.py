@@ -8,7 +8,6 @@ import unittest
 from harness.assemble.engine.config import Config
 from harness.utils.plan.verify import verify
 from harness.assemble.engine.build import items_of
-from harness.assemble.engine.wire_mcp import action_table
 from harness.assemble.engine.ports import LedgerPort
 from tests import CLAUDE_DIR, tree
 from tests.e2e import copy_tree, git_repo

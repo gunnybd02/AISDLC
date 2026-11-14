@@ -6,6 +6,7 @@ from tests import CLAUDE_DIR
 
 BLOCKS = ("hooks", "gear", "mcp", "assemble", "utils")
 OTHERS = ("nets", "e2e")
+NAMED = {"mcp/test_action_registry.py"}  # the registry pin, by the name docs/mcp.md gives it
 
 
 def problems(claude_dir):
@@ -16,7 +17,7 @@ def problems(claude_dir):
             out.append(f"tests/{rel.as_posix()}: a test sits right in tests/<block>/")
             continue
         folder, module = rel.parts[0], rel.stem[len("test_"):]
-        if folder in OTHERS:
+        if folder in OTHERS or rel.as_posix() in NAMED:
             continue
         if folder not in BLOCKS:
             out.append(f"tests/{rel.as_posix()}: {folder} is no block ({', '.join(BLOCKS + OTHERS)})")

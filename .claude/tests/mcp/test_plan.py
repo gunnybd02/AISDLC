@@ -7,10 +7,9 @@ import unittest
 
 from harness.assemble.engine.config import Config
 from harness.utils.plan.verify import verify
-from harness.assemble.engine.build import items_of
-from harness.assemble.engine.wire_mcp import action_table
 from harness.assemble.engine.ports import LedgerPort
 from tests import CLAUDE_DIR, tree
+from tests.mcp import caller
 from tests.e2e import copy_tree, git_repo
 
 PLAN = {"title": "Add a greeting", "files": ["hello.py"], "tests": ["test_hello.py"]}
@@ -18,13 +17,14 @@ PLAN = {"title": "Add a greeting", "files": ["hello.py"], "tests": ["test_hello.
 
 class PlanBlockTest(unittest.TestCase):
     def setUp(self):
-        self.root = tree(self, {})
-        self.table = action_table(items_of(CLAUDE_DIR), self.root)
+        self.root = copy_tree(self)  # plan_present is a write: the real judge of this tree decides it
+        self.run = caller(self.root)
 
     def call(self, name, **args):
-        action = self.table.action("plan", name)
-        problem = action.problem(args)
-        return problem or action.handler(**args)
+        result = self.run("plan", name, **args)
+        if result.is_error:
+            raise ValueError(result.text)
+        return result.text
 
     def test_plan_present_keeps_the_plan_and_gives_the_question_to_ask(self):
         out = self.call("plan_present", plan=PLAN)

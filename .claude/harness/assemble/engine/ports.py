@@ -21,6 +21,11 @@ from harness.utils.ledger.recorder import Recorder
 
 HEAD = f"{YES} plan "
 
+# The ports an MCP action may name in needs (built in wire_mcp.ports_of); the server adds the judge, which run uses for
+# a write action. The doctor checks every action's needs against SERVER_PORTS.
+ACTION_PORTS = ("plans", "ledger", "verify_command", "items", "doctor")
+SERVER_PORTS = ACTION_PORTS + ("judge",)
+
 
 def question(items, plan_id, rev):
     """The form question of a revision: what the user approves is in it, the files and the folder they are in."""

@@ -201,6 +201,10 @@ Done in 7d:
   `state/`, reads too (`utils/shell/mentions.py`, `gear/detect/planfiles.py`); `run("ledger", "db_query")`
   (`mcp/actions/ledger.py`, `query` in `utils/ledger/db.py`) is the one read-only door, and never reads `tx_*`.
 
+- MCP actions in the shape of `docs/mcp.md`: `ACTIONS = [("block.name", "Class")]`, `McpAction`, `ActionContext` and
+  `ActionError` in `utils/contracts.py` with `effect`, `ACTION_PORTS`/`SERVER_PORTS` in `engine/ports.py`, the judge
+  of write actions in `mcp/tools/run.py` (rule rows in `gear/rules/actions.json`), the pinned registry test.
+
 Left for 7d, each waits for the feature it stores:
 - One store, the rest of section 6: transcripts in `tx_*` tables, overlays, Jira/Confluence images as BLOBs. None
   of these features is in this harness yet; each lands in `harness.db` when it moves in.

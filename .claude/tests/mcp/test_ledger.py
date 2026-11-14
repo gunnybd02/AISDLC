@@ -2,11 +2,10 @@
 import sqlite3
 import unittest
 
-from harness.assemble.engine.build import items_of
 from harness.assemble.engine.ports import LedgerPort
-from harness.assemble.engine.wire_mcp import action_table
 from harness.utils.ledger.db import LedgerError, query
-from tests import CLAUDE_DIR, tree
+from tests import tree
+from tests.mcp import caller
 
 
 class DbQueryTest(unittest.TestCase):
@@ -14,7 +13,14 @@ class DbQueryTest(unittest.TestCase):
         self.root = tree(self, {})
         self.port = LedgerPort(self.root)
         self.port.write(lambda con, rec: con.execute("INSERT INTO pl_logs (uid, body, at) VALUES ('u', 'b', 1)"))
-        self.db_query = action_table(items_of(CLAUDE_DIR), self.root).action("ledger", "db_query").handler
+        run = caller(self.root)
+
+        def db_query(sql):
+            result = run("ledger", "db_query", sql=sql)
+            if result.is_error:
+                raise LedgerError(result.text)
+            return result.text
+        self.db_query = db_query
 
     def test_a_select_answers_its_rows(self):
         self.assertEqual(self.db_query(sql="SELECT uid, body FROM pl_logs"), "uid\tbody\nu\tb")

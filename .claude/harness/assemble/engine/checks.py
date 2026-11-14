@@ -4,6 +4,8 @@ from pathlib import Path
 from harness.assemble.engine.build import CLAUDE_DIR, build_runner, items_of
 from harness.assemble.engine.config import Config, ConfigError
 from harness.assemble.engine.loader import Loader
+from harness.assemble.engine.ports import SERVER_PORTS
+from harness.utils.contracts import EFFECTS, McpAction
 from harness.utils.ledger.db import compare_real
 
 
@@ -31,7 +33,7 @@ def built(claude_dir):
             out.append(f"item {item.name}: {item.ref} does not load ({type(e).__name__}: {e})")
     for action_file in Loader(claude_dir).action_files():
         try:
-            Loader.actions(action_file)
+            out += [f"actions {action_file.module}: {p}" for p in action_problems(Loader.actions(action_file))]
         except Exception as e:
             out.append(f"actions {action_file.module} do not load ({type(e).__name__}: {e})")
     if out:
@@ -56,3 +58,22 @@ def real_ledger(claude_dir):
 
 def report(problems):
     return "\n".join([f"ERROR {p}" for p in problems] + [f"{len(problems)} errors"])
+
+
+def action_problems(entries):
+    """What is wrong with the (block, name, class) entries of an action file: a class that is no McpAction, a block or
+    name other than its entry's, an effect other than read or write, a port in needs no server gives."""
+    out = []
+    for block, name, cls in entries:
+        what = f"{block}.{name}"
+        if not (isinstance(cls, type) and issubclass(cls, McpAction)):
+            out.append(f"{what}: {getattr(cls, '__name__', cls)} is no McpAction")
+            continue
+        if (cls.block, cls.name) != (block, name):
+            out.append(f"{what}: the class says {cls.block}.{cls.name}")
+        if cls.effect not in EFFECTS:
+            out.append(f"{what}: effect {cls.effect!r} is not one of {', '.join(EFFECTS)}")
+        missing = [n for n in cls.needs if n not in SERVER_PORTS]
+        if missing:
+            out.append(f"{what} needs ports no server gives: {', '.join(missing)}")
+    return out
