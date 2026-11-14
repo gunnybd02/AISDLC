@@ -160,3 +160,34 @@ class Ledger:
     def one(self, sql, args=()):
         rows = self.all(sql, args)
         return rows[0] if rows else None
+
+
+HIDDEN = ("tx_",)  # transcripts: kept in the ledger, never read by a query
+ROWS = 200
+
+
+def query(path, sql, limit=ROWS):
+    """(columns, rows, cut) of one SELECT on the ledger at path, opened read only. An authorizer lets through reads
+    and functions only: a write, a PRAGMA, an ATTACH or a read of a hidden table (tx_*) is refused before it runs;
+    sqlite3 itself refuses a second statement."""
+    path = Path(path)
+    if not path.is_file():
+        raise LedgerError("the ledger has no data yet")
+    allowed = {sqlite3.SQLITE_SELECT, sqlite3.SQLITE_FUNCTION, sqlite3.SQLITE_RECURSIVE}
+
+    def authorize(action, arg1, arg2, db, trigger):
+        if action == sqlite3.SQLITE_READ:
+            return sqlite3.SQLITE_DENY if str(arg1).lower().startswith(HIDDEN) else sqlite3.SQLITE_OK
+        return sqlite3.SQLITE_OK if action in allowed else sqlite3.SQLITE_DENY
+
+    con = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, timeout=10)
+    try:
+        con.set_authorizer(authorize)
+        cur = con.execute(sql)
+        columns = [d[0] for d in cur.description or ()]
+        rows = cur.fetchmany(limit + 1)
+    except (sqlite3.Error, ValueError) as e:
+        raise LedgerError(f"the query is refused or wrong: {e}") from e
+    finally:
+        con.close()
+    return columns, rows[:limit], len(rows) > limit

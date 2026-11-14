@@ -48,7 +48,7 @@ class McpServerEntryTest(unittest.TestCase):
         self.assertEqual([json.loads(line)["id"] for line in p.stdout.decode().splitlines()], [1, 2])
 
     def test_a_harness_that_exits_quietly_exits_2(self):
-        root = copy_tree(self, {"harness/assemble/build.py": "raise SystemExit(0)\n"})
+        root = copy_tree(self, {"harness/assemble/engine/build.py": "raise SystemExit(0)\n"})
         self.assertEqual(run(root / "entry" / "mcp_server.py", request(1, "ping"))[0], 2)
 
     def test_the_server_tools_are_declared_by_mcp(self):

@@ -1,0 +1,17 @@
+{
+  "about": "The floor: every session runs it; a pipeline of a plan extends it.",
+  "translators": [
+    "answers",
+    "places",
+    "git_commands",
+    "actions"
+  ],
+  "detectors": [
+    "forms",
+    "tracked",
+    "planfiles",
+    "raw_commit",
+    "git_rules",
+    "write_action"
+  ]
+}

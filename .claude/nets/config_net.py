@@ -3,7 +3,7 @@ import ast
 
 from nets import python
 
-DOOR = "harness/assemble/config.py"
+DOOR = "harness/assemble/engine/config.py"
 
 
 def docstrings(tree):

@@ -1,0 +1,28 @@
+{
+  "rules": [
+    {"finding": "plan.none", "verdict": "refuse",
+     "why": "No plan is approved in this session: present one with run('plan', 'plan_present'), ask the user with the form, then edit.",
+     "test": "tests/gear/test_planfiles.py#test_an_edit_without_an_approved_plan_is_refused"},
+    {"finding": "plan.outside", "verdict": "refuse",
+     "why": "The approved plan does not name this file: present a new revision that names it and ask the user again.",
+     "test": "tests/gear/test_planfiles.py#test_an_edit_of_a_file_outside_the_plan_is_refused"},
+    {"finding": "write.state", "verdict": "refuse",
+     "why": "The state of the harness (its ledger, its maint grant) is written by the harness only, never by an edit.",
+     "test": "tests/gear/test_planfiles.py#test_the_state_of_the_harness_is_never_edited"},
+    {"finding": "read.state", "verdict": "refuse",
+     "why": "The harness's data (state/) is never opened by the shell, Read, Grep or Glob: read the ledger with run('ledger', 'db_query', {sql}), one read-only SELECT; run('maint', 'status') says whether the guards are off.",
+     "test": "tests/gear/test_planfiles.py#test_the_state_is_never_read_by_any_tool"},
+    {"finding": "form.prefilled", "verdict": "refuse",
+     "why": "Only the user answers a form: call AskUserQuestion with the questions alone.",
+     "test": "tests/gear/test_planfiles.py#test_a_form_the_model_answered_itself_is_refused"},
+    {"finding": "form.forged", "verdict": "refuse",
+     "why": "A question of a form may not hold '\"=\"': ask the questions as the harness gave them.",
+     "test": "tests/gear/test_planfiles.py#test_a_question_built_to_fake_an_answer_is_refused"},
+    {"finding": "shell.unread", "verdict": "ask",
+     "why": "Harness không đọc trọn được lệnh này nên hỏi bạn trước khi chạy; Allow chỉ khi lời giải thích khớp với lệnh",
+     "test": "tests/utils/test_place_ops.py#test_a_command_the_reader_cannot_see_whole_asks_the_user_with_the_agents_words"},
+    {"finding": "shell.unexplained", "verdict": "refuse",
+     "why": "The harness cannot read this command whole, so it asks the user before it runs: write in the tool's description, in plain words, what the command does and what it changes, then run it again.",
+     "test": "tests/utils/test_place_ops.py#test_a_command_the_reader_cannot_see_whole_without_words_of_the_agent_is_refused"}
+  ]
+}

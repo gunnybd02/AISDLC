@@ -4,7 +4,7 @@ import json
 import unittest
 
 import harness.gear as gear_block
-import harness.mcp as mcp_block
+import harness.hooks as hooks_block
 from tests.e2e import copy_tree, run
 
 PAYLOAD = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "ls"}, "session_id": "s",
@@ -15,9 +15,9 @@ FAKE = {
         'class Fake(Detector):\n    def detect(self, event, facts):\n'
         '        return [Finding("test.flagged", event.input.get("command", ""))] if event.input.get("flag") else []\n'),
     "harness/gear/__init__.py": (
-        '"""x"""\nITEMS = [{"kind": "rule", "name": "decide", "ref": "harness.gear.decide:Decide"},\n'
+        '"""x"""\nITEMS = [{"kind": "rule", "name": "decide", "ref": "harness.gear.decide.arbiter:Decide"},\n'
         '         {"kind": "detector", "name": "fake", "ref": "harness.gear.fake_detect:Fake"}]\n'),
-    "harness/assemble/recipes/base.json": json.dumps({"translators": [], "detectors": ["fake"]}),
+    "harness/assemble/pipelines/base.json": json.dumps({"translators": [], "detectors": ["fake"]}),
 }
 
 
@@ -27,7 +27,7 @@ def hook(root, payload):
 
 class HookEntryTest(unittest.TestCase):
     def test_the_hook_path_is_declared_by_the_blocks(self):
-        names = {i["name"] for i in gear_block.ITEMS + mcp_block.ITEMS}
+        names = {i["name"] for i in gear_block.ITEMS + hooks_block.ITEMS}
         self.assertLessEqual({"decide", "hook_io"}, names)
 
     def test_a_plain_call_says_nothing(self):
@@ -58,13 +58,13 @@ class HookEntryTest(unittest.TestCase):
         self.assertEqual(hook(copy_tree(self), payload)[:2], (0, ""))
 
     def test_a_broken_harness_exits_2(self):
-        root = copy_tree(self, {"harness/assemble/build.py": "raise RuntimeError('broken')\n"})
+        root = copy_tree(self, {"harness/assemble/engine/build.py": "raise RuntimeError('broken')\n"})
         code, out, err = hook(root, PAYLOAD)
         self.assertEqual((code, out), (2, ""))
         self.assertIn("broken", err)
 
     def test_a_harness_that_exits_quietly_still_blocks(self):
-        root = copy_tree(self, {"harness/assemble/build.py": "raise SystemExit(0)\n"})
+        root = copy_tree(self, {"harness/assemble/engine/build.py": "raise SystemExit(0)\n"})
         self.assertEqual(hook(root, PAYLOAD)[0], 2)
 
     def test_a_payload_that_is_not_json_exits_2(self):

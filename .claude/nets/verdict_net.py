@@ -1,4 +1,4 @@
-"""verdict: only gear/decide.py judges. Outside it and utils/contracts.py no code writes a verdict word, names a verdict
+"""verdict: only gear/decide/arbiter.py judges. Outside it and utils/contracts.py no code writes a verdict word, names a verdict
 constant (ALLOW, ASK, REFUSE) or makes a Verdict; mcp turns a verdict into Claude Code's words through CLAUDE_DECISION."""
 import ast
 
@@ -6,7 +6,7 @@ from nets import python
 
 WORDS = ("allow", "ask", "refuse", "deny")
 NAMES = ("ALLOW", "ASK", "REFUSE", "Verdict")
-OWNERS = ("harness/gear/decide.py", "harness/utils/contracts.py")
+OWNERS = ("harness/gear/decide/arbiter.py", "harness/utils/contracts.py")
 
 
 def judging(node):
@@ -31,5 +31,5 @@ def check(claude_dir):
         for node in ast.walk(tree):
             what = judging(node)
             if what:
-                out.append(f"verdict: {rel}:{node.lineno} {what}; only gear/decide.py judges")
+                out.append(f"verdict: {rel}:{node.lineno} {what}; only gear/decide/arbiter.py judges")
     return out

@@ -1,9 +1,17 @@
 """Tests of the harness. CLAUDE_DIR is the real .claude folder; tree() writes a fake one for a test."""
+import os
+import re
 import shutil
 import tempfile
 from pathlib import Path
 
 CLAUDE_DIR = Path(__file__).resolve().parent.parent
+WINDOWS = os.name == "nt"
+
+
+def native(text):
+    """A test's Windows path (C:/x, C:\\x) as this system writes the same place: as is on Windows, /x elsewhere."""
+    return text if WINDOWS else re.sub(r"[Cc]:(?=[\\/])", "", text)
 
 
 def tree(test, files):

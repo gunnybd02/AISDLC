@@ -1,15 +1,17 @@
-"""h1.blocks-and-nets: the loader reads the ITEMS of mcp and gear without importing them, and refuses a wrong index."""
+"""h1.blocks-and-nets: the loader reads the ITEMS of hooks, mcp and gear without importing them, and refuses a wrong index."""
 import unittest
 
-from harness.assemble.loader import Loader, LoaderError
+from harness.assemble.engine.loader import Loader, LoaderError
 from tests import CLAUDE_DIR, tree
 
-GOOD_GEAR = '"""Block gear."""\nITEMS = [{"kind": "rule", "name": "decide", "ref": "harness.gear.decide:Decide"}]\n'
+GOOD_GEAR = '"""Block gear."""\nITEMS = [{"kind": "rule", "name": "decide", "ref": "harness.gear.decide.arbiter:Decide"}]\n'
 GOOD_MCP = '"""Block mcp."""\nITEMS = []\n'
+GOOD_HOOKS = '"""Block hooks."""\nITEMS = []\n'
 
 
 def fake(test, gear=GOOD_GEAR, mcp=GOOD_MCP, extra=None):
-    files = {"harness/gear/__init__.py": gear, "harness/gear/decide.py": "", "harness/mcp/__init__.py": mcp}
+    files = {"harness/gear/__init__.py": gear, "harness/gear/decide/arbiter.py": "", "harness/mcp/__init__.py": mcp,
+             "harness/hooks/__init__.py": GOOD_HOOKS}
     files.update(extra or {})
     return tree(test, files)
 
@@ -51,7 +53,7 @@ class LoaderTest(unittest.TestCase):
                 self.assertIn("ref", " ".join(self.problems(gear=gear)))
 
     def test_a_block_without_index_is_refused(self):
-        root = tree(self, {"harness/gear/__init__.py": GOOD_GEAR, "harness/gear/decide.py": ""})
+        root = tree(self, {"harness/gear/__init__.py": GOOD_GEAR, "harness/gear/decide/arbiter.py": ""})
         self.assertIn("harness/mcp/__init__.py", " ".join(Loader(root).problems()))
 
     def test_an_index_written_with_a_bom_reads(self):
@@ -65,6 +67,37 @@ class LoaderTest(unittest.TestCase):
     def test_items_raise_when_there_is_a_problem(self):
         with self.assertRaises(LoaderError):
             Loader(fake(self, gear="import os\n")).items()
+
+
+class ActionFilesTest(unittest.TestCase):
+    GOOD = 'class A:\n    pass\n\n\nclass B:\n    pass\n\n\nACTIONS = [("b.one", "A"), ("c.two", "B")]\n'
+
+    def problems(self, text):
+        return Loader(tree(self, {"harness/mcp/actions/a.py": text})).read_actions()[1]
+
+    def test_the_real_action_files_are_read_without_a_problem(self):
+        files, problems = Loader(CLAUDE_DIR).read_actions()
+        self.assertEqual(problems, [])
+        plan = next(f for f in files if f.module == "harness.mcp.actions.plan")
+        self.assertEqual(plan.entries, (("plan", "plan_present", "PlanPresent"), ("plan", "plan_status", "PlanStatus")))
+
+    def test_a_file_lists_block_name_and_class_and_may_hold_several_blocks(self):
+        files, problems = Loader(tree(self, {"harness/mcp/actions/a.py": self.GOOD})).read_actions()
+        self.assertEqual((problems, files[0].entries), ([], (("b", "one", "A"), ("c", "two", "B"))))
+
+    def test_a_wrong_action_file_is_a_problem(self):
+        for text, why in ((self.GOOD.replace('"B")]', '"Z")]'), "does not define"),
+                          (self.GOOD.replace('ACTIONS = [("b.one", "A"), ("c.two", "B")]', 'ACTIONS = list([("b.one", "A")])'), "one literal"),
+                          (self.GOOD.replace('"b.one"', '"one"'), "is not block.name"),
+                          (self.GOOD.replace('("b.one", "A")', '"A"'), "one literal"),
+                          (self.GOOD + "ACTIONS = []\n", "one literal"),
+                          ("def (:\n", "does not parse")):
+            with self.subTest(why=why):
+                self.assertIn(why, " ".join(self.problems(text)))
+
+    def test_an_action_declared_twice_is_a_problem(self):
+        root = tree(self, {"harness/mcp/actions/a.py": self.GOOD, "harness/mcp/actions/c.py": self.GOOD})
+        self.assertIn("declared already", " ".join(Loader(root).read_actions()[1]))
 
 
 if __name__ == "__main__":

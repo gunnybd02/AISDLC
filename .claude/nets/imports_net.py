@@ -7,6 +7,7 @@ import ast
 from nets import files, module_level, read
 
 ALLOWED = {
+    "hooks": ("harness.hooks", "harness.utils"),
     "mcp": ("harness.mcp", "harness.utils"),
     "gear": ("harness.gear", "harness.utils"),
     "utils": ("harness.utils",),
@@ -15,7 +16,7 @@ ALLOWED = {
     "harness": (),
 }
 INTERNAL = ("harness", "nets", "entry", "tests")
-DYNAMIC_OK = ("harness/assemble/loader.py",)
+DYNAMIC_OK = ("harness/assemble/engine/loader.py",)
 
 
 def owner(rel):

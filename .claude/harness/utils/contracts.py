@@ -1,11 +1,12 @@
 """What the blocks share: the event of a hook, a finding, a verdict, and the base classes of a translator, a detector
-and a port. The verdict words live here and in gear/decide.py only (verdict_net)."""
+and a port. The verdict words live here and in gear/decide/arbiter.py only (verdict_net)."""
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
 ALLOW, ASK, REFUSE = "allow", "ask", "refuse"
 VERDICTS = (ALLOW, ASK, REFUSE)  # from the weakest to the strongest
 CLAUDE_DECISION = {ASK: "ask", REFUSE: "deny"}  # what Claude Code reads; allow says nothing
+YES = "Duy\u1ec7t"  # the user's word in a form that approves (a plan, a grant)
 
 
 @dataclass(frozen=True)
@@ -56,3 +57,48 @@ class Port(ABC):
     @abstractmethod
     def read(self, event: Event) -> dict:
         ...
+
+
+READ, WRITE = "read", "write"
+EFFECTS = (READ, WRITE)
+
+
+class ActionError(Exception):
+    """What an action answers when it will not do what it was asked; the model reads the message."""
+
+
+@dataclass(frozen=True)
+class ActionContext:
+    """What an action is given: only the ports it names in needs."""
+    ports: dict
+
+
+class McpAction(ABC):
+    """One action `run` reaches, a class listed in the ACTIONS literal of its file in mcp/actions/ as ("block.name",
+    "Class"). block and name match that entry; args_schema is a JSON schema of an object; needs names its ports; effect
+    is read or write, and a write is judged by the rules before it runs."""
+    block = ""
+    name = ""
+    summary = ""
+    args_schema = {"type": "object", "properties": {}, "required": []}
+    needs = ()
+    effect = READ
+
+    @abstractmethod
+    def run(self, ctx: ActionContext, args: dict) -> str:
+        ...
+
+
+def judged_allow(verdict):
+    """Whether a verdict lets a write action run: an allow that a rule row decided. An allow with no finding is no rule's
+    decision (write-unjudged), and an ask is not an allow: the server cannot ask the user."""
+    return verdict.decision == ALLOW and bool(verdict.findings)
+
+
+def asked(verdict):
+    """Whether the rules want the user's word before the call runs."""
+    return verdict.decision == ASK
+
+
+def refused(verdict):
+    return verdict.decision == REFUSE
