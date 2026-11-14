@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from harness.utils.contracts import CLAUDE_DECISION, Port
 from harness.utils.git.asks import accepts
+from harness.utils.plan.files import allows, relative
 from harness.utils.plan.approval import approvals
 from harness.utils.plan.closing import delivery
 from harness.utils.plan.request import FORM_ONLY
@@ -62,6 +63,10 @@ class Act:
             notes += approvals(self.port, event.session, facts.get("answers") or {})
             notes += accepts(self.port, facts.get("answers") or {})
             notes += delivery(self.port, event.session, facts.get("git_commit"), facts.get("plan"))
+            plan = facts.get("plan")
+            if plan and any(relative(path, plan["root"]) is not None and allows(plan, relative(path, plan["root"]))
+                            for path in facts.get("writes", [])):
+                self.port.back(event.session)  # a write to a plan file in deliver goes back to execute
         for finding in verdict.findings:
             self.port.decision(event, facts.get("plan"), finding, CLAUDE_DECISION.get(verdict.decision, verdict.decision))
         return notes

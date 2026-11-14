@@ -24,6 +24,8 @@ def from_repo(repo, root, paths):
 
 def delivery(port, session, commit, plan):
     """The note of a git command in the plan's own repository: delivered, not delivered (why), or nothing."""
+    if plan and plan.get("steps"):  # a plan of steps is committed by step_done only, step by step
+        return []
     repo = top(plan["root"]) if commit and plan else None
     sha = head(repo) if repo else None
     if not sha or sha == plan.get("base") or port.committed(sha):

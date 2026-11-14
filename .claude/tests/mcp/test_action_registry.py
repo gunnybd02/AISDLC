@@ -13,7 +13,7 @@ PINNED = {
     "maint.grant": READ, "maint.status": READ,
     "plan.plan_present": WRITE, "plan.plan_status": READ, "plan.plan_revise": WRITE, "plan.plan_show": READ,
     "plan.plan_drop": WRITE,
-    "steps.step_done": WRITE,
+    "plan.step_done": WRITE, "plan.step_skip": WRITE,
     "verify.run": WRITE,
     "git.run": WRITE,
 }

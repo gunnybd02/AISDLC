@@ -106,3 +106,21 @@ def deliver(con, ticket, sha):
 
 def close(con, ticket, reason):
     return save(con, {**ticket, "state": CLOSED, "closeReason": reason})
+
+
+def steps_of(plan):
+    """The plan's steps; a plan with none is one step of all its files and tests."""
+    return plan.get("steps") or [{"commit": plan.get("commit") or "", "files": plan.get("files", []),
+                                  "tests": plan.get("tests", []), "points": []}]
+
+
+def move(ticket):
+    """After the current step's commit or skip: the next step opens in execute; after the last, the ticket is in
+    deliver."""
+    last = ticket["step"] >= len(steps_of(ticket["plan"])) - 1
+    return {**ticket, "phase": DELIVER} if last else {**ticket, "step": ticket["step"] + 1, "phase": EXECUTE}
+
+
+def back_to_execute(ticket):
+    """A write to a plan file while the ticket is in deliver: the change goes back to execute, for a fix commit."""
+    return {**ticket, "phase": EXECUTE, "backs": ticket.get("backs", 0) + 1, "backTold": False}

@@ -1,18 +1,37 @@
 """Verify: run the unit's test command for an approved plan in its root and keep the receipt: the result and the blob
 id of each file of the plan, which the commit gate compares with what is staged. A file that changes while the tests
 run is no pass."""
+import os
 import subprocess
 import time
 
-from harness.utils.git.facts import blob
+from harness.utils.git.commit import changed
+from harness.utils.git.facts import blob, top
+from harness.utils.plan.files import allows, is_pattern
 from harness.utils.git.run import GitError
 
 VERIFY_TIMEOUT = 600
 
 
+def dirty(plan):
+    """The paths (from the plan's root) of the files under its root that differ from HEAD and that the plan allows."""
+    repo = top(plan["root"])
+    if not repo:
+        raise ValueError(f"the plan's root {plan['root']} is not in a git repository")
+    prefix = os.path.relpath(os.path.realpath(plan["root"]), os.path.realpath(repo)).replace("\\", "/")
+    out = []
+    for path in changed(repo, ["."] if prefix == "." else [prefix]):
+        rel = path if prefix == "." else path[len(prefix) + 1:]
+        if allows(plan, rel):
+            out.append(rel)
+    return out
+
+
 def blobs(plan):
+    """{path from the root: blob id or None} of the plan's named files and every changed file it allows."""
+    named = [p for p in plan["files"] + plan["tests"] if not is_pattern(p)]
     try:
-        return {p: blob(plan["root"], p) for p in plan["files"] + plan["tests"]}
+        return {p: blob(plan["root"], p) for p in dict.fromkeys(named + dirty(plan))}
     except GitError as e:
         raise ValueError(f"the plan's root is not in a git repository: {e}") from e
 

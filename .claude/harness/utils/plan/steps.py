@@ -1,18 +1,24 @@
-"""step_done: the one way a plan's change is committed (the single writer of commits). The model asks; the harness
-checks, then commits or refuses:
-- the plan is approved and not delivered, and its repository still stands on the commit of the approval;
-- its latest verify passed, and every file of the plan is still what that verify saw;
-- no changed file holds a secret (a private key, a cloud or forge token);
-- something of the plan changed.
-Then it stages and commits only the plan's changed files with the message, and the plan is delivered
-(utils/plan/closing.py checks the commit it made, as it checks any)."""
+"""Steps (docs 04, section 6): step_done {message} commits the current step of the session's plan, then opens the next;
+the last step moves the ticket to deliver, and a home plan then closes delivered with no form (close_home). The
+harness is the one writer of these commits. Refused, in order:
+- step-no-message: no message;            - no plan in force, or the ticket is not in execute;
+- the repository moved: HEAD is not the commit of the approval or the plan's own last commit;
+- step-nothing-to-commit: no changed file the plan allows (step_skip gives a step up);
+- step-other-files: a changed file only another step names (not when fixing);
+- step-owed: a behaviour of the step without its test, a test file that is gone, no green verify, or a file changed
+  after the last verify;
+- step-protected-branch: the branch is protected;   - a secret in a file to commit.
+A fix: the step was committed, the ticket went back to execute (a write in deliver), and plan files changed again.
+step_skip {why} gives the current step up: its behaviours are kept skipped, and the ticket moves on (no close)."""
 import os
 import re
 
-from harness.utils.git.commit import changed, commit
-from harness.utils.git.facts import head, top
-from harness.utils.plan.closing import delivery, from_repo
-from harness.utils.plan.verify import blobs
+from harness.utils.git.branches import current
+from harness.utils.git.commit import commit
+from harness.utils.git.facts import blob, head, top
+from harness.utils.plan.files import matches
+from harness.utils.plan.tickets import EXECUTE, approved_plan, steps_of
+from harness.utils.plan.verify import dirty
 
 LONGEST_MESSAGE = 2000
 SECRETS = {
@@ -23,6 +29,8 @@ SECRETS = {
     "a Slack token": re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}\b"),
     "an API key": re.compile(r"\bsk-(?:ant-)?[A-Za-z0-9_-]{32,}\b"),
 }
+NO_PLAN = "no plan in force in this session: present one, and the user approves it in the form"
+NOT_EXECUTE = "only a step in Execute can be done or skipped (the ticket is in {phase})"
 
 
 class StepError(ValueError):
@@ -30,7 +38,6 @@ class StepError(ValueError):
 
 
 def secret_in(path):
-    """The kind of secret the file holds, or "" (a file that is gone or not text holds none that can be read)."""
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             text = f.read(2_000_000)
@@ -39,39 +46,105 @@ def secret_in(path):
     return next((kind for kind, pattern in SECRETS.items() if pattern.search(text)), "")
 
 
-def message_of(message):
-    text = str(message).strip()
+def in_force(port, sid):
+    ticket = port.ticket(sid) if sid else None
+    plan = approved_plan(ticket)
+    if plan is None:
+        raise StepError(NO_PLAN)
+    if ticket["phase"] != EXECUTE:
+        raise StepError(NOT_EXECUTE.format(phase=ticket["phase"]))
+    return ticket, {**plan, "grants": port.grants(plan)}
+
+
+def step_behaviors(plan, n):
+    """The behaviours the step n (from 0) owes: its own, or all of them when the plan has no steps."""
+    if not plan.get("steps"):
+        return list(plan.get("behaviors", []))
+    return [b for b in plan.get("behaviors", []) if b.get("step", len(plan["steps"])) == n + 1]
+
+
+def owed(port, plan, n, files):
+    """What the step n still owes before its commit of files (paths from the root)."""
+    out, status = [], port.behavior_status(plan)
+    for b in step_behaviors(plan, n):
+        if status.get(b["id"]) in ("skipped", "retired"):
+            continue
+        if not b.get("test"):
+            out.append(f"behaviour {b['id']} has no test: add one with add test")
+        elif not os.path.isfile(os.path.join(plan["root"], b["test"].split("#")[0])):
+            out.append(f"behaviour {b['id']}: its test {b['test']} is not written yet")
+    for b in plan.get("behaviors", []):
+        if b.get("test") and status.get(b["id"]) == "active" and b not in step_behaviors(plan, n) and \
+                not os.path.isfile(os.path.join(plan["root"], b["test"].split("#")[0])):
+            out.append(f"behaviour {b['id']}: its test {b['test']} is gone")
+    receipt = port.receipt(plan)
+    if not receipt or not receipt.get("ok"):
+        out.append(f"no green verify: run('verify', 'run', {{'plan': '{plan['plan_id']}'}})")
+    else:
+        moved = [f for f in files if receipt["files"].get(f) != blob(plan["root"], f)]
+        if moved:
+            out.append(f"changed after the last verify: {', '.join(moved)}")
+    return out
+
+
+def step_done(port, sid, message):
+    text = str(message or "").strip()
     if not text:
-        raise StepError("say what the commit does: the message is empty")
+        raise StepError("step-no-message: say what the step's commit does")
     if len(text) > LONGEST_MESSAGE:
         raise StepError(f"the message is longer than {LONGEST_MESSAGE} characters")
-    return text
-
-
-def step_done(port, plan_id, message):
-    """Commit the verified change of an approved plan, or say why not."""
-    text = message_of(message)
-    plan = port.approved_plan(plan_id)
-    if plan is None:
-        raise StepError(f"no approved plan {plan_id} waits for delivery")
+    ticket, plan = in_force(port, sid)
+    n, steps = ticket["step"], steps_of(plan)
     repo = top(plan["root"])
     if not repo:
         raise StepError(f"the plan's root {plan['root']} is not in a git repository")
-    if not plan.get("base") or head(repo) != plan["base"]:
-        raise StepError("the repository moved since the approval (or had no commit then): present a new plan")
-    receipt = port.receipt(plan)
-    if not receipt or not receipt.get("ok"):
-        raise StepError(f"plan {plan_id} has no passing verify: run('verify', 'run', {{'plan': '{plan_id}'}}) first")
-    moved = sorted(p for p, b in blobs(plan).items() if receipt["files"].get(p) != b)
-    if moved:
-        raise StepError(f"changed since the verify: {', '.join(moved)}; run the verify again")
-    paths = changed(repo, list(from_repo(repo, plan["root"], dict.fromkeys(plan["files"] + plan["tests"]))))
-    if not paths:
-        raise StepError(f"no file of plan {plan_id} changed: nothing to commit")
-    for path in paths:
-        kind = secret_in(os.path.join(repo, path))
+    expected = ticket["commits"][-1] if ticket["commits"] else plan.get("base")
+    if not expected or head(repo) != expected:
+        raise StepError("the repository moved since the approval or the plan's last commit (or had no commit): "
+                        "present a new plan")
+    fixing = bool(ticket.get("stepCommits", {}).get(str(n)))
+    changed_files = dirty(plan)
+    if not changed_files:
+        raise StepError("step-nothing-to-commit: no changed file the plan allows (give the step up with step_skip)")
+    mine = steps[n].get("files", []) + steps[n].get("tests", [])
+    others = [p for i, s in enumerate(steps) if i != n for p in s.get("files", []) + s.get("tests", [])]
+    granted = {p for op, p in plan.get("grants", []) if op == "add"}
+    other = [] if fixing or not plan.get("steps") else [
+        f for f in changed_files if f not in granted and not matches(mine, f) and matches(others, f)]
+    if other:
+        raise StepError(f"step-other-files: {', '.join(other)} belong to another step: commit them there")
+    problems = owed(port, plan, n, changed_files)
+    if problems:
+        raise StepError("step-owed: " + "; ".join(problems))
+    if port.protected(current(repo)):
+        raise StepError(f"step-protected-branch: {current(repo)} is protected; work on a branch of the plan")
+    for f in changed_files:
+        kind = secret_in(os.path.join(plan["root"], f))
         if kind:
-            raise StepError(f"{path} holds {kind}: take it out (and revoke it), verify again, then step_done")
+            raise StepError(f"{f} holds {kind}: take it out (and revoke it), verify again, then step_done")
+    prefix = os.path.relpath(os.path.realpath(plan["root"]), os.path.realpath(repo)).replace("\\", "/")
+    paths = [f if prefix == "." else f"{prefix}/{f}" for f in changed_files]
     sha = commit(repo, paths, text)
-    notes = delivery(port, "", True, plan)
-    return "\n".join([f"Committed {sha[:12]} ({', '.join(paths)})."] + notes)
+    after = port.step_commit(sid, ticket, plan, repo, sha, fixing)
+    head_line = f"Committed {sha[:12]} ({', '.join(changed_files)})."
+    if fixing:
+        return f"{head_line} The fix is committed; the ticket is in Deliver."
+    if after["state"] == "closed":
+        return f"{head_line} The last step is done; the plan is delivered and its ticket is closed (no form is asked)."
+    if after["phase"] == "execute":
+        return f"{head_line} Step {n + 1} is done; step {after['step'] + 1} of {len(steps)} is open."
+    return f"{head_line} The last step is done; the ticket is in Deliver."
+
+
+def step_skip(port, sid, why):
+    text = str(why or "").strip()
+    if not text or "\n" in text or len(text) > 200:
+        raise StepError("why is one line of at most 200 characters")
+    ticket, plan = in_force(port, sid)
+    if dirty(plan):
+        raise StepError("plan files are changed: commit them with step_done, or put them back, before a skip")
+    n = ticket["step"]
+    after = port.step_skip(sid, ticket, plan, [b["id"] for b in step_behaviors(plan, n)], text)
+    if after["phase"] == "execute":
+        return f"Step {n + 1} is given up ({text}); step {after['step'] + 1} is open."
+    return f"Step {n + 1} is given up ({text}); the ticket is in Deliver."

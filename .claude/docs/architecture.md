@@ -36,11 +36,13 @@ AskUserQuestion                          the user answers; only "Duyệt" to tha
 Write / Edit, or a write by the shell     allowed only for the files of the approved plan (detect/tracked.py, detect/planfiles.py)
 run("verify", "run", {plan})             the unit's tests in the plan's root; the receipt keeps each file's blob id,
                                          read before and after the tests (a file that changed under them: no pass)
-run("steps", "step_done", {plan, message})
-                                         the harness checks, then commits: the plan approved and its repository still
-                                         on the commit of the approval, a passing verify, each plan file as the verify
-                                         saw it, no secret in a changed file; it stages and commits only the plan's
-                                         changed files (utils/plan/steps.py, the one writer of commits)
+run("plan", "step_done", {message})      the current step of the session's plan (utils/plan/steps.py): refused
+                                         with no message, nothing changed, a file of another step, what the step
+                                         owes (its behaviours' tests, a green verify of the current files), a
+                                         protected branch or a secret; else the harness commits the step's changed
+                                         files, the next step opens, and after the last a home plan closes
+                                         delivered (no form). step_skip {why} gives a step up; a write to a plan
+                                         file in deliver goes back to execute, and the next step_done is a fix
 delivery (utils/plan/closing.py)         the commit is judged by what it holds: HEAD's parent is the commit of the
                                          approval, and it changes only plan files (paths as git names them, case
                                          kept), each as the passing verify saw it, a plain file whose mode does not
@@ -191,9 +193,9 @@ judged.
 
 | Block | Actions |
 |---|---|
-| `plan` | `plan_present`, `plan_status` |
+| `plan` | `plan_present`, `plan_revise`, `plan_show`, `plan_status`, `plan_drop` |
 | `verify` | `run` |
-| `steps` | `step_done` |
+| `plan` | `step_done`, `step_skip` |
 | `git` | `run` |
 | `ledger` | `db_query` |
 | `maint` | `grant`, `status` |

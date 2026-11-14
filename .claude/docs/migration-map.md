@@ -216,6 +216,12 @@ Done in 7d:
 - Plan lifecycle, part 3: the opening in one transaction (`utils/plan/opening.py`), `pl_approval` pending and
   approved, every prompt kept in `pl_prompts` and FORM_ONLY for a bare agreement word (`utils/plan/request.py`).
 
+- Plan lifecycle, part 4: `plan.step_done {message}` step by step and `plan.step_skip` (`utils/plan/steps.py`),
+  ticket moves, home plans closing delivered after the last step, back to execute on a write in deliver; the files
+  gate reads patterns (`**`, `*`, `?`, a trailing `/`), add/drop grants and folders above planned files
+  (`utils/plan/files.py`). Schema v5 has no `pl_commits` or `pl_verify_proofs`: step commits go to `rec_commits`, and
+  a green verify of the full test command proves every active behaviour.
+
 Left for 7d, each waits for the feature it stores:
 - One store, the rest of section 6: transcripts in `tx_*` tables, overlays, Jira/Confluence images as BLOBs. None
   of these features is in this harness yet; each lands in `harness.db` when it moves in.

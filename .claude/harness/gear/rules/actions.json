@@ -2,9 +2,10 @@
   "rules": [
     {"finding": "action.plan.plan_present", "verdict": "allow", "why": "Presenting a plan only keeps it waiting; the user approves it in the form.", "test": "tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"},
     {"finding": "action.verify.run", "verdict": "allow", "why": "Verify runs the unit's tests for an approved plan and keeps the receipt.", "test": "tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"},
-    {"finding": "action.steps.step_done", "verdict": "allow", "why": "step_done makes its own checks (verify, files, secrets) before the harness commits.", "test": "tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"},
+    {"finding": "action.plan.step_done", "verdict": "allow", "why": "step_done makes its own checks (verify, files, secrets) before the harness commits.", "test": "tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"},
     {"finding": "action.git.run", "verdict": "allow", "why": "The git block judges its command by the git rules itself and runs it only with the user's word where they ask.", "test": "tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"},
     {"finding": "action.plan.plan_revise", "verdict": "allow", "why": "A revision only waits for the user's approval again.", "test": "tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"},
-    {"finding": "action.plan.plan_drop", "verdict": "allow", "why": "Dropping a waiting plan approves nothing; its revisions stay.", "test": "tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"}
+    {"finding": "action.plan.plan_drop", "verdict": "allow", "why": "Dropping a waiting plan approves nothing; its revisions stay.", "test": "tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"},
+    {"finding": "action.plan.step_skip", "verdict": "allow", "why": "A skip gives up a step; its behaviours are kept skipped.", "test": "tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"}
   ]
 }

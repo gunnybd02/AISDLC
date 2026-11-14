@@ -71,9 +71,9 @@ class OneFlowTest(unittest.TestCase):
 
         # commit: never from the shell; step_done refuses before the verify and commits after it
         self.assertEqual(flow.decision("Bash", {"command": "git commit -m 'Set X'"}), "deny")
-        self.assertIn("no passing verify", flow.mcp("steps", "step_done", {"plan": plan_id, "message": "Set X"}))
+        self.assertIn("no green verify", flow.mcp("plan", "step_done", {"message": "Set X"}))
         self.assertIn("verify passed", flow.mcp("verify", "run", {"plan": plan_id}))
-        self.assertIn("delivered", flow.mcp("steps", "step_done", {"plan": plan_id, "message": "Set X"}))
+        self.assertIn("delivered", flow.mcp("plan", "step_done", {"message": "Set X"}))
 
         # delivered: a new edit needs a new plan
         self.assertEqual(flow.decision("Write", write_a), "deny")

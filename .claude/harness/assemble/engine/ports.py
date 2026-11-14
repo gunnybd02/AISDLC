@@ -15,12 +15,13 @@ import time
 import uuid
 from pathlib import Path
 
+from harness.assemble.engine.config import Config, ConfigError
 from harness.utils.contracts import YES, Port
 from harness.utils.git.branches import DEFAULT_PROTECTED, current, is_protected
 from harness.utils.git.facts import head, top, unpushed_files
 from harness.utils.plan import opening, render, request, revisions, tickets
 from harness.utils.plan.desk import new_id
-from harness.utils.plan.files import key
+from harness.utils.plan.files import key, relative
 from harness.utils.ledger.db import Ledger
 from harness.utils.ledger.recorder import Recorder
 
@@ -139,12 +140,73 @@ class LedgerPort:
         return None
 
     def approved(self, sid):
-        """The plan in force in the session: the plan of its newest ticket, while that ticket holds one. None else."""
-        return tickets.approved_plan(self.ticket(sid))
+        """The plan in force in the session: the plan of its newest ticket, while that ticket holds one, with its file
+        grants [(op, path from its root)] in the order they were given (pl_file_grants). None else."""
+        plan = tickets.approved_plan(self.ticket(sid))
+        return {**plan, "grants": self.grants(plan)} if plan else None
+
+    def grants(self, plan):
+        out = []
+        for r in self.rows("SELECT op, file FROM pl_file_grants WHERE plan_id = ? ORDER BY rowid", (plan["id"],)):
+            rel = relative(r["file"], plan["root"])
+            if rel is not None:
+                out.append((r["op"], rel.replace("\\", "/")))
+        return out
 
     def approved_plan(self, plan_id):
         """The plan in force whose desk id is plan_id (pd-...), whatever its session; None when no open ticket holds it."""
         return tickets.approved_plan(self.read(lambda con: tickets.open_with_draft(con, plan_id)))
+
+    def protected(self, branch):
+        """Whether the branch is protected (project.json protected; main and master when it cannot be read)."""
+        try:
+            patterns = Config.load(self.path.parent.parent).protected
+        except ConfigError:
+            patterns = DEFAULT_PROTECTED
+        return is_protected(branch, patterns)
+
+    def behavior_status(self, plan):
+        """{behaviour id: active | skipped | retired} of the plan, replayed from pl_behaviors in the order written."""
+        out = {}
+        for r in self.rows("SELECT id, op FROM pl_behaviors WHERE plan_id IN (?, ?) ORDER BY rowid",
+                           (plan["id"], plan.get("rootId", plan["id"]))):
+            out[r["id"]] = {"add": "active", "skip": "skipped", "retire": "retired"}.get(r["op"], out.get(r["id"]))
+        return out
+
+    def step_commit(self, sid, ticket, plan, repo, sha, fixing):
+        """The step's commit is made: keep it; the ticket moves on (after the last step: deliver, and a home plan
+        closes delivered with no form). A fix keeps the ticket in deliver. One transaction; the ticket after."""
+        def change(con, rec):
+            rec.insert(con, "rec_commits", {"plan_id": plan["id"], "service": repo, "commit_sha": sha, "at": now(),
+                                            "uid": uuid.uuid4().hex})
+            fresh = tickets.latest(con, sid)
+            done = {**fresh, "commits": fresh["commits"] + [sha],
+                    "stepCommits": {**fresh.get("stepCommits", {}),
+                                    str(fresh["step"]): fresh.get("stepCommits", {}).get(str(fresh["step"]), []) + [sha]}}
+            done = {**done, "phase": "deliver"} if fixing else tickets.move(done)
+            if not fixing and done["phase"] == "deliver" and not plan.get("children"):  # close_home
+                done = {**done, "state": tickets.CLOSED, "closeReason": tickets.DELIVERED}
+                self.event(con, rec, plan["plan_id"], "delivered", plan["rev"], plan["id"], sid)
+            return tickets.save(con, done)
+        return self.write(change)
+
+    def step_skip(self, sid, ticket, plan, ids, why):
+        def change(con, rec):
+            for bid in ids:
+                rec.insert(con, "pl_behaviors", {"uid": uuid.uuid4().hex, "sid": sid, "plan_id": plan["id"],
+                                                 "repo": plan["root"], "op": "skip", "id": bid,
+                                                 "entry": json.dumps({"why": why}, ensure_ascii=False), "at": now()})
+            fresh = tickets.latest(con, sid)
+            return tickets.save(con, tickets.move({**fresh, "skips": fresh.get("skips", 0) + 1}))
+        return self.write(change)
+
+    def back(self, sid):
+        """A write to a plan file while the ticket is in deliver sends it back to execute."""
+        def change(con, rec):
+            fresh = tickets.latest(con, sid)
+            if fresh and tickets.approved_plan(fresh) and fresh["phase"] == "deliver":
+                tickets.save(con, tickets.back_to_execute(fresh))
+        self.write(change)
 
     def decision(self, event, plan, finding, verdict):
         self.write(lambda con, rec: rec.insert(con, "act_rule_decisions", {
