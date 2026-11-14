@@ -51,10 +51,12 @@ class OneFlowTest(unittest.TestCase):
         self.assertEqual(flow.decision("Write", write_a), "deny")
 
         # the plan, and the form the user answers
-        out = flow.mcp("plan", "plan_present", {"plan": {"title": "Set X", "files": ["a.py"], "tests": ["test_a.py"]}})
-        q = re.search(r'Duyệt plan "Set X" \((pd-\w+) rev 1\): [^\n]*?\?(?= Options)', out)
+        flow.hook("UserPromptSubmit", "", {})  # the session the MCP server works for
+        out = flow.mcp("plan", "plan_present", {"plan": {"title": "Set X", "what": ["X becomes 2"], "files": ["a.py"],
+                                                         "tests": ["test_a.py"]}})
+        q = re.search(r'Duyệt plan "Set X" \((pd-[0-9a-z]+-[0-9a-f]{6}) rev 1\)\?(?= Header)', out)
         plan_id = q.group(1)
-        self.assertIn("a.py, test_a.py", q.group(0))
+        self.assertIn("- a.py\n**Tests**\n- test_a.py", out)
         form = {"questions": [{"question": q.group(0), "options": [{"label": "Duyệt"}, {"label": "Sửa plan"}]}]}
         self.assertEqual(flow.decision("AskUserQuestion", {**form, "answers": {q.group(0): "Duyệt"}}), "deny")
         self.assertEqual(flow.decision("AskUserQuestion", form), "allow")

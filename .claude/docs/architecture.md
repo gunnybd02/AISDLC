@@ -22,9 +22,12 @@ Everything lives under `.claude/`. Python 3.13, standard library only.
 
 ## The flow of a change
 ```
-run("plan", "plan_present", {plan})      the revision waits in the ledger; its root is the MCP server's folder (the
-                                         project); the answer is the form question, which names the files and the root
-                                         (with plan_id: a new revision of a waiting plan; only the newest is approvable)
+run("plan", "plan_present", {plan})      the plan is data (utils/plan/desk.py: clean, normalize, check; tier light
+                                         or full); the revision waits in the ledger with the session that presented
+                                         it; the answer is the ## Plan block (render.py) and the form call
+                                         Duyệt plan "<title>" (<pd-id> rev N)?; plan_revise keeps rev+1 with only
+                                         the given items, plan_drop stops a waiting plan, plan_show and plan_status
+                                         read one
 AskUserQuestion                          the user answers; only "Duyệt" to that exact question approves it
 Write / Edit, or a write by the shell     allowed only for the files of the approved plan (detect/tracked.py, detect/planfiles.py)
 run("verify", "run", {plan})             the unit's tests in the plan's root; the receipt keeps each file's blob id,

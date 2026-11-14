@@ -208,6 +208,11 @@ Done in 7d:
 - Plan lifecycle (docs 04), part 1: the ticket (`utils/plan/tickets.py`, `pl_tickets`): phases prepare, execute,
   deliver; close delivered, superseded; `approved_plan` as the one rule; the calling session of the MCP server.
 
+- Plan lifecycle, part 2: the desk (`utils/plan/desk.py`: items, limits, clean, normalize, merge, tiers), the block
+  and form (`render.py`), revisions (`revisions.py`: sha of the block, feedback, dropped), and the actions
+  `plan_present`, `plan_revise`, `plan_show`, `plan_status`, `plan_drop`. Paths stay relative to the root (no `~/`,
+  `/` or globs yet: those come with the files gate); `services` other than none/agent-code wait for declared units.
+
 Left for 7d, each waits for the feature it stores:
 - One store, the rest of section 6: transcripts in `tx_*` tables, overlays, Jira/Confluence images as BLOBs. None
   of these features is in this harness yet; each lands in `harness.db` when it moves in.

@@ -79,7 +79,7 @@ class ActionFilesTest(unittest.TestCase):
         files, problems = Loader(CLAUDE_DIR).read_actions()
         self.assertEqual(problems, [])
         plan = next(f for f in files if f.module == "harness.mcp.actions.plan")
-        self.assertEqual(plan.entries, (("plan", "plan_present", "PlanPresent"), ("plan", "plan_status", "PlanStatus")))
+        self.assertEqual(plan.entries[:2], (("plan", "plan_present", "PlanPresent"), ("plan", "plan_revise", "PlanRevise")))
 
     def test_a_file_lists_block_name_and_class_and_may_hold_several_blocks(self):
         files, problems = Loader(tree(self, {"harness/mcp/actions/a.py": self.GOOD})).read_actions()

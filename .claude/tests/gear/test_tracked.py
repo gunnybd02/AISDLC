@@ -63,8 +63,6 @@ class EditGateRunTest(unittest.TestCase):
         self.assertEqual(runner.run(edit).verdict.decision, "allow")
         self.assertEqual(runner.run(write(native("C:/repo/src/b.py"))).verdict.decision, "refuse")
         self.assertEqual(question(items, plan_id, rev), q)
-        self.assertIn("src/a.py", q)
-        self.assertIn(ROOT, q)
 
     def test_a_form_of_the_wrong_shape_is_refused_and_answers_nothing(self):
         for qs in ([{"question": "q", "options": 5}], [5], "q", [{"question": "q", "options": [1]}]):

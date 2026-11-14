@@ -1,7 +1,8 @@
 """Ports: what a run reads from outside and writes back.
 
 LedgerPort keeps the plans of the harness in the ledger (state/harness.db):
-- present: a revision of a plan {title, files, tests, root}, waiting (pl_plan_revs, a 'waiting' event);
+- present: a revision of a desk plan (its items, utils/plan/desk.py, and its root), waiting (pl_plan_revs,
+  utils/plan/revisions.py, a 'waiting' event); drop: a waiting plan no longer waits ('dropped');
 - approve: the user's "Duyệt" in the form to that revision's question (a chained rec_plans row, an 'approved' event);
 - approved: the plan a session works under: the plan of its ticket while the ticket holds one in force
   (utils/plan/tickets.py, approved_plan, the one rule).
@@ -11,7 +12,6 @@ creates the ledger.
 PlanState gives the gears the approved plan of the event's session, and the harness's own state folder."""
 import hashlib
 import json
-import secrets
 import time
 import uuid
 from pathlib import Path
@@ -19,12 +19,12 @@ from pathlib import Path
 from harness.utils.contracts import YES, Port
 from harness.utils.git.branches import DEFAULT_PROTECTED, current, is_protected
 from harness.utils.git.facts import head, top, unpushed_files
-from harness.utils.plan import tickets
+from harness.utils.plan import render, revisions, tickets
+from harness.utils.plan.desk import new_id
 from harness.utils.plan.files import key
 from harness.utils.ledger.db import Ledger
 from harness.utils.ledger.recorder import Recorder
 
-HEAD = f"{YES} plan "
 
 # The ports an MCP action may name in needs (built in wire_mcp.ports_of); the server adds the judge, which run uses for
 # a write action. The doctor checks every action's needs against SERVER_PORTS.
@@ -33,9 +33,8 @@ SERVER_PORTS = ACTION_PORTS + ("judge",)
 
 
 def question(items, plan_id, rev):
-    """The form question of a revision: what the user approves is in it, the files and the folder they are in."""
-    files = ", ".join(items["files"] + items.get("tests", []))
-    return f'{HEAD}"{items["title"]}" ({plan_id} rev {rev}): sửa {files} trong {items["root"]}?'
+    """The form question of a revision (utils/plan/render.py); the block above it shows what the user approves."""
+    return render.question(items, plan_id, rev)
 
 
 def now():
@@ -80,20 +79,30 @@ class LedgerPort:
         """The newest ticket of the session, or None."""
         return self.read(lambda con: tickets.latest(con, sid))
 
-    def present(self, items, plan_id=None):
-        """Keep a revision of a plan; give (plan id, revision, the form question)."""
-        plan_id = plan_id or f"pd-{secrets.token_hex(4)}"
-        body = json.dumps(items, sort_keys=True, ensure_ascii=False)
+    def present(self, items, plan_id=None, sid="", why=None):
+        """Keep a revision of a desk plan (a new one without plan_id); give (plan id, revision, the form question)."""
+        plan_id = plan_id or new_id()
 
         def change(con, rec):
-            rev = 1 + (con.execute("SELECT MAX(rev) FROM pl_plan_revs WHERE plan_id = ?", (plan_id,)).fetchone()[0] or 0)
-            rec.insert(con, "pl_plan_revs", {"plan_id": plan_id, "rev": rev, "sid": "", "items": body, "why": "",
-                                              "sha": hashlib.sha256(body.encode()).hexdigest()[:8], "at": now()})
-            self.event(con, rec, plan_id, "waiting", rev)
+            rev = revisions.record(con, rec, plan_id, sid, items, why)
+            self.event(con, rec, plan_id, "waiting", rev, sid=sid)
             return rev
 
         rev = self.write(change)
         return plan_id, rev, question(items, plan_id, rev)
+
+    def revision(self, plan_id):
+        """The newest revision of a desk plan and its state (utils/plan/revisions.newest), or None."""
+        return self.read(lambda con: revisions.newest(con, plan_id))
+
+    def drop(self, plan_id, rev, sid):
+        self.write(lambda con, rec: self.event(con, rec, plan_id, "dropped", rev, sid=sid))
+
+    def feedback(self, plan_id, rev, sid, text):
+        self.write(lambda con, rec: revisions.feedback(con, plan_id, rev, sid, text))
+
+    def unread(self, plan_id, since):
+        return self.read(lambda con: revisions.unread(con, plan_id, since)) or []
 
     @staticmethod
     def event(con, rec, plan_id, name, rev, ref=None, sid=""):
@@ -102,15 +111,9 @@ class LedgerPort:
                                            "ref": ref, "at": now()})
 
     def waiting(self):
-        """The newest revision of each plan whose newest revision is not approved, with its question."""
-        out = []
-        for r in self.rows("SELECT r.plan_id, r.rev, r.items FROM pl_plan_revs r WHERE r.rev = (SELECT MAX(x.rev) FROM "
-                           "pl_plan_revs x WHERE x.plan_id = r.plan_id) AND NOT EXISTS (SELECT 1 FROM pl_plan_events e "
-                           "WHERE e.plan_id = r.plan_id AND e.rev = r.rev AND e.event = 'approved') ORDER BY r.at"):
-            items = json.loads(r["items"])
-            out.append({"plan_id": r["plan_id"], "rev": r["rev"], "items": items,
-                        "question": question(items, r["plan_id"], r["rev"])})
-        return out
+        """The newest revision of each desk plan that waits for its approval, with its question."""
+        return [{**w, "question": question(w["items"], w["plan_id"], w["rev"])}
+                for w in self.read(revisions.waiting) or []]
 
     def approve(self, sid, waiting):
         """The user approved this waiting revision in the session sid. Its root is the one the form showed; base is the
