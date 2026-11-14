@@ -44,7 +44,7 @@ def build_runner(claude_dir=CLAUDE_DIR, items=None, plan=None):
     decide = Loader.resolve(items["decide"]).load(claude_dir)
     port = LedgerPort(claude_dir)
     return Runner(pick(items, pipeline.translators, "translator"), pick(items, pipeline.detectors, "detector"), decide,
-                  ports=[PlanState(port, config.protected)], act=Act(port))
+                  ports=[PlanState(port, config.protected, config.banned)], act=Act(port))
 
 
 def run_hook(text, claude_dir=CLAUDE_DIR):

@@ -7,12 +7,15 @@ harness is the one writer of these commits. Refused, in order:
 - step-other-files: a changed file only another step names (not when fixing);
 - step-owed: a behaviour of the step without its test, a test file that is gone, no green verify, or a file changed
   after the last verify;
-- step-protected-branch: the branch is protected;   - a secret in a file to commit.
+- step-protected-branch: the branch is protected;
+- the commit guards (judge: the rules on the commit, gear/detect/secret.py, mark.py, agent.py): a secret in an
+  added line, an AI mark or a banned word in the message, agent files in a unit's commit.
 A fix: the step was committed, the ticket went back to execute (a write in deliver), and plan files changed again.
 step_skip {why} gives the current step up: its behaviours are kept skipped, and the ticket moves on (no close)."""
 import os
 import re
 
+from harness.utils.contracts import asked, refused
 from harness.utils.git.branches import current
 from harness.utils.git.commit import commit
 from harness.utils.git.facts import blob, head, top
@@ -22,29 +25,12 @@ from harness.utils.plan.tickets import EXECUTE, approved_plan, steps_of
 from harness.utils.plan.verify import dirty
 
 LONGEST_MESSAGE = 2000
-SECRETS = {
-    "a private key": re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY"),
-    "an AWS access key": re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
-    "a GitHub token": re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,})\b"),
-    "a GitLab token": re.compile(r"\bglpat-[A-Za-z0-9_-]{20,}\b"),
-    "a Slack token": re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}\b"),
-    "an API key": re.compile(r"\bsk-(?:ant-)?[A-Za-z0-9_-]{32,}\b"),
-}
 NO_PLAN = "no plan in force in this session: present one, and the user approves it in the form"
 NOT_EXECUTE = "only a step in Execute can be done or skipped (the ticket is in {phase})"
 
 
 class StepError(ValueError):
     pass
-
-
-def secret_in(path):
-    try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            text = f.read(2_000_000)
-    except OSError:
-        return ""
-    return next((kind for kind, pattern in SECRETS.items() if pattern.search(text)), "")
 
 
 def in_force(port, sid):
@@ -94,7 +80,9 @@ def owed(port, plan, n, files):
     return out
 
 
-def step_done(port, sid, message):
+def step_done(port, sid, message, judge=None):
+    """judge(repo, files, message) -> the verdict of the rules on the commit; None judges nothing (tests of the steps
+    alone)."""
     text = str(message or "").strip()
     if not text:
         raise StepError("step-no-message: say what the step's commit does")
@@ -125,12 +113,12 @@ def step_done(port, sid, message):
         raise StepError("step-owed: " + "; ".join(problems))
     if port.protected(current(repo)):
         raise StepError(f"step-protected-branch: {current(repo)} is protected; work on a branch of the plan")
-    for f in changed_files:
-        kind = secret_in(os.path.join(plan["root"], f))
-        if kind:
-            raise StepError(f"{f} holds {kind}: take it out (and revoke it), verify again, then step_done")
     prefix = os.path.relpath(os.path.realpath(plan["root"]), os.path.realpath(repo)).replace("\\", "/")
     paths = [f if prefix == "." else f"{prefix}/{f}" for f in changed_files]
+    if judge is not None:
+        verdict = judge(repo, paths, text)
+        if refused(verdict) or asked(verdict):
+            raise StepError(verdict.reason)
     sha = commit(repo, paths, text)
     after = port.step_commit(sid, ticket, plan, repo, sha, fixing)
     head_line = f"Committed {sha[:12]} ({', '.join(changed_files)})."

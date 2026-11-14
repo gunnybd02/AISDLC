@@ -101,16 +101,29 @@ class StepsTest(unittest.TestCase):
         self.write("a.py", "X = 3\n")
         self.refused("changed after the last verify: a.py")
 
-    def test_no_commit_of_a_secret_or_on_a_protected_branch(self):
+    def judge(self):
+        from harness.assemble.engine.build import items_of
+        from harness.assemble.engine.wire_mcp import ports_of
+        return ports_of(items_of(self.claude_dir), self.claude_dir)["commit_judge"]
+
+    def test_no_commit_of_a_secret_an_ai_mark_or_on_a_protected_branch(self):
         self.approve(LIGHT)
         self.write("a.py", "KEY = 'AKIA" + "ABCDEFGHIJKLMNOP'\n")
         self.verify()
-        self.refused("a.py holds an AWS access key")
+        with self.assertRaises(StepError) as caught:
+            step_done(self.port, "s1", "Set X", self.judge())
+        self.assertIn("A secret never reaches a commit", str(caught.exception))
+        self.assertIn("(a.py holds an AWS access key)", str(caught.exception))
         self.write("a.py", "X = 2\n")
         self.verify()
+        with self.assertRaises(StepError) as caught:
+            step_done(self.port, "s1", "Set X\n\nCo-Authored-By: Claude <noreply@anthropic.com>", self.judge())
+        self.assertIn("no AI mark", str(caught.exception))
         git(self.repo, "checkout", "-q", "-b", "main")
         self.refused("step-protected-branch: main")
         self.assertEqual(git(self.repo, "rev-list", "--count", "HEAD").strip(), "1")
+        git(self.repo, "checkout", "-q", "work")
+        self.assertIn("delivered", step_done(self.port, "s1", "Set X", self.judge()))
 
     def test_refusals_before_anything(self):
         self.approve(LIGHT)

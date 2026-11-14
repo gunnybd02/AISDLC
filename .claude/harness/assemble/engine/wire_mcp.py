@@ -21,6 +21,13 @@ def git_event(repo, words):
     return Event("PreToolUse", "HarnessGit", {"command": shlex.join(["git", *words])}, "", str(repo))
 
 
+def commit_event(repo, files, message):
+    """The event a commit the harness is about to make is judged as (gear/translate/commit.py): its repository, its
+    files (from the repository root) and its message."""
+    return Event("PreToolUse", "HarnessCommit", {"repo": str(repo), "files": list(files), "message": message}, "",
+                 str(repo))
+
+
 def ports_of(items, claude_dir):
     """Every port of SERVER_PORTS; one that costs a read is a callable, read when the action runs."""
     ledger = LedgerPort(claude_dir)
@@ -28,6 +35,8 @@ def ports_of(items, claude_dir):
              "items": items, "doctor": lambda: report(doctor(claude_dir)),
              "git_judge": lambda repo, words: build_runner(claude_dir, items).run(git_event(repo, words)).verdict,
              "session": ledger.session,
+             "commit_judge": lambda repo, files, message: build_runner(claude_dir, items).run(
+                 commit_event(repo, files, message)).verdict,
              "judge": lambda event: build_runner(claude_dir, items).run(event).verdict}
     assert tuple(ports) == SERVER_PORTS, "ports_of builds exactly SERVER_PORTS"
     return ports

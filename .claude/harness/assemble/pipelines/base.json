@@ -4,7 +4,8 @@
     "answers",
     "places",
     "git_commands",
-    "actions"
+    "actions",
+    "commit_facts"
   ],
   "detectors": [
     "forms",
@@ -13,6 +14,9 @@
     "raw_commit",
     "git_rules",
     "write_action",
-    "stop_guard"
+    "stop_guard",
+    "secret_scan",
+    "mark_scan",
+    "agent_files"
   ]
 }

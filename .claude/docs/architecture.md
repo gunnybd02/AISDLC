@@ -98,6 +98,13 @@ What the gates refuse, so they always see what they judge:
   question `Duyệt git <args> trong <repo> [<code>]?`, the user's approval word is kept in `pl_asks` (`utils/git/asks.py`,
   through `Act`), and the next run of exactly that command uses it up; refused (`git commit`: step_done), it never runs.
   Every run is kept in `pl_git_runs` with the rules that asked and the code of the user's word.
+- The commit guards: before step_done commits, the harness judges the commit with the rules (the event
+  `HarnessCommit`, `gear/translate/commit.py`): a secret in a line it adds (`gear/detect/secret.py`, commit.secret),
+  an AI mark (AI co-author or footer, an AI tool's name or address, a robot emoji) or a Mermaid diagram in the message
+  (`gear/detect/mark.py`, `utils/git/marks.py`, commit.ai_mark), a word of `banned` in `project.json`
+  (commit.banned_word), agent files in a unit's commit (`gear/detect/agent.py`, commit.agent_files). A write into
+  `.claude/rules/` (a skill instead), a `memory/` folder of `.claude` (a note instead) or the behaviour registry file
+  (`add test` instead) is refused (agent.rules, agent.memory, agent.registry).
 - A plan path inside `.git`, with `~`, `%` or a comma, or a title with a double quote.
 - Paths are compared as the system resolves them: real paths (8.3 short names expanded), without a `\\?\` prefix.
 

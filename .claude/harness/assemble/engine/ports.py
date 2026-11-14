@@ -29,7 +29,7 @@ from harness.utils.ledger.recorder import Recorder
 
 # The ports an MCP action may name in needs (built in wire_mcp.ports_of); the server adds the judge, which run uses for
 # a write action. The doctor checks every action's needs against SERVER_PORTS.
-ACTION_PORTS = ("plans", "ledger", "verify_command", "items", "doctor", "git_judge", "session")
+ACTION_PORTS = ("plans", "ledger", "verify_command", "items", "doctor", "git_judge", "session", "commit_judge")
 SERVER_PORTS = ACTION_PORTS + ("judge",)
 
 
@@ -323,9 +323,9 @@ class GitView:
 class PlanState(Port):
     """The gears' view of the world: the approved plan, the harness's own state folder, and the git facts (GitView)."""
 
-    def __init__(self, port, protected=DEFAULT_PROTECTED):
-        self.port, self.git = port, GitView(Path(port.path).parent.parent, protected)
+    def __init__(self, port, protected=DEFAULT_PROTECTED, banned=()):
+        self.port, self.git, self.banned = port, GitView(Path(port.path).parent.parent, protected), tuple(banned)
 
     def read(self, event):
         return {"plan": self.port.approved(event.session), "state_dir": str(self.port.path.parent).replace("\\", "/"),
-                "git_view": self.git, "stop_owed": lambda plan: stop.unverified(self.port, plan)}
+                "git_view": self.git, "stop_owed": lambda plan: stop.unverified(self.port, plan), "banned": self.banned}

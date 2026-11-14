@@ -20,10 +20,10 @@ class StepDone(McpAction):
     summary = ("End the current step: the harness checks what it owes (its behaviours' tests, a green verify of the "
                "current files, no secret, not a protected branch) and commits the step's files with this message")
     args_schema = {"type": "object", "properties": {"message": {"type": "string"}}, "required": ["message"]}
-    needs = ("plans", "session")
+    needs = ("plans", "session", "commit_judge")
 
     def run(self, ctx, args):
-        return step_done(ctx.ports["plans"], session_of(ctx), args["message"])
+        return step_done(ctx.ports["plans"], session_of(ctx), args["message"], ctx.ports["commit_judge"])
 
 
 class StepSkip(McpAction):

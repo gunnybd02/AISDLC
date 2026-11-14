@@ -1,6 +1,7 @@
 """Config: the one reader of .claude/project.json, the values of the user (config_net).
   name     the project's name
   verify   (optional) the test command of the unit, a list of words run in the plan's root; "{python}" is this Python
+  banned   (optional) words commit and merge request text never hold
   protected (optional) the protected branches, names or fnmatch patterns; main and master when not given
   ledger   (optional) the absolute path of the real ledger, whose schema the doctor compares read only; a Windows
            path (C:/...) is absolute on every system, and on one that is not Windows it names no ledger here"""
@@ -17,7 +18,7 @@ FILE = "project.json"
 DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
 REQUIRED = ("name",)
 GONE = {"recipe": "the pipeline is picked by the state of the session (assemble/engine/select.py)"}
-OPTIONAL = ("verify", "ledger", "protected")
+OPTIONAL = ("verify", "ledger", "protected", "banned")
 
 
 class ConfigError(ValueError):
@@ -30,6 +31,7 @@ class Config:
     verify: tuple = ()
     ledger: str = ""
     protected: tuple = DEFAULT_PROTECTED
+    banned: tuple = ()
 
     @property
     def ledger_here(self):
@@ -58,4 +60,7 @@ class Config:
         protected = data.get("protected", list(DEFAULT_PROTECTED))
         if not isinstance(protected, list) or not protected or not all(isinstance(b, str) and b for b in protected):
             raise ConfigError(f"{FILE}: protected is a list of branch names or patterns (main, release/*)")
-        return cls(data["name"], tuple(sys.executable if w == "{python}" else w for w in verify), ledger, tuple(protected))
+        banned = data.get("banned", [])
+        if not isinstance(banned, list) or not all(isinstance(w, str) and w.strip() for w in banned):
+            raise ConfigError(f"{FILE}: banned is a list of words commit and merge request text never hold")
+        return cls(data["name"], tuple(sys.executable if w == "{python}" else w for w in verify), ledger, tuple(protected), tuple(w.strip() for w in banned))
