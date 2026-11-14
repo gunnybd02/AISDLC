@@ -3,7 +3,7 @@ what proves their end, and ending them.
 - proof: a commit of the plan number in rec_commits proves delivered; else a closed ticket that held the plan proves
   its closeReason (delivered, else dropped); else nothing.
 - write: ends the proven plans, except one whose session still runs with an open ticket.
-- drop: ends unproven plans of sessions that no longer run, after the user's one Yes in a form ('Cho phép', kept as a
+- drop: ends unproven plans of sessions that no longer run, after the user's one Yes in a form ('Cho ph\u00e9p', kept as a
   one-use pass plans-drop:<plans> in pl_asks); the open holder ticket closes abandoned."""
 import re
 import time
@@ -11,8 +11,8 @@ import time
 from harness.utils.git.asks import take
 
 DEAD_AFTER = 6 * 3600 * 1000  # a session the hook has not seen for 6 hours no longer runs
-ALLOW_LABEL, NO_LABEL = "Cho phép", "Không"
-DROP_RE = re.compile("^Cho phép bỏ plan (?P<plans>pd-[^?]+)\\?$")
+ALLOW_LABEL, NO_LABEL = "Cho ph\u00e9p", "Kh\u00f4ng"
+DROP_RE = re.compile("^Cho ph\u00e9p b\u1ecf plan (?P<plans>pd-[^?]+)\\?$")
 ACCEPTED = "GATE: the user allows dropping {plans}; run plans_settle with the same drop list again, once."
 
 
@@ -70,7 +70,7 @@ def drop_plans(port, plans, names):
             raise ValueError(f"{name}: its session still runs")
     key = "plans-drop:" + ",".join(names)
     if not take(port, key):
-        q = f"{ALLOW_LABEL} bỏ plan {', '.join(names)}?"
+        q = f"{ALLOW_LABEL} b\u1ecf plan {', '.join(names)}?"
         return (f"Dropping plans needs the user's Yes. Ask now with AskUserQuestion, one question, exactly: {q} "
                 f"Options: \"{ALLOW_LABEL}\", \"{NO_LABEL}\". Never fill in the answer. Then run the same drop again.")
     for name in names:

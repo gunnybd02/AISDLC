@@ -37,6 +37,7 @@ def ports_of(items, claude_dir):
              "session": ledger.session,
              "commit_judge": lambda repo, files, message: build_runner(claude_dir, items).run(
                  commit_event(repo, files, message)).verdict,
+             "banned": lambda: Config.load(claude_dir).banned,
              "judge": lambda event: build_runner(claude_dir, items).run(event).verdict}
     assert tuple(ports) == SERVER_PORTS, "ports_of builds exactly SERVER_PORTS"
     return ports

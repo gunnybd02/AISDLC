@@ -7,8 +7,9 @@ from pathlib import Path
 from harness.utils.contracts import WRITE, ActionError, McpAction, asked, refused
 from harness.utils.git.asks import code_of, keep_run, question, take
 from harness.utils.git.run import run_git
+from harness.utils.plan.ship import git_commit, git_push
 
-ACTIONS = [("git.run", "Run")]
+ACTIONS = [("git.run", "Run"), ("git.commit", "Commit"), ("git.push", "Push")]
 TAIL = 4000
 
 
@@ -36,3 +37,32 @@ class Run(McpAction):
         keep_run(ctx.ports["ledger"], repo, words, code, reason, exit_code)
         head = f"git {' '.join(words)}: exit {exit_code}" + (" (accepted by the user)" if asked(verdict) else "")
         return head + ("\n" + output[-TAIL:] if output.strip() else "")
+
+
+def session_of(ctx):
+    sid = ctx.ports["session"]()
+    if not sid:
+        raise ActionError("no session: the harness has not seen this session's prompt yet")
+    return sid
+
+
+class Commit(McpAction):
+    block, name, effect = "git", "commit", WRITE
+    summary = ("Commit named files of the session's plan (paths from its root): not on a protected branch, only files the "
+               "plan allows, code verified green, judged by the commit guards; then step_done ends the step")
+    args_schema = {"type": "object", "properties": {"files": {"type": "array"}, "message": {"type": "string"}},
+                   "required": ["files", "message"]}
+    needs = ("plans", "session", "commit_judge")
+
+    def run(self, ctx, args):
+        return git_commit(ctx.ports["plans"], session_of(ctx), args["files"], args["message"], ctx.ports["commit_judge"])
+
+
+class Push(McpAction):
+    block, name, effect = "git", "push", WRITE
+    summary = ("Push the branch of the session's unit plan to origin, in Deliver: never the home, never a protected "
+               "branch; judged like git push in a shell and kept in pl_git_audit")
+    needs = ("plans", "session", "git_judge")
+
+    def run(self, ctx, args):
+        return git_push(ctx.ports["plans"], session_of(ctx), ctx.ports["git_judge"])

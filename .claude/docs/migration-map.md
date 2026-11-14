@@ -233,6 +233,11 @@ Done in 7d:
   has no `pl_plan_closures`: a close is a `closure` row of `pl_logs` with its event and ticket. Not yet: CI owed at
   Stop, unmerged worktree commits at close, foreign changes (no `rec_edits` writer).
 
+- Shipping (`utils/plan/ship.py`, `mcp/actions/git.py`, `gitlab.py`): `git.commit` (step_done adopts its commit),
+  `git.push` (unit plans in deliver; a home plan, services none or agent-code, closes itself), `git.mr_open` (the
+  user's Cho phép on the full text, GitLab REST with GITLAB_TOKEN or the proxy's credential). Not yet: `mr_update`,
+  the gitlab read actions, CI waits. Code text is ASCII: Vietnamese words are \u escapes in every .py file.
+
 Left for 7d, each waits for the feature it stores:
 - One store, the rest of section 6: transcripts in `tx_*` tables, overlays, Jira/Confluence images as BLOBs. None
   of these features is in this harness yet; each lands in `harness.db` when it moves in.

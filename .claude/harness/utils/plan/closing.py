@@ -68,9 +68,9 @@ def not_the_plans(port, repo, sha, plan):
 
 
 # The close form (docs 04, section 6): plan_close never closes; it gives the exact question with the facts of the
-# ledger, and only the user's answer closes: Đã giao (delivered), Bỏ plan (abandoned); Giữ mở or a note keeps it open.
-CLOSE_RE = re.compile("^Đóng plan \"(?P<title>.*)\" \\((?P<draft>pd-[^)]+)\\) \\[(?P<ticket>t-[^\\]]+)\\]\\?")
-DELIVER_LABEL, ABANDON_LABEL, KEEP_LABEL = "Đã giao", "Bỏ plan", "Giữ mở"
+# ledger, and only the user's answer closes: \u0110\u00e3 giao (delivered), B\u1ecf plan (abandoned); Gi\u1eef m\u1edf or a note keeps it open.
+CLOSE_RE = re.compile("^\u0110\u00f3ng plan \"(?P<title>.*)\" \\((?P<draft>pd-[^)]+)\\) \\[(?P<ticket>t-[^\\]]+)\\]\\?")
+DELIVER_LABEL, ABANDON_LABEL, KEEP_LABEL = "\u0110\u00e3 giao", "B\u1ecf plan", "Gi\u1eef m\u1edf"
 CLOSED = "GATE: plan {draft} is closed {reason} by the user's form; its ticket is closed."
 KEPT = "GATE: the user keeps plan {draft} open ({label})."
 LONGEST = 200
@@ -115,7 +115,7 @@ def close_question(port, sid, summary=None, exceptions=None):
         raise ValueError("no plan in force in this session")
     lines = ([f"Summary: {summary}"] if summary else []) + close_facts(port, ticket, {**plan, "grants": port.grants(plan)})
     lines += [f"Exceptions: {'; '.join(exceptions)}"] if exceptions else []
-    q = f'Đóng plan "{plan["title"]}" ({plan["plan_id"]}) [{ticket["id"]}]?\n' + "\n".join(lines)
+    q = f'\u0110\u00f3ng plan "{plan["title"]}" ({plan["plan_id"]}) [{ticket["id"]}]?\n' + "\n".join(lines)
     return (f"Ask the user now with AskUserQuestion, one question, exactly:\n{q}\nOptions: \"{DELIVER_LABEL}\", "
             f"\"{ABANDON_LABEL}\", \"{KEEP_LABEL}\". Never fill in the answer.")
 

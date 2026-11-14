@@ -289,7 +289,7 @@ def children_problems(value, units=()):
             out.append(f"{c['name']}: goal is at most {MAX_POINT} characters")
         ac = c.get("ac")
         if not isinstance(ac, list) or not 1 <= len(ac) <= 6 or not all(
-                isinstance(a, str) and len(a) <= 120 and len(re.findall(r"[A-Za-zÀ-ỹ]{3,}", a)) >= 2 for a in ac):
+                isinstance(a, str) and len(a) <= 120 and len(re.findall(r"[A-Za-z\u00c0-\u1ef9]{3,}", a)) >= 2 for a in ac):
             out.append(f"{c['name']}: ac is 1 to 6 checks of at most 120 characters, two words at least")
         for key in ("read", "change", "tests"):
             if len(c.get(key, [])) > 8 or path_problems(c.get(key, [])):

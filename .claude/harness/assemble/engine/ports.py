@@ -3,7 +3,7 @@
 LedgerPort keeps the plans of the harness in the ledger (state/harness.db):
 - present: a revision of a desk plan (its items, utils/plan/desk.py, and its root), waiting (pl_plan_revs,
   utils/plan/revisions.py, a 'waiting' event); drop: a waiting plan no longer waits ('dropped');
-- approve: the user's "Duyệt" in the form to that revision's question (a chained rec_plans row, an 'approved' event);
+- approve: the user's "Duy\u1ec7t" in the form to that revision's question (a chained rec_plans row, an 'approved' event);
 - approved: the plan a session works under: the plan of its ticket while the ticket holds one in force
   (utils/plan/tickets.py, approved_plan, the one rule).
 The audit rows are never changed after they are written; a ticket is the one body that changes, in place. Reading never
@@ -29,7 +29,8 @@ from harness.utils.ledger.recorder import Recorder
 
 # The ports an MCP action may name in needs (built in wire_mcp.ports_of); the server adds the judge, which run uses for
 # a write action. The doctor checks every action's needs against SERVER_PORTS.
-ACTION_PORTS = ("plans", "ledger", "verify_command", "items", "doctor", "git_judge", "session", "commit_judge")
+ACTION_PORTS = ("plans", "ledger", "verify_command", "items", "doctor", "git_judge", "session", "commit_judge",
+                "banned")
 SERVER_PORTS = ACTION_PORTS + ("judge",)
 
 
@@ -189,18 +190,35 @@ class LedgerPort:
                                                  "entry": json.dumps(entry, ensure_ascii=False), "at": now()})
         self.write(change)
 
-    def step_commit(self, sid, ticket, plan, repo, sha, fixing):
-        """The step's commit is made: keep it; the ticket moves on (after the last step: deliver, and a home plan
-        closes delivered with no form). A fix keeps the ticket in deliver. One transaction; the ticket after."""
+    def is_home(self, repo):
+        """Whether repo is the home, the repository that holds the harness."""
+        home, here = top(self.path.parent.parent), top(repo) if Path(repo).is_dir() else None
+        return bool(home and here) and key(home) == key(here)
+
+    def note_commit(self, sid, plan, repo, sha):
+        """git.commit made a commit of the plan: keep it; the ticket notes it, and step_done adopts it (no move)."""
         def change(con, rec):
             rec.insert(con, "rec_commits", {"plan_id": plan["id"], "service": repo, "commit_sha": sha, "at": now(),
                                             "uid": uuid.uuid4().hex})
             fresh = tickets.latest(con, sid)
-            done = {**fresh, "commits": fresh["commits"] + [sha],
-                    "stepCommits": {**fresh.get("stepCommits", {}),
-                                    str(fresh["step"]): fresh.get("stepCommits", {}).get(str(fresh["step"]), []) + [sha]}}
+            tickets.save(con, {**fresh, "noted": fresh.get("noted", []) + [sha]})
+        self.write(change)
+
+    def step_commit(self, sid, ticket, plan, repo, sha, fixing):
+        """The step's commit is made (sha), or the commits git.commit noted are adopted (sha None): keep it; the ticket
+        moves on (after the last step: deliver; a home plan then closes delivered with no form, a unit plan stays for
+        push and merge request). A fix keeps the ticket in deliver. One transaction; the ticket after."""
+        def change(con, rec):
+            fresh = tickets.latest(con, sid)
+            shas = [sha] if sha else fresh.get("noted", [])
+            if sha:
+                rec.insert(con, "rec_commits", {"plan_id": plan["id"], "service": repo, "commit_sha": sha, "at": now(),
+                                                "uid": uuid.uuid4().hex})
+            step = str(fresh["step"])
+            done = {**fresh, "commits": fresh["commits"] + shas, "noted": [],
+                    "stepCommits": {**fresh.get("stepCommits", {}), step: fresh.get("stepCommits", {}).get(step, []) + shas}}
             done = {**done, "phase": "deliver"} if fixing else tickets.move(done)
-            if not fixing and done["phase"] == "deliver" and not plan.get("children"):  # close_home
+            if not fixing and done["phase"] == "deliver" and not plan.get("children") and home_plan(plan):
                 done = {**done, "state": tickets.CLOSED, "closeReason": tickets.DELIVERED}
                 self.event(con, rec, plan["plan_id"], "delivered", plan["rev"], plan["id"], sid)
             return tickets.save(con, done)
@@ -296,6 +314,12 @@ class LedgerPort:
                 tickets.deliver(con, ticket, sha)
             self.event(con, rec, plan["plan_id"], "delivered", plan["rev"], plan["id"], ticket["sid"] if ticket else sid)
         self.write(change)
+
+
+def home_plan(plan):
+    """A plan of the home only (services none or agent-code): it closes itself after its last step; a plan of a unit
+    stays in deliver for its push and merge request."""
+    return set(plan.get("services") or ["agent-code"]) <= {"none", "agent-code"}
 
 
 class GitView:

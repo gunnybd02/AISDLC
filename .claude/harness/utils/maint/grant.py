@@ -1,4 +1,4 @@
-"""The maint grant: only the user's approval word to the form question 'Tắt guard N phút: <why>?' turns every guard
+"""The maint grant: only the user's approval word to the form question 'T\u1eaft guard N ph\u00fat: <why>?' turns every guard
 off, for N minutes, at most 120. It is a row of the ledger (pl_notes, kind maint.grant, text {"until": seconds}), and
 every call that passes while it lasts is a row of pl_logs.
 
@@ -13,7 +13,7 @@ from harness.utils.contracts import YES
 
 KIND = "maint.grant"
 MAX_MINUTES = 120
-QUESTION = re.compile("^Tắt guard (\\d+) phút: (.+)\\?$")
+QUESTION = re.compile("^T\u1eaft guard (\\d+) ph\u00fat: (.+)\\?$")
 LATEST = "SELECT text, why, at FROM pl_notes WHERE kind = ? ORDER BY at DESC, rowid DESC LIMIT 1"
 
 
@@ -24,11 +24,11 @@ def question(minutes, why):
     why = " ".join(str(why).split()).rstrip("?")
     if not why:
         raise ValueError("say why the guards should be off")
-    q = f"Tắt guard {minutes} phút: {why}?"
+    q = f"T\u1eaft guard {minutes} ph\u00fat: {why}?"
     if not QUESTION.match(q):
         raise ValueError("the reason cannot be put in the question")
     return (f"Ask the user now with AskUserQuestion, one question, exactly: {q} Options: \"{YES}\", "
-            f"\"Không\". Never fill in the answer. Only the user's {YES} turns the guards off; every call is "
+            f"\"Kh\u00f4ng\". Never fill in the answer. Only the user's {YES} turns the guards off; every call is "
             f"traced while they are off.")
 
 

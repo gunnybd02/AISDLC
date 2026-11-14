@@ -49,6 +49,15 @@ run("plan", "step_done", {message})      the current step of the session's plan 
                                          files, the next step opens, and after the last a home plan closes
                                          delivered (no form). step_skip {why} gives a step up; a write to a plan
                                          file in deliver goes back to execute, and the next step_done is a fix
+run("git", "commit", {files, message})   named files of the plan (never ., a folder or outside it): refused on a
+                                         protected branch, with no plan, a file the plan does not allow, a code file
+                                         no green verify saw, or a commit guard; the step does not move: step_done
+                                         adopts the commit once proven
+run("git", "push")                       a unit plan's branch in deliver only (a home plan closes itself after its
+                                         last step): never the home, never a protected branch; judged like git push
+run("git", "mr_open", {title, ...})      after the user's Cho phép on its full text (a one-use pass of exactly that
+                                         text): the merge request through GitLab REST (utils/git/gitlab.py); push
+                                         and merge request kept in pl_git_audit
 Stop                                     the turn does not end while a code file of the plan changed since the last
                                          green verify (stop.unverified, gear/detect/stop.py; a repeated Stop ends it;
                                          a failure to look keeps it)
@@ -217,7 +226,7 @@ judged.
 | `plan` | `plan_present`, `plan_revise`, `plan_show`, `plan_status`, `plan_drop` |
 | `verify` | `run` |
 | `plan` | `step_done`, `step_skip`, `plan_close` |
-| `git` | `run` |
+| `git` | `run`, `commit`, `push`, `mr_open` |
 | `ledger` | `db_query`, `plans_settle` |
 | `maint` | `grant`, `status` |
 | `health` | `items`, `doctor` |

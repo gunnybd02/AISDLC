@@ -4,7 +4,7 @@ import hashlib
 
 from harness.utils.contracts import YES
 
-REFINE_LABEL = "Sửa plan"
+REFINE_LABEL = "S\u1eeda plan"
 HEADER = f"{YES} plan"
 
 

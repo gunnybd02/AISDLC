@@ -5,7 +5,7 @@ import time
 
 LONGEST = 2000
 AGREE = {"ok", "okay", "oke", "yes", "y", "go", "go ahead", "approve", "approved", "lgtm", "ship it",
-         "duyệt", "đồng ý", "làm đi", "chốt", "ừ", "được", "đi"}
+         "duy\u1ec7t", "\u0111\u1ed3ng \u00fd", "l\u00e0m \u0111i", "ch\u1ed1t", "\u1eeb", "\u0111\u01b0\u1ee3c", "\u0111i"}
 FORM_ONLY = ("GATE: a word in the chat approves no plan. Plan {plan} rev {rev} waits: ask the user its form question "
              "with AskUserQuestion; only the answer in the form approves it.")
 

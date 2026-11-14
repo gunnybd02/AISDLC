@@ -19,6 +19,7 @@ from harness.utils.contracts import asked, refused
 from harness.utils.git.branches import current
 from harness.utils.git.commit import commit
 from harness.utils.git.facts import blob, head, top
+from harness.utils.git.run import GitError, git
 from harness.utils.plan.files import matches
 from harness.utils.plan.grants import test_missing
 from harness.utils.plan.tickets import EXECUTE, approved_plan, steps_of
@@ -93,12 +94,22 @@ def step_done(port, sid, message, judge=None):
     repo = top(plan["root"])
     if not repo:
         raise StepError(f"the plan's root {plan['root']} is not in a git repository")
-    expected = ticket["commits"][-1] if ticket["commits"] else plan.get("base")
+    noted = ticket.get("noted", [])
+    expected = (ticket["commits"] + noted)[-1] if ticket["commits"] + noted else plan.get("base")
     if not expected or head(repo) != expected:
         raise StepError("the repository moved since the approval or the plan's last commit (or had no commit): "
                         "present a new plan")
     fixing = bool(ticket.get("stepCommits", {}).get(str(n)))
     changed_files = dirty(plan)
+    if not changed_files and noted:  # the step's commits were made by git.commit: adopt them once proven
+        problems = owed(port, plan, n, [])
+        unproven = [f for sha in noted for f in committed_files(repo, plan, sha)
+                    if (port.green_receipt(plan) or {}).get("files", {}).get(f) != blob(plan["root"], f)]
+        if problems or unproven:
+            raise StepError("step-unproven: " + "; ".join(problems + ([f"no green verify saw {', '.join(unproven)}"]
+                                                                      if unproven else [])))
+        after = port.step_commit(sid, ticket, plan, repo, None, False)
+        return done_text(after, n, steps, f"Adopted {', '.join(s[:12] for s in noted)}.")
     if not changed_files:
         raise StepError("step-nothing-to-commit: no changed file the plan allows (give the step up with step_skip)")
     mine = steps[n].get("files", []) + steps[n].get("tests", [])
@@ -124,11 +135,25 @@ def step_done(port, sid, message, judge=None):
     head_line = f"Committed {sha[:12]} ({', '.join(changed_files)})."
     if fixing:
         return f"{head_line} The fix is committed; the ticket is in Deliver."
+    return done_text(after, n, steps, head_line)
+
+
+def done_text(after, n, steps, head_line):
     if after["state"] == "closed":
         return f"{head_line} The last step is done; the plan is delivered and its ticket is closed (no form is asked)."
     if after["phase"] == "execute":
         return f"{head_line} Step {n + 1} is done; step {after['step'] + 1} of {len(steps)} is open."
-    return f"{head_line} The last step is done; the ticket is in Deliver."
+    return f"{head_line} The last step is done; the ticket is in Deliver: push it (git.push) and open its merge request."
+
+
+def committed_files(repo, plan, sha):
+    """The files (from the plan's root) the commit sha changes."""
+    prefix = os.path.relpath(os.path.realpath(plan["root"]), os.path.realpath(repo)).replace("\\", "/")
+    try:
+        names = git(repo, "show", "--name-only", "--format=", sha).split()
+    except GitError:
+        return []
+    return [n if prefix == "." else n[len(prefix) + 1:] for n in names if prefix == "." or n.startswith(prefix + "/")]
 
 
 def step_skip(port, sid, why):
