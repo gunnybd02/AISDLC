@@ -1,5 +1,5 @@
 """Approval: the user's answer to the form question of a waiting plan revision. The approval word approves it for the
-session; any other answer approves nothing and asks for a revision. A peer's message never approves: only the answers
+session; any other answer approves nothing, is kept as feedback and asks for a revision. A peer's message never approves: only the answers
 of a form, read from its PostToolUse, reach here."""
 from harness.utils.contracts import YES
 
@@ -20,5 +20,6 @@ def approvals(port, session, answers):
             notes.append(APPROVED.format(plan=waiting["plan_id"], rev=waiting["rev"],
                                          files=", ".join(waiting["items"]["files"])))
         else:
-            notes.append(REFINE.format(plan=waiting["plan_id"], rev=waiting["rev"], label=label.strip()[:200]))
+            port.feedback(waiting["plan_id"], waiting["rev"], session, label.strip()[:300])
+            notes.append(REFINE.format(plan=waiting["plan_id"], rev=waiting["rev"], label=label.strip()[:300]))
     return notes

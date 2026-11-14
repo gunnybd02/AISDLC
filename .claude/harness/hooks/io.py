@@ -3,7 +3,7 @@ nothing, so Claude Code's own permissions still apply. Only PreToolUse takes a d
 (an approval, a delivery) reach the model as additionalContext when there is no decision to give."""
 import json
 
-from harness.utils.contracts import CLAUDE_DECISION, Event
+from harness.utils.contracts import CLAUDE_DECISION, Event, refused
 
 DECIDES = "PreToolUse"
 
@@ -22,6 +22,10 @@ class HookIO:
         if not isinstance(data, dict) or not isinstance(data.get("hook_event_name"), str):
             raise HookError("the hook payload has no hook_event_name")
         tool_input = data.get("tool_input", {})
+        if data["hook_event_name"] == "UserPromptSubmit":  # the prompt is the input of this event
+            tool_input = {"prompt": str(data.get("prompt") or "")}
+        if data["hook_event_name"] == "Stop":  # true when Claude Code goes on because a Stop hook blocked once
+            tool_input = {"stop_hook_active": bool(data.get("stop_hook_active"))}
         if not isinstance(tool_input, dict):
             raise HookError("tool_input of the hook payload is not an object")
         return Event(data["hook_event_name"], str(data.get("tool_name") or ""), tool_input,
@@ -29,6 +33,8 @@ class HookIO:
 
     @staticmethod
     def write(event, verdict, notes=()):
+        if event.kind == "Stop" and refused(verdict):  # the turn does not end: Claude Code reads why and goes on
+            return json.dumps({"decision": "block", "reason": verdict.reason}, ensure_ascii=False)
         if event.kind == DECIDES and verdict.decision in CLAUDE_DECISION:
             out = {"hookEventName": event.kind, "permissionDecision": CLAUDE_DECISION[verdict.decision],
                    "permissionDecisionReason": verdict.reason}

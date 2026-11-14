@@ -205,6 +205,43 @@ Done in 7d:
   `ActionError` in `utils/contracts.py` with `effect`, `ACTION_PORTS`/`SERVER_PORTS` in `engine/ports.py`, the judge
   of write actions in `mcp/tools/run.py` (rule rows in `gear/rules/actions.json`), the pinned registry test.
 
+- Plan lifecycle (docs 04), part 1: the ticket (`utils/plan/tickets.py`, `pl_tickets`): phases prepare, execute,
+  deliver; close delivered, superseded; `approved_plan` as the one rule; the calling session of the MCP server.
+
+- Plan lifecycle, part 2: the desk (`utils/plan/desk.py`: items, limits, clean, normalize, merge, tiers), the block
+  and form (`render.py`), revisions (`revisions.py`: sha of the block, feedback, dropped), and the actions
+  `plan_present`, `plan_revise`, `plan_show`, `plan_status`, `plan_drop`. Paths stay relative to the root (no `~/`,
+  `/` or globs yet: those come with the files gate); `services` other than none/agent-code wait for declared units.
+
+- Plan lifecycle, part 3: the opening in one transaction (`utils/plan/opening.py`), `pl_approval` pending and
+  approved, every prompt kept in `pl_prompts` and FORM_ONLY for a bare agreement word (`utils/plan/request.py`).
+
+- Plan lifecycle, part 4: `plan.step_done {message}` step by step and `plan.step_skip` (`utils/plan/steps.py`),
+  ticket moves, home plans closing delivered after the last step, back to execute on a write in deliver; the files
+  gate reads patterns (`**`, `*`, `?`, a trailing `/`), add/drop grants and folders above planned files
+  (`utils/plan/files.py`). Schema v5 has no `pl_commits` or `pl_verify_proofs`: step commits go to `rec_commits`, and
+  a green verify of the full test command proves every active behaviour.
+
+- Plan lifecycle, part 5: `entry/cli.py` and `engine/cli_wire.py` with `verify` (lock `utils/plan/verify_lock.py`,
+  ledger copy, timeout codes) and the doors of `utils/plan/grants.py` (add file, add test, add drop-file, add
+  retire-test, behaviors add, list, check, retire) and the behaviour registry `step_done` reads. Not yet: per-unit
+  verify rules (no units declared), `--full` is the config command, and the harness itself does not read HARNESS_DB
+  (it only hands the copy to the tests).
+
+- Plan lifecycle, part 6: the Stop guard (`utils/plan/stop.py`, `gear/detect/stop.py`, a block Claude Code reads),
+  `plan.plan_close` and its form (`utils/plan/closing.py`), `ledger.plans_settle` (`utils/plan/life.py`). Schema v5
+  has no `pl_plan_closures`: a close is a `closure` row of `pl_logs` with its event and ticket. Not yet: CI owed at
+  Stop, unmerged worktree commits at close, foreign changes (no `rec_edits` writer).
+
+- Shipping (`utils/plan/ship.py`, `mcp/actions/git.py`, `gitlab.py`): `git.commit` (step_done adopts its commit),
+  `git.push` (unit plans in deliver; a home plan, services none or agent-code, closes itself), `git.mr_open` (the
+  user's Cho phép on the full text, GitLab REST with GITLAB_TOKEN or the proxy's credential). Not yet: `mr_update`,
+  the gitlab read actions, CI waits. Code text is ASCII: Vietnamese words are \u escapes in every .py file.
+
+- Releases (blue/green): `entry/boot.py`, `utils/gateway/release.py`, `engine/live_mcp.py`, `engine/cli_live.py`;
+  sessions run `state/live/<sha>/`, `live publish` needs a clean doctor and the user's Cho phép, the MCP server swaps
+  without a restart; boot.py, settings.json and .mcp.json are anchors no session writes.
+
 Left for 7d, each waits for the feature it stores:
 - One store, the rest of section 6: transcripts in `tx_*` tables, overlays, Jira/Confluence images as BLOBs. None
   of these features is in this harness yet; each lands in `harness.db` when it moves in.

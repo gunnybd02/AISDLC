@@ -1,5 +1,5 @@
 """RawCommit: commit.raw, a shell line that commits (gear/translate/git.py), safe to read or not. Commits go through
-run('steps', 'step_done'), where the harness checks the plan's change and commits it itself (utils/plan/steps.py)."""
+run('plan', 'step_done') or run('git', 'commit'), where the harness checks the plan's change and commits it itself (utils/plan/steps.py)."""
 from harness.utils.contracts import Detector, Finding
 
 

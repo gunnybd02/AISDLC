@@ -102,3 +102,7 @@ def asked(verdict):
 
 def refused(verdict):
     return verdict.decision == REFUSE
+
+
+PREPARE, EXECUTE, DELIVER = "prepare", "execute", "deliver"
+PHASES = (EXECUTE, DELIVER)  # the phases in which a ticket's plan is in force

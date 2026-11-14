@@ -23,10 +23,11 @@ import time
 import uuid
 from pathlib import Path
 
-CLAUDE_DIR = Path(__file__).resolve().parent.parent
+CODE_DIR = Path(__file__).resolve().parent.parent  # the code this entry belongs to (a release, or the work tree)
+CLAUDE_DIR = Path(os.environ.get("HARNESS_HOME") or CODE_DIR)  # the home: state, config, skills (entry/boot.py)
 STATE = CLAUDE_DIR / "state"
 LEDGER = STATE / "harness.db"
-SCHEMA = CLAUDE_DIR / "harness" / "utils" / "ledger" / "schema.sql"
+SCHEMA = CODE_DIR / "harness" / "utils" / "ledger" / "schema.sql"
 FORM = "AskUserQuestion"
 YES = "Duy\u1ec7t"
 PAUSE = re.compile("^T\u1eaft guard (\\d+) ph\u00fat: (.+)\\?$")
@@ -210,9 +211,9 @@ def main():
             finally:
                 con.close()
             return 0
-        sys.path.insert(0, str(CLAUDE_DIR))
+        sys.path.insert(0, str(CODE_DIR))
         from harness.assemble.engine.build import run_hook
-        out = run_hook(raw)
+        out = run_hook(raw, CLAUDE_DIR)
     except BaseException as e:
         if asking:
             return 0  # a clean form is harmless to ask, and it is how the user is asked for a grant

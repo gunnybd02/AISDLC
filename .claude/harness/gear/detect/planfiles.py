@@ -1,6 +1,7 @@
 """PlanFiles: the files a call writes, against the approved plan and the harness's state.
 - write.state: a write into the harness's own state (its ledger, its maint grant), approved plan or not;
-- plan.outside: a write to a file the approved plan does not name (its files and tests, under its root);
+- plan.outside: a write to a file the approved plan does not allow (its file and test patterns, its add file
+  grants; a drop grant refuses), under its root;
 - read.state: a call that names a place in the harness's own state, read or written by any tool (the shell, Read,
   Grep, Glob...): the ledger is read only through run('ledger', 'db_query');
 - shell.unread: a shell call the reader cannot see whole, with the agent's words on what it does, the command, the
@@ -11,7 +12,7 @@ A write with no approved plan is tracked.py's (plan.none). Paths are compared as
 import re
 
 from harness.utils.contracts import Detector, Finding
-from harness.utils.plan.files import named, relative
+from harness.utils.plan.files import allows, holds, relative
 
 LONGEST_COMMAND = 500  # characters of the command shown in the question; Claude Code shows the whole of it too
 
@@ -21,13 +22,20 @@ def in_state(path, state):
 
 
 class PlanFiles(Detector):
+    @staticmethod
+    def allowed(plan, path):
+        """Whether the plan allows the write: a path under its root its patterns or grants allow (utils/plan/files.py),
+        or a folder above a planned file (a mkdir of it)."""
+        rel = relative(path, plan["root"])
+        return rel is not None and (allows(plan, rel) or holds(plan, rel))
+
     def detect(self, event, facts):
         out = []
         plan, state = facts.get("plan"), facts.get("state_dir")
         for path in facts.get("writes", []):
             if in_state(path, state):
                 out.append(Finding("write.state", path))
-            elif plan is not None and relative(path, plan["root"]) not in named(plan):
+            elif plan is not None and not self.allowed(plan, path):
                 out.append(Finding("plan.outside", f"{path} is not a file of plan {plan['plan_id']}"))
         written = set(facts.get("writes", []))
         for path in facts.get("mentions", []):

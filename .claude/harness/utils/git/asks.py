@@ -10,7 +10,7 @@ import uuid
 
 from harness.utils.contracts import YES
 
-QUESTION = re.compile("^Duyệt git (?P<command>.+) trong (?P<repo>.+) \\[(?P<code>g[0-9a-f]{12})\\]\\?$")
+QUESTION = re.compile("^Duy\u1ec7t git (?P<command>.+) trong (?P<repo>.+) \\[(?P<code>g[0-9a-f]{12})\\]\\?$")
 ACCEPTED = "GATE: the user accepted git {command} [{code}]; run it now with run('git', 'run', ...), once."
 
 
@@ -21,9 +21,9 @@ def code_of(repo, words):
 
 def question(repo, words, why):
     """What the model asks the user, for the git command words in repo the rules ask about for why."""
-    q = f"Duyệt git {' '.join(words)} trong {repo} [{code_of(repo, words)}]?"
+    q = f"Duy\u1ec7t git {' '.join(words)} trong {repo} [{code_of(repo, words)}]?"
     return (f"The git rules ask the user first: {why}. Ask now with AskUserQuestion, one question, exactly: {q} "
-            f"Options: \"{YES}\", \"Không\". Never fill in the answer. When the user accepts, run the same "
+            f"Options: \"{YES}\", \"Kh\u00f4ng\". Never fill in the answer. When the user accepts, run the same "
             f"command again.")
 
 

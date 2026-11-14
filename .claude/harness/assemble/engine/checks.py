@@ -1,7 +1,7 @@
 """The doctor door entry/doctor.py calls: every problem of the tree, and the report of them."""
 from pathlib import Path
 
-from harness.assemble.engine.build import CLAUDE_DIR, build_runner, items_of
+from harness.assemble.engine.build import CLAUDE_DIR, build_runner, code_of, items_of
 from harness.assemble.engine.config import Config, ConfigError
 from harness.assemble.engine.loader import Loader
 from harness.assemble.engine.ports import SERVER_PORTS
@@ -14,12 +14,12 @@ def doctor(claude_dir=CLAUDE_DIR):
     ledger's schema, the nets. The nets are dev-time code, imported here only, so they never weigh on a hook call."""
     from nets import bridges_net, config_net, entry_net, imports_net, layout_net, size_net, verdict_net
     claude_dir = Path(claude_dir)
-    problems = Loader(claude_dir).problems()
+    problems = Loader(code_of(claude_dir)).problems()
     if not problems:
         problems += built(claude_dir)
     problems += real_ledger(claude_dir)
     for net in (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net, entry_net):
-        problems += net.check(claude_dir)
+        problems += net.check(code_of(claude_dir))
     return problems
 
 
@@ -31,7 +31,7 @@ def built(claude_dir):
             Loader.resolve(item)
         except Exception as e:
             out.append(f"item {item.name}: {item.ref} does not load ({type(e).__name__}: {e})")
-    for action_file in Loader(claude_dir).action_files():
+    for action_file in Loader(code_of(claude_dir)).action_files():
         try:
             out += [f"actions {action_file.module}: {p}" for p in action_problems(Loader.actions(action_file))]
         except Exception as e:

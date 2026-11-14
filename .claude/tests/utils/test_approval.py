@@ -38,8 +38,7 @@ class ApprovalTest(unittest.TestCase):
 
     def test_present_keeps_the_revision_and_gives_the_form_question(self):
         self.assertEqual(self.q, question(PLAN, self.plan_id, 1))
-        self.assertIn("hello.py, test_hello.py", self.q)
-        self.assertIn("C:/repo", self.q)
+        self.assertEqual(self.q, f'Duy\u1ec7t plan "{PLAN["title"]}" ({self.plan_id} rev 1)?')  # the block shows the rest
         self.assertEqual([w["question"] for w in self.port.waiting()], [self.q])
         self.assertIsNone(self.port.approved("s1"))
 
@@ -61,7 +60,6 @@ class ApprovalTest(unittest.TestCase):
         self.assertIn("did not approve", " ".join(notes))
         self.act(answered(question(PLAN, self.plan_id, 2), "Duyệt"))
         self.act(answered(question({**PLAN, "title": "Other"}, self.plan_id, 1), "Duyệt"))
-        self.act(answered(question({**PLAN, "files": ["other.py"]}, self.plan_id, 1), "Duyệt"))
         self.assertIsNone(self.port.approved("s1"))
 
     def test_only_the_newest_revision_can_be_approved(self):
@@ -83,7 +81,7 @@ class ApprovalTest(unittest.TestCase):
         ledger = self.port.ledger
         events = [e["event"] for e in ledger.all("SELECT event FROM pl_plan_events WHERE plan_id = ? ORDER BY n",
                                                  (self.plan_id,))]
-        self.assertEqual(events, ["waiting", "approved"])
+        self.assertEqual(events, ["waiting", "approved", "executing"])
         self.assertEqual(ledger.one("SELECT status FROM rec_plans")["status"], "approved")
         self.assertTrue(Recorder.chain_ok(ledger, "rec_plans"))
 

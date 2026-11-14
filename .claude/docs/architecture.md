@@ -22,23 +22,61 @@ Everything lives under `.claude/`. Python 3.13, standard library only.
 
 ## The flow of a change
 ```
-run("plan", "plan_present", {plan})      the revision waits in the ledger; its root is the MCP server's folder (the
-                                         project); the answer is the form question, which names the files and the root
-                                         (with plan_id: a new revision of a waiting plan; only the newest is approvable)
+run("plan", "plan_present", {plan})      the plan is data (utils/plan/desk.py: clean, normalize, check; tier light
+                                         or full); the revision waits in the ledger with the session that presented
+                                         it; the answer is the ## Plan block (render.py) and the form call
+                                         Duyệt plan "<title>" (<pd-id> rev N)?; plan_revise keeps rev+1 with only
+                                         the given items, plan_drop stops a waiting plan, plan_show and plan_status
+                                         read one
 AskUserQuestion                          the user answers; only "Duyệt" to that exact question approves it
+                                         (a bare ok / duyệt / đồng ý typed in the chat approves nothing: FORM_ONLY);
+                                         the approval opens the plan in one transaction (utils/plan/opening.py):
+                                         rec_plans, pl_behaviors with tests, the ticket, pl_approval, the events
+                                         approved and executing, pl_logs gate-open and form
 Write / Edit, or a write by the shell     allowed only for the files of the approved plan (detect/tracked.py, detect/planfiles.py)
-run("verify", "run", {plan})             the unit's tests in the plan's root; the receipt keeps each file's blob id,
-                                         read before and after the tests (a file that changed under them: no pass)
-run("steps", "step_done", {plan, message})
-                                         the harness checks, then commits: the plan approved and its repository still
-                                         on the commit of the approval, a passing verify, each plan file as the verify
-                                         saw it, no secret in a changed file; it stages and commits only the plan's
-                                         changed files (utils/plan/steps.py, the one writer of commits)
+python3 -m entry.cli verify [--in F] [--timeout S] [-- cmd]  (or run("verify", "run", {plan})): the test command
+                                         (after --, else the config's verify) of the session's plan, no shell, under
+                                         a lock in the git common dir (shared with worktrees), with HARNESS_DB set to
+                                         a copy of the live ledger; exit 124 on the timeout (600 s, 1..3600), 127 when
+                                         it cannot start; the receipt keeps each file's blob id read before and after
+                                         the tests (a file that changed under them: no pass). The doors add file,
+                                         add test, add drop-file, add retire-test and behaviors add|list|check|retire
+                                         widen or shrink the plan with chained pl_file_grants and pl_behaviors rows
+run("plan", "step_done", {message})      the current step of the session's plan (utils/plan/steps.py): refused
+                                         with no message, nothing changed, a file of another step, what the step
+                                         owes (its behaviours' tests, a green verify of the current files), a
+                                         protected branch or a secret; else the harness commits the step's changed
+                                         files, the next step opens, and after the last a home plan closes
+                                         delivered (no form). step_skip {why} gives a step up; a write to a plan
+                                         file in deliver goes back to execute, and the next step_done is a fix
+run("git", "commit", {files, message})   named files of the plan (never ., a folder or outside it): refused on a
+                                         protected branch, with no plan, a file the plan does not allow, a code file
+                                         no green verify saw, or a commit guard; the step does not move: step_done
+                                         adopts the commit once proven
+run("git", "push")                       a unit plan's branch in deliver only (a home plan closes itself after its
+                                         last step): never the home, never a protected branch; judged like git push
+run("git", "mr_open", {title, ...})      after the user's Cho phép on its full text (a one-use pass of exactly that
+                                         text): the merge request through GitLab REST (utils/git/gitlab.py); push
+                                         and merge request kept in pl_git_audit
+Stop                                     the turn does not end while a code file of the plan changed since the last
+                                         green verify (stop.unverified, gear/detect/stop.py; a repeated Stop ends it;
+                                         a failure to look keeps it)
+run("plan", "plan_close", {summary?})    the close form with the facts of the ledger (Đóng plan "<title>" (<pd-id>)
+                                         [<ticket>]?: commits, files vs plan, verify, skipped); only the answer closes:
+                                         Đã giao (delivered), Bỏ plan (abandoned); Giữ mở keeps it open
+run("ledger", "plans_settle", {...})     the open desk plans and their proof; write ends the proven ones, drop ends
+                                         unproven plans of dead sessions after the user's Cho phép
 delivery (utils/plan/closing.py)         the commit is judged by what it holds: HEAD's parent is the commit of the
                                          approval, and it changes only plan files (paths as git names them, case
                                          kept), each as the passing verify saw it, a plain file whose mode does not
                                          change; anything else is not delivered, and the model is told
 ```
+A ticket (`pl_tickets`, `utils/plan/tickets.py`) runs each approved plan: the approval opens it in phase `execute`
+(an open ticket with no plan is reused, a revision keeps its ticket and `rootId`, another plan closes the open one
+`superseded` and carries its done steps and commits), `step_done` closes it `delivered` (a home plan needs no form).
+`tickets.approved_plan(ticket)` is the one rule for a plan in force; `LedgerPort.approved` reads only it. The MCP
+server knows its session from the hook: the session whose prompt or harness tool call came last (`sessions`).
+
 Every commit from the shell is refused (`commit.raw`): `git commit`, and any line that may commit another way. A
 commit made around the gate (a shell form the reader does not know) can still land in the repository; delivery
 judges it by what it holds, and anything but the verified change is never delivered as the plan's.
@@ -69,6 +107,13 @@ What the gates refuse, so they always see what they judge:
   question `Duyệt git <args> trong <repo> [<code>]?`, the user's approval word is kept in `pl_asks` (`utils/git/asks.py`,
   through `Act`), and the next run of exactly that command uses it up; refused (`git commit`: step_done), it never runs.
   Every run is kept in `pl_git_runs` with the rules that asked and the code of the user's word.
+- The commit guards: before step_done commits, the harness judges the commit with the rules (the event
+  `HarnessCommit`, `gear/translate/commit.py`): a secret in a line it adds (`gear/detect/secret.py`, commit.secret),
+  an AI mark (AI co-author or footer, an AI tool's name or address, a robot emoji) or a Mermaid diagram in the message
+  (`gear/detect/mark.py`, `utils/git/marks.py`, commit.ai_mark), a word of `banned` in `project.json`
+  (commit.banned_word), agent files in a unit's commit (`gear/detect/agent.py`, commit.agent_files). A write into
+  `.claude/rules/` (a skill instead), a `memory/` folder of `.claude` (a note instead) or the behaviour registry file
+  (`add test` instead) is refused (agent.rules, agent.memory, agent.registry).
 - A plan path inside `.git`, with `~`, `%` or a comma, or a title with a double quote.
 - Paths are compared as the system resolves them: real paths (8.3 short names expanded), without a `\\?\` prefix.
 
@@ -156,6 +201,15 @@ it fails at all: only a form that passed the check may pass a broken harness. A 
 minutes is no grant, and the state folder stays closed to the editing tools while the guards are off. The hook writes
 UTF-8 bytes, whatever the console's code page.
 
+## Releases: the code a session runs
+Claude Code runs `entry/boot.py <entry>`: that entry of the release in force (`state/live/<sha>/`, named by
+`state/live/current`), never the work tree a session edits; with no release, the work tree's own. The entry gets the
+home (`HARNESS_HOME`) and the code (`HARNESS_CODE`, read by `build.code_of`). A file a session writes into the
+harness runs nowhere until `python3 -m entry.cli live publish` builds the release (`utils/gateway/release.py`), its own
+doctor is clean, and the user answers Cho phép to `Cho phép phát hành harness <sha>?`. The MCP server
+(`engine/live_mcp.py`) checks each new release with its doctor and swaps it in without a restart; one that fails is
+never taken. `entry/boot.py`, `.claude/settings.json` and `.mcp.json` are never written in a session (agent.anchor).
+
 ## The MCP server
 `entry/mcp_server.py` serves three tools over stdio (JSON-RPC 2.0):
 - `find`: skills and blocks ranked by the words of the request.
@@ -178,11 +232,11 @@ judged.
 
 | Block | Actions |
 |---|---|
-| `plan` | `plan_present`, `plan_status` |
+| `plan` | `plan_present`, `plan_revise`, `plan_show`, `plan_status`, `plan_drop` |
 | `verify` | `run` |
-| `steps` | `step_done` |
-| `git` | `run` |
-| `ledger` | `db_query` |
+| `plan` | `step_done`, `step_skip`, `plan_close` |
+| `git` | `run`, `commit`, `push`, `mr_open` |
+| `ledger` | `db_query`, `plans_settle` |
 | `maint` | `grant`, `status` |
 | `health` | `items`, `doctor` |
 

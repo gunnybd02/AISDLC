@@ -51,10 +51,12 @@ class OneFlowTest(unittest.TestCase):
         self.assertEqual(flow.decision("Write", write_a), "deny")
 
         # the plan, and the form the user answers
-        out = flow.mcp("plan", "plan_present", {"plan": {"title": "Set X", "files": ["a.py"], "tests": ["test_a.py"]}})
-        q = re.search(r'Duyệt plan "Set X" \((pd-\w+) rev 1\): [^\n]*?\?(?= Options)', out)
+        flow.hook("UserPromptSubmit", "", {})  # the session the MCP server works for
+        out = flow.mcp("plan", "plan_present", {"plan": {"title": "Set X", "what": ["X becomes 2"], "files": ["a.py"],
+                                                         "tests": ["test_a.py"]}})
+        q = re.search(r'Duyệt plan "Set X" \((pd-[0-9a-z]+-[0-9a-f]{6}) rev 1\)\?(?= Header)', out)
         plan_id = q.group(1)
-        self.assertIn("a.py, test_a.py", q.group(0))
+        self.assertIn("- a.py\n**Tests**\n- test_a.py", out)
         form = {"questions": [{"question": q.group(0), "options": [{"label": "Duyệt"}, {"label": "Sửa plan"}]}]}
         self.assertEqual(flow.decision("AskUserQuestion", {**form, "answers": {q.group(0): "Duyệt"}}), "deny")
         self.assertEqual(flow.decision("AskUserQuestion", form), "allow")
@@ -69,9 +71,9 @@ class OneFlowTest(unittest.TestCase):
 
         # commit: never from the shell; step_done refuses before the verify and commits after it
         self.assertEqual(flow.decision("Bash", {"command": "git commit -m 'Set X'"}), "deny")
-        self.assertIn("no passing verify", flow.mcp("steps", "step_done", {"plan": plan_id, "message": "Set X"}))
+        self.assertIn("no green verify", flow.mcp("plan", "step_done", {"message": "Set X"}))
         self.assertIn("verify passed", flow.mcp("verify", "run", {"plan": plan_id}))
-        self.assertIn("delivered", flow.mcp("steps", "step_done", {"plan": plan_id, "message": "Set X"}))
+        self.assertIn("delivered", flow.mcp("plan", "step_done", {"message": "Set X"}))
 
         # delivered: a new edit needs a new plan
         self.assertEqual(flow.decision("Write", write_a), "deny")
@@ -80,7 +82,7 @@ class OneFlowTest(unittest.TestCase):
         ledger = Ledger.open(claude_dir / "state" / "harness.db")
         events = [r["event"] for r in ledger.all("SELECT event FROM pl_plan_events WHERE plan_id = ? ORDER BY n",
                                                  (plan_id,))]
-        self.assertEqual(events, ["waiting", "approved", "delivered"])
+        self.assertEqual(events, ["waiting", "approved", "executing", "delivered"])
         self.assertEqual(ledger.one("SELECT ok FROM pl_verify")["ok"], 1)
         head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout
         self.assertEqual(ledger.one("SELECT commit_sha FROM rec_commits")["commit_sha"], head.strip())
