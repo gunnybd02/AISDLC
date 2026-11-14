@@ -1,6 +1,7 @@
 """Config: the one reader of .claude/project.json, the values of the user (config_net).
   name     the project's name
   verify   (optional) the test command of the unit, a list of words run in the plan's root; "{python}" is this Python
+  protected (optional) the protected branches, names or fnmatch patterns; main and master when not given
   ledger   (optional) the absolute path of the real ledger, whose schema the doctor compares read only; a Windows
            path (C:/...) is absolute on every system, and on one that is not Windows it names no ledger here"""
 import json
@@ -10,11 +11,13 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from harness.utils.git.branches import DEFAULT_PROTECTED
+
 FILE = "project.json"
 DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
 REQUIRED = ("name",)
 GONE = {"recipe": "the pipeline is picked by the state of the session (assemble/engine/select.py)"}
-OPTIONAL = ("verify", "ledger")
+OPTIONAL = ("verify", "ledger", "protected")
 
 
 class ConfigError(ValueError):
@@ -26,6 +29,7 @@ class Config:
     name: str
     verify: tuple = ()
     ledger: str = ""
+    protected: tuple = DEFAULT_PROTECTED
 
     @property
     def ledger_here(self):
@@ -51,4 +55,7 @@ class Config:
         ledger = data.get("ledger", "")
         if "ledger" in data and not (isinstance(ledger, str) and (Path(ledger).is_absolute() or DRIVE.match(ledger))):
             raise ConfigError(f"{FILE}: ledger is the absolute path of the real ledger")
-        return cls(data["name"], tuple(sys.executable if w == "{python}" else w for w in verify), ledger)
+        protected = data.get("protected", list(DEFAULT_PROTECTED))
+        if not isinstance(protected, list) or not protected or not all(isinstance(b, str) and b for b in protected):
+            raise ConfigError(f"{FILE}: protected is a list of branch names or patterns (main, release/*)")
+        return cls(data["name"], tuple(sys.executable if w == "{python}" else w for w in verify), ledger, tuple(protected))

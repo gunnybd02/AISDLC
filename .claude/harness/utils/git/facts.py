@@ -62,3 +62,12 @@ def blob(root, path):
     return git(root, "hash-object", "--", path).strip()
 
 
+
+
+def unpushed_files(repo, remote, source="HEAD"):
+    """The paths the commits of source change that no ref of remote holds yet: what a push of source would send."""
+    try:
+        out = git(repo, "log", "--name-only", "--format=", source, "--not", f"--remotes={remote}")
+    except GitError:
+        return []
+    return sorted({line.strip() for line in out.splitlines() if line.strip()})

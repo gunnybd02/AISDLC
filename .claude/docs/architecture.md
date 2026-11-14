@@ -58,6 +58,15 @@ What the gates refuse, so they always see what they judge:
   a shell expansion (`$ { } * ? [ ~ %`) is refused too, unless it is one plain git command that makes no commit.
   A first word that is git spelled another way (`g\it`) or `git-<subcommand>` is refused; a commit in a folder that
   does not exist is outside the plan.
+- The git rules (`gear/detect/git.py` on the git commands `gear/translate/git_cli.py` reads, rows in
+  `gear/rules/git.json`): `git add -A`/`--all`/`.` (P1), `--no-verify` or `commit -n` (P2), `reset --hard` (P3), a
+  force push: `--force`, `-f`, `--force-with-lease`, `--mirror`, `+refspec` (P4), a write on a protected branch: a
+  push to one or `--all`, a merge, rebase, cherry-pick, revert, am, pull or reset while on one, a `branch -d/-D/-f/-m`
+  of one (P5; `protected` in `project.json`, main and master by default), a push from the home, the repository of the
+  harness (P6, `push.never_repo`), agent files (`.claude/`, `CLAUDE.md`, `.mcp.json`, `AGENTS.md`) staged or in the
+  commits a push would send (P7, `push.agent_files`) are refused; git with a global option the gate does not follow
+  (`-c`, `--git-dir`, `--work-tree`) is asked (P8). The git facts come from the port's `GitView`, read only when a
+  command needs them.
 - A plan path inside `.git`, with `~`, `%` or a comma, or a title with a double quote.
 - Paths are compared as the system resolves them: real paths (8.3 short names expanded), without a `\\?\` prefix.
 

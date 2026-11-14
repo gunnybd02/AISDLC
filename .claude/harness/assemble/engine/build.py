@@ -39,12 +39,12 @@ def build_runner(claude_dir=CLAUDE_DIR, items=None, plan=None):
     """The runner of the pipeline select.py picks for a session working under plan (None: no plan, the floor)."""
     claude_dir = Path(claude_dir)
     items = items or items_of(claude_dir)
-    Config.load(claude_dir)  # a config that does not load stops the hook, as before
+    config = Config.load(claude_dir)  # a config that does not load stops the hook, as before
     pipeline = select(PipelineBook(claude_dir / "harness" / "assemble" / "pipelines"), plan)
     decide = Loader.resolve(items["decide"]).load(claude_dir)
     port = LedgerPort(claude_dir)
     return Runner(pick(items, pipeline.translators, "translator"), pick(items, pipeline.detectors, "detector"), decide,
-                  ports=[PlanState(port)], act=Act(port))
+                  ports=[PlanState(port, config.protected)], act=Act(port))
 
 
 def run_hook(text, claude_dir=CLAUDE_DIR):

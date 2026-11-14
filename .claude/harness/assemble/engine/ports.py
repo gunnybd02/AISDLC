@@ -15,7 +15,9 @@ import uuid
 from pathlib import Path
 
 from harness.utils.contracts import YES, Port
-from harness.utils.git.facts import head, top
+from harness.utils.git.branches import DEFAULT_PROTECTED, current, is_protected
+from harness.utils.git.facts import head, top, unpushed_files
+from harness.utils.plan.files import key
 from harness.utils.ledger.db import Ledger
 from harness.utils.ledger.recorder import Recorder
 
@@ -151,11 +153,34 @@ class LedgerPort:
         self.write(change)
 
 
-class PlanState(Port):
-    """The gears' view of the ledger: the approved plan and the harness's own state folder."""
+class GitView:
+    """The git facts of the git rules (gear/detect/git.py), each read only when a command needs it: the branch a
+    repository is on, whether a branch is protected, what a push would send, whether a repository is the home."""
 
-    def __init__(self, port):
-        self.port = port
+    def __init__(self, claude_dir, protected):
+        self.claude_dir, self.patterns = Path(claude_dir), tuple(protected)
+
+    def branch_of(self, repo):
+        return current(repo) if Path(repo).is_dir() else ""
+
+    def protected(self, branch):
+        return is_protected(branch, self.patterns)
+
+    def unpushed(self, repo, remote, source):
+        return unpushed_files(repo, remote, source) if Path(repo).is_dir() else []
+
+    def is_home(self, repo):
+        home = top(self.claude_dir)
+        here = top(repo) if Path(repo).is_dir() else None
+        return bool(home and here) and key(home) == key(here)
+
+
+class PlanState(Port):
+    """The gears' view of the world: the approved plan, the harness's own state folder, and the git facts (GitView)."""
+
+    def __init__(self, port, protected=DEFAULT_PROTECTED):
+        self.port, self.git = port, GitView(Path(port.path).parent.parent, protected)
 
     def read(self, event):
-        return {"plan": self.port.approved(event.session), "state_dir": str(self.port.path.parent).replace("\\", "/")}
+        return {"plan": self.port.approved(event.session), "state_dir": str(self.port.path.parent).replace("\\", "/"),
+                "git_view": self.git}

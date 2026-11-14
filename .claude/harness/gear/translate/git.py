@@ -15,10 +15,12 @@ Everything else that can make a commit is unsafe ({"unsafe": why}):
   (cherry-pick, merge, revert, am, rebase, pull, commit-tree, update-ref);
 - a commit joined to another command, with a global option other than -C, or an option of commit outside the list
   above (an abbreviated --amen is outside it too).
-A line where git only reads or stages (status, diff, add, push...) is no commit."""
+A line where git only reads or stages (status, diff, add, push...) is no commit.
+git_actions (git_cli.py): every git command of the line, for the git rules (gear/detect/git.py)."""
 import os
 import re
 
+from harness.gear.translate.git_cli import git_actions
 from harness.utils.contracts import Translator
 from harness.utils.shell.words import program, read as read_shell
 
@@ -128,4 +130,5 @@ class GitCommands(Translator):
             return {}
         cwd = (event.cwd or os.getcwd()).replace("\\", "/")
         found = read(event.input["command"], cwd, SHELL_TOOLS[event.tool])
-        return {"git_commit": found} if found else {}
+        actions = git_actions(event.input["command"], cwd, SHELL_TOOLS[event.tool])
+        return {**({"git_commit": found} if found else {}), **({"git_actions": actions} if actions else {})}

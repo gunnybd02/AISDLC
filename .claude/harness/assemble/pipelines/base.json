@@ -11,6 +11,7 @@
     "tracked",
     "planfiles",
     "raw_commit",
+    "git_rules",
     "write_action"
   ]
 }

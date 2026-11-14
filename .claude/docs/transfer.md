@@ -20,7 +20,7 @@ One flow runs end to end in its smallest form (`tests/e2e/test_flow.py`):
 | # | What | Lands in |
 |---|---|---|
 | 1 | Done: the shell reader (`utils/shell/scan.py`, `utils/shell/words.py`, `utils/shell/place_ops.py`, `gear/translate/place.py`); the commit gate reads git lines with it | — |
-| 2 | Git guards: a command becomes a git action, with rules P1-P8 | `gear/translate/git.py`, `gear/translate/git_cli.py`, `gear/rules/git.json` |
+| 2 | Done: git guards, a command becomes git actions (`gear/translate/git_cli.py`), rules P1-P8 (`gear/detect/git.py`) | `gear/translate/git.py`, `gear/translate/git_cli.py`, `gear/rules/git.json` |
 | 3 | Commit guards: secrets, AI marks, agent files | `gear/detect/secret.py`, `mark.py`, `agent.py` |
 | 4 | Plans in full: steps, revisions, feedback, units and scope | `mcp/actions/plan.py`, `utils/plan/`, `assemble/engine/ports.py`, gears |
 | 5 | Places and network: zones of a path, hosts of a command | `gear/translate/zones.py`, `net.py`, `net_hosts.py`, rules |
