@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 
 from harness.utils.shell.git_ops import git
+from harness.utils.shell.mentions import harness_own
 from harness.utils.shell.paths import Target, Unseen, absolute
 from harness.utils.shell.scan import Word
 from harness.utils.shell.words import program, read
@@ -312,6 +313,8 @@ def command_targets(command):
     if command.words[0].dynamic:
         raise Unseen(f"the command {command.name} is made by the shell when it runs")
     name, ws = program(command.name), command.args
+    if harness_own(command):  # the harness's own CLI writes only through the harness, as it is meant to
+        return redirect_targets(command)
     if command.dialect == "powershell":
         name = PS_ALIASES.get(name, name)
         reads, writes = PS_READS, CMDLETS

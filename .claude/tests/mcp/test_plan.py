@@ -129,6 +129,7 @@ class PlanStatusTest(unittest.TestCase):
         out = run("plan", "plan_status").text
         self.assertIn(f"open, phase execute, plan {plan_id}", out)
         self.assertIn("approved", out)
+        self.assertIn("0 feedback not answered", out)  # found live: the approval word counted as feedback
 
 
 if __name__ == "__main__":

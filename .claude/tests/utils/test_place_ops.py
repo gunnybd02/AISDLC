@@ -191,5 +191,20 @@ class ShellPlacesTest(unittest.TestCase):
         self.assertEqual(Decide.load(CLAUDE_DIR).decide([Finding(k) for k in kinds_]).decision, "refuse")
 
 
+class HarnessOwnTest(unittest.TestCase):
+    """Found live: the harness's own CLI was asked of the user as a program the reader cannot see into."""
+
+    def test_the_harness_cli_runs_and_an_unknown_script_is_still_asked(self):
+        def facts(command):
+            return Places().translate(Event("PreToolUse", "Bash", {"command": command, "description": "run it now"},
+                                            "s1", "/r"))
+        for command in ("cd .claude && python3 -m entry.cli verify", "python3 .claude/entry/doctor.py",
+                        "HARNESS_DB=x python3 -m entry.cli behaviors list"):
+            with self.subTest(command=command):
+                self.assertNotIn("shell_unread", facts(command))
+        self.assertIn("shell_unread", facts("python3 hello.py"))
+        self.assertEqual(facts("python3 -m entry.cli verify > out.txt")["writes"], ["/r/out.txt"])
+
+
 if __name__ == "__main__":
     unittest.main()

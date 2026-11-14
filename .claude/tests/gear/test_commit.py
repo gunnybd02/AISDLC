@@ -27,6 +27,7 @@ class RawCommitTest(unittest.TestCase):
                 self.assertEqual(kinds(command), ["commit.raw"])
         self.assertEqual(Decide.load(CLAUDE_DIR).rules["commit.raw"]["verdict"], "refuse")
         self.assertIn("step_done", Decide.load(CLAUDE_DIR).rules["commit.raw"]["why"])
+        self.assertIn("run('plan', 'step_done', {message})", Decide.load(CLAUDE_DIR).rules["commit.raw"]["why"])  # found live
 
     def test_a_line_that_does_not_commit_is_no_finding(self):
         for command in ("git status", "git add a.py", "git diff --cached", "ls"):

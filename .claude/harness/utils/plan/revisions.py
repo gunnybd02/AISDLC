@@ -5,6 +5,7 @@ import json
 import time
 import uuid
 
+from harness.utils.contracts import YES
 from harness.utils.plan.render import block, sha
 
 
@@ -48,6 +49,7 @@ def feedback(con, plan_id, rev, sid, text, item="form"):
 
 
 def unread(con, plan_id, since):
-    """The feedback on the plan given after its newest revision was kept."""
-    return [r[0] for r in con.execute("SELECT text FROM pl_plan_feedback WHERE plan_id = ? AND at >= ? ORDER BY at",
-                                      (plan_id, since)).fetchall()]
+    """The feedback on the plan given after its newest revision was kept; the approval word itself is no feedback to
+    answer."""
+    return [r[0] for r in con.execute("SELECT text FROM pl_plan_feedback WHERE plan_id = ? AND at >= ? AND text != ? "
+                                      "ORDER BY at", (plan_id, since, YES)).fetchall()]
