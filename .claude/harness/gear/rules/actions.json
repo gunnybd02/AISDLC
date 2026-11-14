@@ -6,6 +6,7 @@
     {"finding": "action.git.run", "verdict": "allow", "why": "The git block judges its command by the git rules itself and runs it only with the user's word where they ask.", "test": "tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"},
     {"finding": "action.plan.plan_revise", "verdict": "allow", "why": "A revision only waits for the user's approval again.", "test": "tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"},
     {"finding": "action.plan.plan_drop", "verdict": "allow", "why": "Dropping a waiting plan approves nothing; its revisions stay.", "test": "tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"},
-    {"finding": "action.plan.step_skip", "verdict": "allow", "why": "A skip gives up a step; its behaviours are kept skipped.", "test": "tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"}
+    {"finding": "action.plan.step_skip", "verdict": "allow", "why": "A skip gives up a step; its behaviours are kept skipped.", "test": "tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"},
+    {"finding": "action.ledger.plans_settle", "verdict": "allow", "why": "Settling ends only proven plans, or unproven plans of dead sessions after the user's Yes in a form.", "test": "tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"}
   ]
 }

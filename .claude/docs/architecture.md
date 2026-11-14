@@ -49,6 +49,14 @@ run("plan", "step_done", {message})      the current step of the session's plan 
                                          files, the next step opens, and after the last a home plan closes
                                          delivered (no form). step_skip {why} gives a step up; a write to a plan
                                          file in deliver goes back to execute, and the next step_done is a fix
+Stop                                     the turn does not end while a code file of the plan changed since the last
+                                         green verify (stop.unverified, gear/detect/stop.py; a repeated Stop ends it;
+                                         a failure to look keeps it)
+run("plan", "plan_close", {summary?})    the close form with the facts of the ledger (Đóng plan "<title>" (<pd-id>)
+                                         [<ticket>]?: commits, files vs plan, verify, skipped); only the answer closes:
+                                         Đã giao (delivered), Bỏ plan (abandoned); Giữ mở keeps it open
+run("ledger", "plans_settle", {...})     the open desk plans and their proof; write ends the proven ones, drop ends
+                                         unproven plans of dead sessions after the user's Cho phép
 delivery (utils/plan/closing.py)         the commit is judged by what it holds: HEAD's parent is the commit of the
                                          approval, and it changes only plan files (paths as git names them, case
                                          kept), each as the passing verify saw it, a plain file whose mode does not
@@ -201,9 +209,9 @@ judged.
 |---|---|
 | `plan` | `plan_present`, `plan_revise`, `plan_show`, `plan_status`, `plan_drop` |
 | `verify` | `run` |
-| `plan` | `step_done`, `step_skip` |
+| `plan` | `step_done`, `step_skip`, `plan_close` |
 | `git` | `run` |
-| `ledger` | `db_query` |
+| `ledger` | `db_query`, `plans_settle` |
 | `maint` | `grant`, `status` |
 | `health` | `items`, `doctor` |
 

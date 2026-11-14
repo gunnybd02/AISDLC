@@ -19,7 +19,7 @@ from harness.assemble.engine.config import Config, ConfigError
 from harness.utils.contracts import YES, Port
 from harness.utils.git.branches import DEFAULT_PROTECTED, current, is_protected
 from harness.utils.git.facts import head, top, unpushed_files
-from harness.utils.plan import grants, opening, render, request, revisions, tickets
+from harness.utils.plan import grants, opening, render, request, revisions, stop, tickets
 from harness.utils.plan.verify import dirty
 from harness.utils.plan.desk import new_id
 from harness.utils.plan.files import key, relative
@@ -216,6 +216,40 @@ class LedgerPort:
             return tickets.save(con, tickets.move({**fresh, "skips": fresh.get("skips", 0) + 1}))
         return self.write(change)
 
+    def close_plan(self, sid, ticket, reason, facts):
+        """The user closed the ticket's plan in the close form (delivered or abandoned): one transaction closes the
+        ticket, ends the approval, writes the event (delivered, dropped) and keeps the facts the user saw."""
+        def change(con, rec):
+            fresh = tickets.latest(con, sid)
+            tickets.close(con, fresh, reason)
+            held = [json.loads(r[0]) for r in con.execute("SELECT body FROM pl_approval WHERE sid = ?", (sid,))]
+            opening.approval(con, sid, {**(held[0] if held else {}), "open": False})
+            plan = fresh["plan"]
+            self.event(con, rec, plan["plan_id"], "delivered" if reason == "delivered" else "dropped", plan["rev"],
+                       plan["id"], sid)
+            opening.log(con, sid, "closure", ticket=fresh["id"], plan=plan["id"], reason=reason, facts=facts)
+        self.write(change)
+
+    def holder(self, plan_id):
+        """The newest ticket that holds the desk plan plan_id, open or closed, or None."""
+        for r in self.rows("SELECT body FROM pl_tickets ORDER BY at DESC, seq DESC"):
+            body = json.loads(r["body"])
+            if body.get("draft") == plan_id:
+                return body
+        return None
+
+    def end_plan(self, plan, how, abandon=False):
+        """plans_settle ends a desk plan: its event (delivered or dropped); with abandon, its open ticket closes."""
+        def change(con, rec):
+            if abandon:
+                holder = next((json.loads(r[0]) for r in con.execute(
+                    "SELECT body FROM pl_tickets WHERE state = 'open' ORDER BY seq DESC") if json.loads(r[0]).get("draft")
+                               == plan["plan_id"]), None)
+                if holder:
+                    tickets.close(con, holder, tickets.ABANDONED)
+            self.event(con, rec, plan["plan_id"], how, plan["rev"], plan.get("ref"), plan["sid"])
+        self.write(change)
+
     def back(self, sid):
         """A write to a plan file while the ticket is in deliver sends it back to execute."""
         def change(con, rec):
@@ -237,6 +271,12 @@ class LedgerPort:
             "files": json.dumps(receipt["files"]), "tests": json.dumps(plan["tests"]),
             "commands": json.dumps(receipt["commands"]), "code": receipt["code"], "ok": int(receipt["ok"]),
             "why": receipt["why"], "ms": receipt["ms"], "at": now()}))
+
+    def green_receipt(self, plan):
+        """The newest green receipt of the plan, or None."""
+        row = next(iter(self.rows("SELECT files FROM pl_verify WHERE plan_id = ? AND ok = 1 ORDER BY at DESC, rowid DESC "
+                                  "LIMIT 1", (plan["id"],))), None)
+        return {"ok": 1, "files": json.loads(row["files"])} if row else None
 
     def receipt(self, plan):
         row = next(iter(self.rows("SELECT ok, files FROM pl_verify WHERE plan_id = ? ORDER BY at DESC, rowid DESC "
@@ -288,4 +328,4 @@ class PlanState(Port):
 
     def read(self, event):
         return {"plan": self.port.approved(event.session), "state_dir": str(self.port.path.parent).replace("\\", "/"),
-                "git_view": self.git}
+                "git_view": self.git, "stop_owed": lambda plan: stop.unverified(self.port, plan)}

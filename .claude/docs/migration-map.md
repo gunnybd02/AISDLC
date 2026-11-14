@@ -228,6 +228,11 @@ Done in 7d:
   verify rules (no units declared), `--full` is the config command, and the harness itself does not read HARNESS_DB
   (it only hands the copy to the tests).
 
+- Plan lifecycle, part 6: the Stop guard (`utils/plan/stop.py`, `gear/detect/stop.py`, a block Claude Code reads),
+  `plan.plan_close` and its form (`utils/plan/closing.py`), `ledger.plans_settle` (`utils/plan/life.py`). Schema v5
+  has no `pl_plan_closures`: a close is a `closure` row of `pl_logs` with its event and ticket. Not yet: CI owed at
+  Stop, unmerged worktree commits at close, foreign changes (no `rec_edits` writer).
+
 Left for 7d, each waits for the feature it stores:
 - One store, the rest of section 6: transcripts in `tx_*` tables, overlays, Jira/Confluence images as BLOBs. None
   of these features is in this harness yet; each lands in `harness.db` when it moves in.

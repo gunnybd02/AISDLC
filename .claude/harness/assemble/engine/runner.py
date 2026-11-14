@@ -7,7 +7,8 @@ from harness.utils.contracts import CLAUDE_DECISION, Port
 from harness.utils.git.asks import accepts
 from harness.utils.plan.files import allows, relative
 from harness.utils.plan.approval import approvals
-from harness.utils.plan.closing import delivery
+from harness.utils.plan.closing import close_answers, delivery
+from harness.utils.plan.life import accepts as drop_accepts
 from harness.utils.plan.request import FORM_ONLY
 
 
@@ -62,6 +63,8 @@ class Act:
         if event.kind == "PostToolUse":
             notes += approvals(self.port, event.session, facts.get("answers") or {})
             notes += accepts(self.port, facts.get("answers") or {})
+            notes += close_answers(self.port, event.session, facts.get("answers") or {})
+            notes += drop_accepts(self.port, facts.get("answers") or {})
             notes += delivery(self.port, event.session, facts.get("git_commit"), facts.get("plan"))
             plan = facts.get("plan")
             if plan and any(relative(path, plan["root"]) is not None and allows(plan, relative(path, plan["root"]))

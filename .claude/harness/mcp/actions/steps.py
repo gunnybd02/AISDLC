@@ -1,9 +1,10 @@
 """plan steps: step_done commits the current step of the session's plan (the harness checks it, then commits; the last
 step delivers the plan), step_skip gives the current step up. git commit from the shell is refused."""
-from harness.utils.contracts import WRITE, ActionError, McpAction
+from harness.utils.contracts import READ, WRITE, ActionError, McpAction
+from harness.utils.plan.closing import close_question
 from harness.utils.plan.steps import step_done, step_skip
 
-ACTIONS = [("plan.step_done", "StepDone"), ("plan.step_skip", "StepSkip")]
+ACTIONS = [("plan.step_done", "StepDone"), ("plan.step_skip", "StepSkip"), ("plan.plan_close", "PlanClose")]
 NO_SESSION = "no session: the harness has not seen this session's prompt yet"
 
 
@@ -33,3 +34,15 @@ class StepSkip(McpAction):
 
     def run(self, ctx, args):
         return step_skip(ctx.ports["plans"], session_of(ctx), args["why"])
+
+
+class PlanClose(McpAction):
+    block, name, effect = "plan", "plan_close", READ  # it only gives the question; the user's answer closes
+    summary = ("Close the session's plan: the harness builds the account from the ledger (commits, files vs plan, "
+               "verify, skipped) and gives the form; the user closes it (delivered, abandoned) or keeps it open")
+    args_schema = {"type": "object", "properties": {"summary": {"type": "string"}, "exceptions": {"type": "array"}},
+                   "required": []}
+    needs = ("plans", "session")
+
+    def run(self, ctx, args):
+        return close_question(ctx.ports["plans"], session_of(ctx), args.get("summary"), args.get("exceptions"))

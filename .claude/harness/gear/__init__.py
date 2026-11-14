@@ -9,5 +9,6 @@ ITEMS = [
     {"kind": "detector", "name": "planfiles", "ref": "harness.gear.detect.planfiles:PlanFiles"},
     {"kind": "detector", "name": "raw_commit", "ref": "harness.gear.detect.commit:RawCommit"},
     {"kind": "detector", "name": "git_rules", "ref": "harness.gear.detect.git:GitRules"},
+    {"kind": "detector", "name": "stop_guard", "ref": "harness.gear.detect.stop:StopGuard"},
     {"kind": "detector", "name": "write_action", "ref": "harness.gear.detect.action:WriteAction"},
 ]
