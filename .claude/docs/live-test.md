@@ -60,3 +60,20 @@ user as an unknown program; `plan_status` counted the approval word as unanswere
 
 A second live run (boot wiring): the MCP server and the hooks ran through `entry/boot.py`; writing a new action file
 was refused (no plan), editing `entry/boot.py` was refused as an anchor, and the server's actions did not change.
+
+## Every session of a machine: install
+
+`python3 .claude/entry/install.py` (from a clone of this repository) installs the harness for every Claude Code
+session of the user: its hooks merged into `~/.claude/settings.json` (the user's own hooks stay) and its MCP server
+at user scope (`claude mcp add-json --scope user`, else `~/.claude.json`). The clone is the harness's home (ledger,
+config, releases); the repositories a session works on are its plan roots. It is safe to run again;
+`--uninstall` takes out only what it put in.
+
+A cloud environment gets the latest harness in every new session with a setup script, run before Claude starts:
+
+```bash
+git clone -q --depth 1 https://github.com/gunnybd02/AISDLC "$HOME/.harness" && python3 "$HOME/.harness/.claude/entry/install.py"
+```
+
+Checked: a fresh home, the clone, install, then a session in an unrelated repository: the `harness` MCP server
+connected and the first write was refused (no plan).
