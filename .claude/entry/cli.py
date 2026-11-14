@@ -1,6 +1,6 @@
-"""The harness from a terminal, from .claude/: python3 -m entry.cli <door> ... (verify, add file, add test, add
-drop-file, add retire-test, behaviors add|list|check). It only calls assemble; exit 1 on a refusal, 2 when the harness
-does not load."""
+"""The harness from a terminal, from .claude/: python3 -m entry.cli <door> ... (verify, tool find|guide|run, add file,
+add test, add drop-file, add retire-test, behaviors add|list|check). It only calls assemble; exit 1 on a refusal, 2
+when the harness does not load."""
 import os
 import sys
 from pathlib import Path

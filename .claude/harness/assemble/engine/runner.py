@@ -56,7 +56,8 @@ class Act:
 
     def run(self, event, facts, verdict):
         notes = []
-        if event.kind == "UserPromptSubmit" or (event.kind == "PreToolUse" and event.tool.startswith(HARNESS_TOOLS)):
+        if event.kind == "UserPromptSubmit" or (event.kind == "PreToolUse" and (
+                event.tool.startswith(HARNESS_TOOLS) or facts.get("harness_cli"))):
             self.port.touch_session(event.session)
         if event.kind == "UserPromptSubmit" and event.session:
             waiting = self.port.prompt(event.session, event.input.get("prompt", ""))
