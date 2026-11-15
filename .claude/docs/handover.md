@@ -36,7 +36,7 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #10 | The session-start message says how to reach the tools without the MCP server |
 | #11 | One core: the repository's own wiring is back and gives way to an installed core |
 | #15 | `anchor.py` at the repository root is the one file Claude Code runs; the doors are in `harness/entry/`; `.claude/entry/` keeps three forwarders (`boot.py`, `doctor.py`, `install.py`) for machines set up before it |
-| skill docs | The skill texts are in `harness/mcp/skill_docs/<name>/SKILL.md`, part of a release (a changed skill needs "Cho phép") |
+| #16 | The skill texts are in `harness/mcp/skill_docs/<name>/SKILL.md`, part of a release (a changed skill needs "Cho phép") |
 
 361 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
@@ -69,9 +69,11 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 
 `anchor.py` at the root, and everything that runs in one folder, `.claude/harness/`: `entry/`, `gear/`, `hooks/`,
 `mcp/` (code in `skills/`, texts in `skill_docs/`), `assemble/`, `utils/`. Done: the anchor and `entry/` (#15), the
-skill texts. **Still to do (plan 3 of 3): move `nets/` and `tests/` into `harness/`**, so a release is exactly the
-`harness/` folder; about 40 rule rows name their test by path, and the checks and docs name both folders. `docs/`
-stays outside (a doc fix must not be a new release). Later: remove the forwarders in `.claude/entry/`.
+skill texts (#16), `nets/` and `tests/` (now `harness/nets/`, `harness/tests/`; a rule row names its test as
+`harness/tests/<block>/test_x.py#test_y`). A release is the `harness/` folder plus the forwarders of `.claude/entry/`.
+`docs/` stays outside (a doc fix must not be a new release). Run the tests from `.claude/`:
+`python3 -m unittest discover -s . -t .`, and the doctor: `python3 harness/entry/doctor.py`. Later: remove the
+forwarders in `.claude/entry/`.
 
 ## What comes next, in this order
 

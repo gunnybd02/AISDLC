@@ -13,10 +13,10 @@ anchor.py       the one file Claude Code runs; it routes to an entry of the rele
                 skill_docs/ (its texts, <name>/SKILL.md), actions/ (one file per block, ACTIONS = [...])
     assemble/   engine/ (loader, config, ports, runner, select, pipeline, build, wire_mcp, checks) and pipelines/
     utils/      shared code with no policy: contracts, ledger/, plan/, shell/, git/
-  nets/         the rules of the tree, checked by the doctor
+    nets/       the rules of the tree, checked by the doctor
+    tests/      tests/<block>/test_<module>.py, plus nets/ and e2e/
   project.json  the values of the user (name, verify: the unit's test command, ledger: the real ledger)
-  docs/         this file, transfer.md, migration-map.md
-  tests/        tests/<block>/test_<module>.py, plus nets/ and e2e/
+  docs/         this file, transfer.md, migration-map.md (not part of a release)
   state/        private, not in git: harness.db, the ledger, the one store of the harness's data
 ```
 
@@ -80,7 +80,7 @@ server knows its session from the hook: the session whose prompt or harness tool
 Every commit from the shell is refused (`commit.raw`): `git commit`, and any line that may commit another way. A
 commit made around the gate (a shell form the reader does not know) can still land in the repository; delivery
 judges it by what it holds, and anything but the verified change is never delivered as the plan's.
-`tests/e2e/test_flow.py` runs this whole flow with the hook and the MCP server as processes, on a git repository.
+`harness/tests/e2e/test_flow.py` runs this whole flow with the hook and the MCP server as processes, on a git repository.
 
 What the gates refuse, so they always see what they judge:
 - A form whose answers the model filled in, or with a question or option label that holds `"="` (built to look like
@@ -149,7 +149,7 @@ A Bash or PowerShell call is read before it runs, so a write by the shell meets 
   inside `main()`: the top of an entry script
   imports only the standard library. A harness that does not load, or quits (SystemExit), still answers: the hook
   exits 2.
-- `assemble` imports `nets` only inside `doctor()` (`engine/checks.py`). The nets are dev-time code and never weigh on a hook call.
+- `assemble` imports `harness.nets` only inside `doctor()` (`engine/checks.py`). The nets are dev-time code and never weigh on a hook call.
 
 ## Indexes
 `harness/hooks/__init__.py`, `harness/mcp/__init__.py` and `harness/gear/__init__.py` only declare: a docstring and one literal
@@ -178,7 +178,7 @@ Claude Code -> anchor.py -> harness/entry/hook.py   (standard library: the maint
 ```
 - Only `gear/decide/arbiter.py` judges. A finding is looked up in `gear/rules/*.json`, and the strongest verdict wins.
 - A finding that no rule names asks the user, and the question names the finding.
-- A rule row names its test (`tests/.../test_x.py#test_y`), and a row whose test does not exist does not load.
+- A rule row names its test (`harness/tests/.../test_x.py#test_y`), and a row whose test does not exist does not load.
 - Each fact has one giver. Two that give the same fact are an error, never an overwrite.
 - Ports (`assemble/engine/ports.py`) read the world for the gears: the approved plan, and the state folder.
 - `Act` (in `runner.py`) writes back: an approval from the form (`utils/plan/approval.py`), a delivered plan after a
@@ -193,7 +193,7 @@ transaction with its trace in `pl_logs`: no trace, no grant. While it lasts, eac
 
 The top of `harness/entry/hook.py` writes and reads these rows itself, with plain `sqlite3` and the statements of
 `schema.sql`, so the grant works even when the harness is broken. It is the one place outside `utils/ledger/db.py`
-that opens the ledger; `tests/utils/test_grant.py` keeps its names the same as `utils/maint/grant.py`.
+that opens the ledger; `harness/tests/utils/test_grant.py` keeps its names the same as `utils/maint/grant.py`.
 
 AskUserQuestion is let through when the harness is broken, so the user can always be asked. It is refused when the
 model filled in the answers, when a question or label holds `"="`, when it is not shaped as a form, or when checking
@@ -222,7 +222,7 @@ A block is only the prefix of an action's name. Each file of `mcp/actions/` hold
 tree. Each class is a `McpAction` (`utils/contracts.py`): `block`, `name`, `summary`, `args_schema` (a JSON schema),
 `needs` and `effect` (`read` or `write`); it gets an `ActionContext` and raises `ActionError`. The ports are
 `ACTION_PORTS` and `SERVER_PORTS` (`engine/ports.py`, built in `engine/wire_mcp.py`); the doctor checks each action
-against its entry, its effect and its ports, and `tests/mcp/test_action_registry.py` pins the list.
+against its entry, its effect and its ports, and `harness/tests/mcp/test_action_registry.py` pins the list.
 
 `run` (`mcp/tools/run.py`): an unknown action, arguments that do not fit `args_schema`, or a port the server lacks is an
 error before anything runs; the action gets only the ports in `needs`. A `write` is judged first: the judge port runs
@@ -271,7 +271,7 @@ The nets read the whole tree except two places, and only these: `state/` (the pr
 
 | Net | Rule |
 |---|---|
-| `layout` | a file is only where `nets/layout.json` allows (`*` stays in one folder, `**` crosses folders) |
+| `layout` | a file is only where `harness/nets/layout.json` allows (`*` stays in one folder, `**` crosses folders) |
 | `imports` | the connection rule above, aliases and relative imports included; dynamic imports only in the loader; a file that does not parse |
 | `bridges` | no file only passes names on |
 | `size` | `.py` at most 400 lines, `.md` at most 300 |
@@ -284,11 +284,11 @@ them. Review keeps that out, and no net claims to.
 
 A file that does not decode as UTF-8 is reported by `size`, and a file that does not parse by `imports`. No net
 crashes on it. An index or a skill that does not decode is also reported by the loader or the skill library, which
-need it. The nets read `harness/`, `entry/`, `nets/` and the anchor. A test file that does not parse is shown by the test run
+need it. The nets read `harness/` (its tests only where a net names them), `entry/` and the anchor. A test file that does not parse is shown by the test run
 itself.
 
 ## How to add a thing
-1. Write the test first, in `tests/<block>/test_<module>.py` (`tests/nets/test_tests_layout.py` checks the name).
+1. Write the test first, in `harness/tests/<block>/test_<module>.py` (`harness/tests/nets/test_tests_layout.py` checks the name).
 2. Write the class in its block, a translator or a detector on the base classes of `utils/contracts.py`.
 3. Declare it with one line in the block's `ITEMS`.
 4. Name it in a pipeline (`assemble/pipelines/`), and give each finding it reports a rule row in `gear/rules/`, with its test.
