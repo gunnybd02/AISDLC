@@ -70,7 +70,10 @@ was refused (no plan), editing `entry/boot.py` was refused as an anchor, and the
 `python3 .claude/entry/install.py` (from a clone of this repository) installs the harness for every Claude Code
 session of the user: its hooks merged into `~/.claude/settings.json` (the user's own hooks stay) and its MCP server
 at user scope (`claude mcp add-json --scope user`, else `~/.claude.json`). The clone is the harness's home (ledger,
-config, releases); the repositories a session works on are its plan roots. It is safe to run again;
+config, releases); the repositories a session works on are its plan roots. Its own CLI is allowed in the user's
+permissions (`Bash(python3 "<home>/entry/boot.py" cli:*)` and the same with the installer's python, unquoted, or from
+`~`), so a session in auto mode may run `cli tool ...` and `cli live update`: the hooks still judge each call, and a
+new release still needs the user's "Cho phép". It is safe to run again;
 `--uninstall` takes out only what it put in.
 
 A cloud environment gets the latest harness in every new session with a setup script, run before Claude starts:

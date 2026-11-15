@@ -1,13 +1,17 @@
 """Install the harness for every Claude Code session of a user (entry/install.py): the hooks go into the user's own
 settings (~/.claude/settings.json), merged with the hooks already there, and the harness's MCP server is registered at
 user scope (~/.claude.json mcpServers), so any repository a session works on runs under the harness from its first
-prompt. The harness's home is the .claude folder of this clone: its ledger, config and releases. Safe to run again;
-uninstall takes out only what install put in. Every file is rewritten in one atomic rename."""
+prompt. Its own CLI (boot.py cli ...) is allowed in the user's permissions, so a session in auto mode may run it:
+the hooks still judge every call, and a new release still needs the user's word. The harness's home is the .claude
+folder of this clone: its ledger, config and releases. Safe to run again; uninstall takes out only what install put in.
+Every file is rewritten in one atomic rename."""
 import json
 import os
 import shutil
 import subprocess
 from pathlib import Path
+
+from harness.utils.contracts import PERMISSIONS_KEY
 
 EVENTS = {"PreToolUse": "*", "PostToolUse": "*", "UserPromptSubmit": None, "Stop": None}
 SERVER = "harness"
@@ -70,6 +74,49 @@ def remove_hooks(settings_path, boot):
     return removed
 
 
+def allow_rules(python, boot, user_home=None):
+    """The permission rules that allow the harness's own CLI, in each form a session writes it: the installer's python
+    or plain python3, the boot path quoted or not, or from ~ when it is under the user's home."""
+    paths = list(dict.fromkeys([str(boot), Path(boot).as_posix()]))
+    forms = [f'"{python}" "{p}"' for p in paths] + [f'python3 "{p}"' for p in paths] + [f"python3 {p}" for p in paths]
+    tilde = tilde_form(boot, user_home)
+    if tilde:
+        forms.append(f"python3 {tilde}")
+    return [f"Bash({f} cli:*)" for f in dict.fromkeys(forms)]
+
+
+def tilde_form(boot, user_home):
+    try:
+        return "~/" + Path(boot).relative_to(Path(user_home).resolve()).as_posix() if user_home else ""
+    except ValueError:
+        return ""
+
+
+def our_rule(rule, boot, user_home):
+    marks = [str(boot), Path(boot).as_posix(), tilde_form(boot, user_home)]
+    return isinstance(rule, str) and rule.endswith(" cli:*)") and any(m and m in rule for m in marks)
+
+
+def install_rules(settings_path, rules):
+    data = read_json(settings_path)
+    allow = data.setdefault("permissions", {}).setdefault(PERMISSIONS_KEY, [])
+    added = [r for r in rules if r not in allow]
+    allow.extend(added)
+    write_json(settings_path, data)
+    return added
+
+
+def remove_rules(settings_path, boot, user_home):
+    data = read_json(settings_path)
+    allow = data.get("permissions", {}).get(PERMISSIONS_KEY)
+    if not isinstance(allow, list):
+        return []
+    removed = [r for r in allow if our_rule(r, boot, user_home)]
+    data["permissions"][PERMISSIONS_KEY] = [r for r in allow if r not in removed]
+    write_json(settings_path, data)
+    return removed
+
+
 def server_entry(python, boot):
     return {"type": "stdio", "command": str(python), "args": [str(boot), "mcp_server"]}
 
@@ -106,14 +153,17 @@ def install(home, user_dir, claude_json, python, use_cli=True):
     if not boot.is_file():
         raise ValueError(f"{boot} is missing: run install from a clone of the harness")
     added = install_hooks(Path(user_dir) / "settings.json", python, boot)
+    install_rules(Path(user_dir) / "settings.json", allow_rules(python, boot, Path(user_dir).resolve().parent))
     where = install_server(claude_json, python, boot, use_cli)
     return (f"Hooks of {', '.join(added) or 'every event (already there)'} run {boot}; the MCP server '{SERVER}' is "
-            f"registered ({where}). New Claude Code sessions run under the harness from their first prompt; its home "
-            f"is {Path(home).resolve()}.")
+            f"registered ({where}); its CLI is allowed. New Claude Code sessions run under the harness from their "
+            f"first prompt; its home is {Path(home).resolve()}.")
 
 
 def uninstall(home, user_dir, claude_json, use_cli=True):
     boot = (Path(home) / "entry" / "boot.py").resolve()
     removed = remove_hooks(Path(user_dir) / "settings.json", boot)
+    remove_rules(Path(user_dir) / "settings.json", boot, Path(user_dir).resolve().parent)
     remove_server(claude_json, boot, use_cli)
-    return f"Removed the harness's hooks ({', '.join(removed) or 'none were there'}) and its MCP server."
+    return (f"Removed the harness's hooks ({', '.join(removed) or 'none were there'}), the rules that allow its CLI "
+            f"and its MCP server.")
