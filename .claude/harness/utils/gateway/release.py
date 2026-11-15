@@ -1,5 +1,5 @@
 """Releases (blue/green): sessions run a published copy of the harness code, state/live/<sha>/, never the work tree a
-session edits; state/live/current names the one in force. A release is the code folders (harness, entry, nets, tests)
+session edits; state/live/current names the one in force. A release is the code folders (harness with its entries, nets, tests; entry holds forwarders of the old paths)
 as they stand, named by the sha of their content. Building writes the copy; publishing switches current, which only
 the user's word allows (cli_live.py). Writing state/ is never a session's: the gates refuse it."""
 import hashlib
@@ -11,6 +11,17 @@ import time
 from pathlib import Path
 
 CODE = ("harness", "entry", "nets", "tests")
+
+
+def anchor(home):
+    """The anchor of a home: anchor.py beside its .claude folder, the one file Claude Code runs."""
+    return Path(home).resolve().parent / "anchor.py"
+
+
+def entry_of(code, name):
+    """An entry of a code folder: harness/entry/<name>.py (a release built before the entries moved: entry/)."""
+    moved = Path(code) / "harness" / "entry" / f"{name}.py"
+    return moved if moved.is_file() else Path(code) / "entry" / f"{name}.py"
 SKIP = ("__pycache__",)
 ALLOW_LABEL, NO_LABEL = "Cho ph\u00e9p", "Kh\u00f4ng"
 QUESTION = re.compile("^Cho ph\u00e9p ph\u00e1t h\u00e0nh harness (?P<sha>[0-9a-f]{12})\\?$")

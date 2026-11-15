@@ -7,6 +7,7 @@ import unittest
 
 from harness.utils.ledger.db import Ledger
 from harness.utils.ledger.recorder import Recorder
+from tests import entry_of
 from tests.e2e import copy_tree, git_repo, run
 
 CONFIG = {"name": "flow", "verify": ["{python}", "-m", "unittest", "discover", "-s", "."]}
@@ -22,7 +23,7 @@ class Flow:
                    "cwd": str(self.repo)}
         if response is not None:
             payload["tool_response"] = response
-        code, out, err = run(self.claude_dir / "entry" / "hook.py", json.dumps(payload))
+        code, out, err = run(entry_of(self.claude_dir, "hook"), json.dumps(payload))
         if code == 2:  # what Claude Code reads as a block, with err as the reason
             return {"permissionDecision": "deny", "permissionDecisionReason": err}
         assert code == 0, err
@@ -35,7 +36,7 @@ class Flow:
         line = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
             "name": "run", "arguments": {"block": block, "action": action, "args": args or {}}}})
         # Claude Code starts the MCP server in the project's folder: the plan's root
-        code, out, err = run(self.claude_dir / "entry" / "mcp_server.py", line + "\n", cwd=self.repo)
+        code, out, err = run(entry_of(self.claude_dir, "mcp_server"), line + "\n", cwd=self.repo)
         assert code == 0, err
         return json.loads(out)["result"]["content"][0]["text"]
 

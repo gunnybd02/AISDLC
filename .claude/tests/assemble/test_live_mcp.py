@@ -12,6 +12,7 @@ from harness.assemble.engine.ports import LedgerPort
 from harness.assemble.engine.runner import Act
 from harness.utils.contracts import Event, Verdict
 from harness.utils.gateway.release import build, current, publish
+from tests import anchor_of, entry_of
 from tests.e2e import copy_tree, run
 
 ITEMS_SUMMARY = "Every problem of the tree: the indexes, the build, the skills, the nets"
@@ -35,14 +36,14 @@ class LiveTest(unittest.TestCase):
 
     def test_boot_runs_the_release_not_the_work_tree(self):
         (self.home / "harness" / "assemble" / "engine" / "build.py").write_text("raise RuntimeError('half made')\n")
-        code, out, err = run(self.home / "entry" / "boot.py", json.dumps(
+        code, out, err = run(anchor_of(self.home), json.dumps(
             {"hook_event_name": "PreToolUse", "tool_name": "Read", "tool_input": {}, "session_id": "s", "cwd": "/tmp"}),
             args=("hook",))
         self.assertEqual((code, out), (0, ""), err)  # the half-made work tree never runs
-        self.assertEqual(run(self.home / "entry" / "hook.py", "{}")[0], 2)  # run directly, the work tree is broken
+        self.assertEqual(run(entry_of(self.home, "hook"), "{}")[0], 2)  # run directly, the work tree is broken
 
     def test_the_mcp_server_follows_a_published_release_without_a_restart(self):
-        server = subprocess.Popen([sys.executable, str(self.home / "entry" / "boot.py"), "mcp_server"],
+        server = subprocess.Popen([sys.executable, str(anchor_of(self.home)), "mcp_server"],
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, encoding="utf-8")
         self.addCleanup(server.kill)
 

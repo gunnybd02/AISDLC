@@ -12,6 +12,7 @@ from harness.utils.plan import desk
 from harness.utils.plan.approval import approvals
 from harness.utils.plan.stop import unverified
 from harness.utils.plan.verify import verify
+from tests import entry_of
 from tests.e2e import copy_tree, git_repo, run
 
 TEST = "import unittest\n\nclass T(unittest.TestCase):\n    def test_x(self):\n        pass\n"
@@ -61,7 +62,7 @@ class StopTest(unittest.TestCase):
         self.assertEqual(HookIO.read(json.dumps({"hook_event_name": "Stop", "stop_hook_active": True})).input,
                          {"stop_hook_active": True})
         (self.repo / "a.py").write_text("X = 2\n", encoding="utf-8")
-        code, out, _ = run(self.claude_dir / "entry" / "hook.py", json.dumps(
+        code, out, _ = run(entry_of(self.claude_dir, "hook"), json.dumps(
             {"hook_event_name": "Stop", "session_id": "s1", "cwd": str(self.repo), "stop_hook_active": False}))
         self.assertEqual((code, json.loads(out)["decision"]), (0, "block"))
         self.assertIn("a.py", json.loads(out)["reason"])

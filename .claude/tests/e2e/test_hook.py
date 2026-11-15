@@ -5,6 +5,7 @@ import unittest
 
 import harness.gear as gear_block
 import harness.hooks as hooks_block
+from tests import entry_of
 from tests.e2e import copy_tree, run
 
 PAYLOAD = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "ls"}, "session_id": "s",
@@ -22,7 +23,7 @@ FAKE = {
 
 
 def hook(root, payload):
-    return run(root / "entry" / "hook.py", json.dumps(payload))
+    return run(entry_of(root, "hook"), json.dumps(payload))
 
 
 class HookEntryTest(unittest.TestCase):
@@ -68,7 +69,7 @@ class HookEntryTest(unittest.TestCase):
         self.assertEqual(hook(root, PAYLOAD)[0], 2)
 
     def test_a_payload_that_is_not_json_exits_2(self):
-        self.assertEqual(run(copy_tree(self) / "entry" / "hook.py", "not json")[0], 2)
+        self.assertEqual(run(entry_of(copy_tree(self), "hook"), "not json")[0], 2)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 """imports: mcp and gear import only themselves and utils; utils imports no block; assemble connects them (it loads
 mcp and gear through its loader, the one place of a dynamic import, and imports the nets only inside a function, so
-they never load on a hook call); entry imports only assemble. It also reports a file that does not parse, for every
+they never load on a hook call); an entry (harness/entry/, entry/) imports only assemble. It also reports a file that does not parse, for every
 net."""
 import ast
 
@@ -21,7 +21,7 @@ DYNAMIC_OK = ("harness/assemble/engine/loader.py", "harness/assemble/engine/live
 
 def owner(rel):
     parts = rel.split("/")
-    return "entry" if parts[0] == "entry" else (parts[1] if len(parts) > 2 else "harness")
+    return "entry" if "entry" in parts[:2] else (parts[1] if len(parts) > 2 else "harness")
 
 
 def targets(node, rel):

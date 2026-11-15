@@ -73,7 +73,7 @@ def owed(port, plan, n, files):
                            b.get("status") == "pending" else f"behaviour {bid}: its test {test} is gone ({missing})")
     receipt = port.receipt(plan)
     if not receipt or not receipt.get("ok"):
-        out.append(f"no green verify: run('verify', 'run', {{'plan': '{plan['plan_id']}'}}) or python3 -m entry.cli verify")
+        out.append(f"no green verify: run('verify', 'run', {{'plan': '{plan['plan_id']}'}}) or, from the shell, the anchor's cli verify")
     else:
         moved = [f for f in files if receipt["files"].get(f) != blob(plan["root"], f)]
         if moved:

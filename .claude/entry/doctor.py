@@ -1,24 +1,23 @@
-"""The health of the harness: every problem of the tree as an ERROR line, then the count. Exit 1 when there is one,
-2 when the harness does not even load."""
-import os
+"""Forwarder, kept for machines set up before anchor.py: their harness checks a new release with its
+entry/doctor.py. It runs harness/entry/doctor.py with the same arguments. Standard library only; whatever fails exits 2.
+Removed once no installed machine names this path."""
+import runpy
 import sys
 from pathlib import Path
 
-CODE_DIR = Path(__file__).resolve().parent.parent  # the code this entry belongs to (a release, or the work tree)
-CLAUDE_DIR = Path(os.environ.get("HARNESS_HOME") or CODE_DIR)  # the home: state, config, skills (entry/boot.py)
+TARGET = Path(__file__).resolve().parent.parent / "harness" / "entry" / "doctor.py"
 
 
 def main():
-    sys.stdout.reconfigure(encoding="utf-8")
     try:
-        sys.path.insert(0, str(CODE_DIR))
-        from harness.assemble.engine.checks import doctor, report
-        problems = doctor(CLAUDE_DIR)
+        sys.argv = [str(TARGET)] + sys.argv[1:]
+        runpy.run_path(str(TARGET), run_name="__main__")
+    except SystemExit as e:
+        return e.code if isinstance(e.code, int) else (0 if e.code is None else 2)
     except BaseException as e:
-        print(f"ERROR the harness does not load: {type(e).__name__}: {e}")
+        sys.stderr.write(f"doctor forwarder failed, the call is blocked: {type(e).__name__}: {e}\n")
         return 2
-    print(report(problems))
-    return 1 if problems else 0
+    return 0
 
 
 if __name__ == "__main__":

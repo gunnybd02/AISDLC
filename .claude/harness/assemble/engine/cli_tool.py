@@ -1,4 +1,4 @@
-"""The harness's MCP tools from a terminal: python3 <home>/entry/boot.py cli tool find|guide|run ... It is for a session
+"""The harness's MCP tools from a terminal: python3 <core>/anchor.py cli tool find|guide|run ... It is for a session
 whose Claude Code did not load the harness's MCP server (a cloud session can start Claude before its setup script
 installs the server). It is the same server (wire_mcp.build_server): the same actions, ports and judge, so a write
 action is judged by the same rule rows. The session is the one whose shell the hook last saw run the harness

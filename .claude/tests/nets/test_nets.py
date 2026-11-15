@@ -156,6 +156,13 @@ class EntryNetTest(unittest.TestCase):
     def test_stdlib_at_the_top_and_the_harness_inside_main_pass(self):
         text = "import sys\nfrom pathlib import Path\n\n" + MAIN
         self.assertEqual(joined(entry_net, self, {"entry/hook.py": text}), "")
+        self.assertEqual(joined(entry_net, self, {"harness/entry/hook.py": text}), "")
+
+    def test_an_entry_inside_the_harness_is_held_to_the_same_rule(self):
+        bad = MAIN + "from harness.assemble.engine.build import run_hook\n"
+        self.assertIn("harness/entry/hook.py", joined(entry_net, self, {"harness/entry/hook.py": bad}))
+        self.assertIn("BaseException", joined(entry_net, self, {"harness/entry/cli.py": "import sys\n"}))
+        self.assertEqual(joined(entry_net, self, {"harness/gear/x.py": bad}), "")  # not an entry
 
 
 MAIN = ("def main():\n    try:\n        from harness.assemble.engine.build import run_hook\n"

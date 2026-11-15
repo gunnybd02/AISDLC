@@ -5,9 +5,9 @@ import time
 import unittest
 
 from harness.utils.maint import grant
-from tests import CLAUDE_DIR
+from tests import CLAUDE_DIR, entry_of
 
-HOOK = (CLAUDE_DIR / "entry" / "hook.py").read_text(encoding="utf-8")
+HOOK = (entry_of(CLAUDE_DIR, "hook")).read_text(encoding="utf-8")
 
 
 def rows_of(*texts):

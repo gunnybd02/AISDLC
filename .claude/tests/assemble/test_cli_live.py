@@ -12,7 +12,7 @@ from harness.assemble.engine.ports import LedgerPort
 from harness.assemble.engine.runner import Act
 from harness.utils.contracts import Event, Verdict
 from harness.utils.gateway.release import current, stamp
-from tests import tree
+from tests import anchor_of, tree
 from tests.e2e import copy_tree, run
 
 HEALTH = ("harness", "mcp", "actions", "health.py")
@@ -44,7 +44,7 @@ class LiveUpdateTest(unittest.TestCase):
     def started(self):
         """What a session reads when it begins; it always says how to reach the tools without the MCP server."""
         text = session_update(self.home)
-        boot = (self.home / "entry" / "boot.py").as_posix()
+        boot = (anchor_of(self.home)).as_posix()
         self.assertIn(f'If it has none, the same from the shell: python3 "{boot}" cli tool guide <block>', text)
         self.assertIn(f'python3 "{boot}" cli tool run <block> <action>', text)
         return text
@@ -116,12 +116,12 @@ class LiveUpdateTest(unittest.TestCase):
 
     def test_the_entry_never_blocks_a_session_from_starting(self):
         lone = copy_tree(self)  # a home in no git clone
-        code, out, err = run(lone / "entry" / "boot.py", "{}", args=("session_start",))
+        code, out, err = run(anchor_of(lone), "{}", args=("session_start",))
         self.assertEqual(code, 0, err)
         context = json.loads(out)["hookSpecificOutput"]
         self.assertEqual(context["hookEventName"], "SessionStart")
         self.assertIn("keeps release", context["additionalContext"])
-        self.assertIn(f'python3 "{(lone / "entry" / "boot.py").as_posix()}" cli tool run', context["additionalContext"])
+        self.assertIn(f'python3 "{(anchor_of(lone)).as_posix()}" cli tool run', context["additionalContext"])
 
 
 if __name__ == "__main__":

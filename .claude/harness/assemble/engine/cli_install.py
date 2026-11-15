@@ -1,11 +1,12 @@
-"""Install the harness for every Claude Code session of a user (entry/install.py): the hooks go into the user's own
-settings (~/.claude/settings.json), merged with the hooks already there (SessionStart brings the harness up to date
-when a session begins: entry/session_start.py), and the harness's MCP server is registered at
+"""Install the harness for every Claude Code session of a user (harness/entry/install.py): the hooks go into the
+user's own settings (~/.claude/settings.json), merged with the hooks already there (SessionStart brings the harness up to date
+when a session begins: harness/entry/session_start.py), and the harness's MCP server is registered at
 user scope (~/.claude.json mcpServers), so any repository a session works on runs under the harness from its first
-prompt. Its own CLI (boot.py cli ...) is allowed in the user's permissions, so a session in auto mode may run it:
+prompt. Its own CLI (anchor.py cli ...) is allowed in the user's permissions, so a session in auto mode may run it:
 the hooks still judge every call, and a new release still needs the user's word. The harness's home is the .claude
 folder of this clone: its ledger, config and releases. Safe to run again; uninstall takes out only what install put in.
-Every file is rewritten in one atomic rename."""
+Every file is rewritten in one atomic rename. What a machine set up before the anchor holds (hooks, rules and
+server naming .claude/entry/boot.py) is taken out first, so nothing runs twice."""
 import json
 import os
 import shutil
@@ -13,9 +14,10 @@ import subprocess
 from pathlib import Path
 
 from harness.utils.contracts import PERMISSIONS_KEY
+from harness.utils.gateway.release import anchor
 
 EVENTS = {"PreToolUse": "*", "PostToolUse": "*", "UserPromptSubmit": None, "Stop": None, "SessionStart": None}
-ENTRY = {"SessionStart": "session_start"}  # the entry of boot.py each event runs (hook when not named)
+ENTRY = {"SessionStart": "session_start"}  # the entry of the anchor each event runs (hook when not named)
 SERVER = "harness"
 
 
@@ -150,10 +152,17 @@ def remove_server(claude_json, boot, use_cli=True):
         write_json(claude_json, data)
 
 
+def legacy(home):
+    """What a machine set up before the anchor names: .claude/entry/boot.py of this home."""
+    return (Path(home) / "entry" / "boot.py").resolve()
+
+
 def install(home, user_dir, claude_json, python, use_cli=True):
-    boot = (Path(home) / "entry" / "boot.py").resolve()
+    boot = anchor(home)
     if not boot.is_file():
         raise ValueError(f"{boot} is missing: run install from a clone of the harness")
+    remove_hooks(Path(user_dir) / "settings.json", legacy(home))
+    remove_rules(Path(user_dir) / "settings.json", legacy(home), Path(user_dir).resolve().parent)
     added = install_hooks(Path(user_dir) / "settings.json", python, boot)
     install_rules(Path(user_dir) / "settings.json", allow_rules(python, boot, Path(user_dir).resolve().parent))
     where = install_server(claude_json, python, boot, use_cli)
@@ -163,9 +172,10 @@ def install(home, user_dir, claude_json, python, use_cli=True):
 
 
 def uninstall(home, user_dir, claude_json, use_cli=True):
-    boot = (Path(home) / "entry" / "boot.py").resolve()
-    removed = remove_hooks(Path(user_dir) / "settings.json", boot)
-    remove_rules(Path(user_dir) / "settings.json", boot, Path(user_dir).resolve().parent)
-    remove_server(claude_json, boot, use_cli)
+    boot, removed = anchor(home), []
+    for script in (boot, legacy(home)):
+        removed += remove_hooks(Path(user_dir) / "settings.json", script)
+        remove_rules(Path(user_dir) / "settings.json", script, Path(user_dir).resolve().parent)
+        remove_server(claude_json, script, use_cli)
     return (f"Removed the harness's hooks ({', '.join(removed) or 'none were there'}), the rules that allow its CLI "
             f"and its MCP server.")

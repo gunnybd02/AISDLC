@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from harness.assemble.engine.cli_install import allow_rules, install, uninstall
-from tests import CLAUDE_DIR, tree
+from tests import CLAUDE_DIR, anchor_of, entry_of, tree
 from tests.e2e import run
 
 MINE = {"type": "command", "command": "echo mine"}
@@ -20,7 +20,7 @@ class InstallTest(unittest.TestCase):
                                                              "hooks": mine})})
         self.claude_json = self.user / "claude.json"
         self.claude_json.write_text(json.dumps({"numStartups": 7, "mcpServers": {"other": {"command": "x"}}}))
-        self.boot = str((CLAUDE_DIR / "entry" / "boot.py").resolve())
+        self.boot = str((anchor_of(CLAUDE_DIR)).resolve())
 
     def settings(self):
         return json.loads((self.user / "settings.json").read_text())
@@ -61,10 +61,23 @@ class InstallTest(unittest.TestCase):
         self.assertEqual(data["permissions"]["allow"], [MY_RULE])
         self.assertEqual(json.loads(self.claude_json.read_text())["mcpServers"], {"other": {"command": "x"}})
 
+    def test_a_machine_set_up_before_the_anchor_is_moved_to_it(self):
+        old = str((CLAUDE_DIR / "entry" / "boot.py").resolve())
+        data = self.settings()
+        data["hooks"]["Stop"] = [{"hooks": [{"type": "command", "command": f'"python3" "{old}" hook'}]}]
+        data["permissions"]["allow"].append(f'Bash(python3 "{old}" cli:*)')
+        (self.user / "settings.json").write_text(json.dumps(data))
+        self.go()
+        text = (self.user / "settings.json").read_text()
+        self.assertNotIn("boot.py", text)  # the old hook and rule are gone
+        commands = [h["command"] for g in self.settings()["hooks"]["Stop"] for h in g["hooks"]]
+        self.assertEqual(commands, [f'"python3" "{self.boot}" hook'])  # one hook, the anchor's
+        self.assertTrue(self.boot.endswith("anchor.py"))
+
     def test_a_harness_under_the_users_home_is_also_allowed_from_tilde(self):
-        boot = Path("/home/u/.harness/.claude/entry/boot.py")
+        boot = Path("/home/u/.harness/anchor.py")
         rules = allow_rules("/usr/bin/python3", boot, Path("/home/u"))
-        self.assertIn("Bash(python3 ~/.harness/.claude/entry/boot.py cli:*)", rules)
+        self.assertIn("Bash(python3 ~/.harness/anchor.py cli:*)", rules)
         self.assertNotIn("~", " ".join(allow_rules("/usr/bin/python3", boot, Path("/srv"))))
         self.assertTrue(all(r.startswith("Bash(") and r.endswith(" cli:*)") for r in rules))
 
@@ -75,7 +88,7 @@ class InstallTest(unittest.TestCase):
         self.assertEqual((self.user / "settings.json").read_text(), "[1]")
 
     def test_the_entry_installs_from_a_terminal(self):
-        code, out, _ = run(CLAUDE_DIR / "entry" / "install.py", args=(
+        code, out, _ = run(entry_of(CLAUDE_DIR, "install"), args=(
             "--user-dir", str(self.user), "--claude-json", str(self.claude_json), "--no-cli"))
         self.assertEqual(code, 0, out)
         self.assertIn("harness", json.loads(self.claude_json.read_text())["mcpServers"])

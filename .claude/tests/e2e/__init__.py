@@ -8,13 +8,16 @@ from tests import CLAUDE_DIR, tree
 
 
 def copy_tree(test, extra=None):
-    """A copy of the real tree (code, config and tests, which the rules name) in a temp folder, with
-    {relative path: text} written over it. The real state is never copied."""
-    root = tree(test, {})
+    """A copy of the real tree (code, config and tests, which the rules name) as the .claude folder of a temp folder,
+    with the anchor beside it and {relative path: text} written over it. The real state is never copied."""
+    base = tree(test, {})
+    root = base / ".claude"
+    root.mkdir()
     for name in ("harness", "entry", "nets", "project", "tests"):
         if (CLAUDE_DIR / name).is_dir():
             shutil.copytree(CLAUDE_DIR / name, root / name, ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copy(CLAUDE_DIR / "project.json", root / "project.json")
+    shutil.copy(CLAUDE_DIR.parent / "anchor.py", base / "anchor.py")
     for rel, text in (extra or {}).items():
         (root / rel).parent.mkdir(parents=True, exist_ok=True)
         (root / rel).write_text(text, encoding="utf-8")

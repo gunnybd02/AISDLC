@@ -1,4 +1,4 @@
-"""The hook door entry/hook.py calls: run_hook. It builds what it needs from the tree: the loader gives the items of
+"""The hook door harness/entry/hook.py calls: run_hook. It builds what it needs from the tree: the loader gives the items of
 the blocks by name, select.py picks the pipeline by the session's plan, the pipeline names the translators and
 detectors."""
 import os
@@ -12,9 +12,10 @@ from harness.assemble.engine.pipeline import PipelineBook
 from harness.assemble.engine.runner import Act, Runner
 from harness.assemble.engine.select import select
 from harness.utils.contracts import Detector, Translator
+from harness.utils.gateway.release import anchor
 
 CLAUDE_DIR = Path(__file__).resolve().parents[3]
-CODE_ENV = "HARNESS_CODE"  # the release a session runs (entry/boot.py); unset: the home's own code
+CODE_ENV = "HARNESS_CODE"  # the release a session runs (anchor.py); unset: the home's own code
 
 
 def code_of(claude_dir):
@@ -62,7 +63,7 @@ def with_hint(reason, claude_dir):
     """A reason that names run(...) also says how to call it from the shell (engine/cli_tool.py)."""
     if "run('" not in reason:
         return reason
-    return reason + SHELL_HINT.format(boot=(Path(claude_dir) / "entry" / "boot.py").as_posix())
+    return reason + SHELL_HINT.format(boot=anchor(claude_dir).as_posix())
 
 
 def run_hook(text, claude_dir=CLAUDE_DIR):

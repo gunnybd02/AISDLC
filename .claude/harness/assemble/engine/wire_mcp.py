@@ -1,4 +1,4 @@
-"""The MCP door entry/mcp_server.py calls: run_mcp serves find, guide and run, over the action table. The actions are
+"""The MCP door harness/entry/mcp_server.py calls: run_mcp serves find, guide and run, over the action table. The actions are
 the classes of the ACTIONS literals of mcp/actions/*.py; the ports are SERVER_PORTS (engine/ports.py), built here, and
 run hands each action only those it names in needs. The judge port is the hook's own runner: a write action is judged
 by the same rules as a tool call."""
