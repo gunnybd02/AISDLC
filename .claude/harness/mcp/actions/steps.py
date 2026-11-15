@@ -1,5 +1,6 @@
 """plan steps: step_done commits the current step of the session's plan (the harness checks it, then commits; the last
 step delivers the plan), step_skip gives the current step up. git commit from the shell is refused."""
+from harness.mcp.actions.ledger import store_note
 from harness.utils.contracts import READ, WRITE, ActionError, McpAction
 from harness.utils.plan.closing import close_question
 from harness.utils.plan.steps import step_done, step_skip
@@ -20,10 +21,10 @@ class StepDone(McpAction):
     summary = ("End the current step: the harness checks what it owes (its behaviours' tests, a green verify of the "
                "current files, no secret, not a protected branch) and commits the step's files with this message")
     args_schema = {"type": "object", "properties": {"message": {"type": "string"}}, "required": ["message"]}
-    needs = ("plans", "session", "commit_judge")
+    needs = ("plans", "session", "commit_judge", "store")
 
     def run(self, ctx, args):
-        return step_done(ctx.ports["plans"], session_of(ctx), args["message"], ctx.ports["commit_judge"])
+        return step_done(ctx.ports["plans"], session_of(ctx), args["message"], ctx.ports["commit_judge"]) + store_note(ctx)
 
 
 class StepSkip(McpAction):

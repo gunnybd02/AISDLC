@@ -68,10 +68,10 @@ class SkillsTest(unittest.TestCase):
     def test_the_skills_of_the_harness_are_whole_workflows(self):
         lib = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs")
         self.assertEqual(lib.problems(), [])
-        self.assertEqual([s.name for s in lib.all()], ["harness-dev", "refused", "work"])
+        self.assertEqual([s.name for s in lib.all()], ["harness-dev", "refused", "store", "work"])
         work, dev = lib.get("work").text, lib.get("harness-dev").text
         for part in ("## 1. Gather context", "## 2. Plan", "## 3. Build each step", "## 4. Ship", "## 5. Close",
-                     'guide("refused", "skills")', 'guide("harness-dev", "skills")'):
+                     'guide("refused", "skills")', 'guide("harness-dev", "skills")', 'guide("store", "skills")'):
             self.assertIn(part, work)
         for part in ("## 1. Gather context", "## 2. Plan", "## 3. Build", "## 4. Check", "## 5. Pull request",
                      "## 6. Release", 'guide("work", "skills")'):
@@ -85,6 +85,8 @@ class SkillsTest(unittest.TestCase):
                             ("push the branch and open a merge request", "work"),
                             ("close the plan", "work"),
                             ("my tool call was refused or denied", "refused"),
+                            ("upload the ledger database to google drive", "store"),
+                            ("back up the session database after a commit", "store"),
                             ("develop the harness itself", "harness-dev"),
                             ("add a rule with a detector", "harness-dev"),
                             ("add an action or a skill to the harness", "harness-dev"),

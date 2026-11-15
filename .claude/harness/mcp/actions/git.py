@@ -52,10 +52,11 @@ class Commit(McpAction):
                "plan allows, code verified green, judged by the commit guards; then step_done ends the step")
     args_schema = {"type": "object", "properties": {"files": {"type": "array"}, "message": {"type": "string"}},
                    "required": ["files", "message"]}
-    needs = ("plans", "session", "commit_judge")
+    needs = ("plans", "session", "commit_judge", "store")
 
     def run(self, ctx, args):
-        return git_commit(ctx.ports["plans"], session_of(ctx), args["files"], args["message"], ctx.ports["commit_judge"])
+        return (git_commit(ctx.ports["plans"], session_of(ctx), args["files"], args["message"],
+                           ctx.ports["commit_judge"]) + store_note(ctx))
 
 
 class Push(McpAction):

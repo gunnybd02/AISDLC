@@ -45,6 +45,10 @@ wildcard, inline code that may write. Simple commands with plain paths pass with
 | `commit.banned_word` | a word `project.json` bans | say it another way |
 | `commit.agent_files` | agent files in a unit's commit | `add drop-file` |
 
+## Google Drive
+`drive.remove`, `drive.move`: a Drive file would be trashed, moved or renamed. The user is asked each time, because
+the ledger store on Drive only grows (`guide("store", "skills")`). Uploading and reading are free.
+
 ## The end of a turn
 `stop.unverified`: code files of the plan changed since the last green verify. Run
 `python3 <core>/anchor.py cli verify` (or `run("verify", "run", {"plan": "<pd-id>"})`) and fix what is red.
