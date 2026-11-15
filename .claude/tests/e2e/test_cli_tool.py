@@ -9,6 +9,7 @@ import unittest
 from harness.assemble.engine.build import with_hint
 from harness.gear.translate.place import Places
 from harness.utils.contracts import Event
+from tests import anchor_of
 from tests.e2e import copy_tree, git_repo, run
 from tests.e2e.test_flow import CONFIG, Flow
 
@@ -20,13 +21,13 @@ class CliToolTest(unittest.TestCase):
         self.claude_dir = copy_tree(self, {"project.json": json.dumps(CONFIG)})
         self.repo = git_repo(self, {"a.py": "X = 1\n", "test_a.py": "", "b.py": ""})
         self.flow = Flow(self.claude_dir, self.repo)
-        self.boot = (self.claude_dir / "entry" / "boot.py").as_posix()
+        self.boot = (anchor_of(self.claude_dir)).as_posix()
 
     def shell(self, *words):
         """The model's shell line for the tool door: the hook sees it first, then it runs in the repository."""
         line = shlex.join(["python3", self.boot, "cli", "tool", *words])
         decision = self.flow.decision("Bash", {"command": line, "description": "harness tool"})
-        code, out, err = run(self.claude_dir / "entry" / "boot.py", args=("cli", "tool", *words), cwd=self.repo)
+        code, out, err = run(anchor_of(self.claude_dir), args=("cli", "tool", *words), cwd=self.repo)
         return decision, code, out + err
 
     def test_a_plan_is_presented_and_approved_without_the_mcp_server(self):

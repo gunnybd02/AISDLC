@@ -11,7 +11,7 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 - The repositories a session works on (repoA, repoB...) are outside the core and never hold a harness of their own.
 - On a PC, Claude Code is started in the core repository: its `.claude/settings.json` and `.mcp.json` switch the harness
   on. In the cloud, the environment's setup script installs the core at `~/.harness`; nobody clones it by hand.
-- Never two harnesses, never two ledgers. A copy that is not the core gives way (`entry/boot.py`, `--project`).
+- Never two harnesses, never two ledgers. A copy that is not the core gives way (`anchor.py`, `--project`).
 
 ## How the user wants the work done
 
@@ -41,11 +41,11 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 ## The cloud, as it runs now
 
 - The user's Default environment has a setup script: clone this repository to `~/.harness`, run
-  `.claude/entry/install.py`. Every new cloud session is governed without selecting this repository.
+  `.claude/harness/entry/install.py`. Every new cloud session is governed without selecting this repository.
 - Cloud machines are prepared ahead of time. The SessionStart hook brings the harness to the newest main when the
   session begins. Changing the setup script (even a comment) makes the cloud prepare fresh machines.
 - The MCP tools load reliably only from a repository's `.mcp.json` (the cloud's supported way). A session on this
-  repository has them; a session on another repository may not, and then uses `boot.py cli tool ...`.
+  repository has them; a session on another repository may not, and then uses `anchor.py cli tool ...`.
 - Checked live: install, refusal before a plan, update at start, MCP and shell tools, presenting a plan, one core with
   this repository cloned. **Not checked live:** the flow after a real "Duyệt" click (edit, verify, `step_done`,
   delivered); test sessions run alone and cannot answer a form. The first governed session with the user does it.

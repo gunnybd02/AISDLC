@@ -3,8 +3,8 @@ that really runs (its options' values too, --file=x), its redirections and the v
 from every folder the line may be in (after cd X: from the folder before and from X). A word with a wildcard is
 expanded against the disk; a word the shell makes from a variable ($HOME/x) cannot be told and is left out.
 
-The harness's own commands (python -m entry.<x>, python <claude>/entry/<x>.py) name nothing here: they open the
-harness's data themselves, which is how it is meant to be opened. A line the reader cannot see whole is read word by
+The harness's own commands (python <core>/anchor.py, python <claude>/harness/entry/<x>.py, python -m entry.<x>) name
+nothing here: they open the harness's data themselves, which is how it is meant to be opened. A line the reader cannot see whole is read word by
 word, so a path in it is still found."""
 import glob
 import os
@@ -20,17 +20,18 @@ MADE = re.compile(r"[$`]|%\w+%")
 
 
 def harness_own(command):
-    """Whether the command runs the harness itself: python -m entry.<x>, or python <...>/entry/<x>.py."""
+    """Whether the command runs the harness itself: python <...>/anchor.py, python <...>/entry/<x>.py, or python -m
+    entry.<x> / harness.entry.<x>."""
     if program(command.name) not in PYTHONS:
         return False
     args = [w.text for w in command.args]
     if args[:1] == ["-m"] and len(args) > 1:
-        return args[1].startswith("entry.")
-    return bool(args) and re.search(r"(^|[\\/])entry[\\/]\w+\.py$", args[0]) is not None
+        return args[1].startswith(("entry.", "harness.entry."))
+    return bool(args) and re.search(r"(^|[\\/])(entry[\\/]\w+|anchor)\.py$", args[0]) is not None
 
 
 def harness_runs(command_line, dialect="bash"):
-    """The words of each command of a shell line that runs the harness itself (python ... entry/<x>.py ...)."""
+    """The words of each command of a shell line that runs the harness itself (python ... anchor.py ..., python ... entry/<x>.py ...)."""
     return [[w.text for w in c.args] for c in read(command_line, dialect).commands
             if c.words and not c.words[0].dynamic and harness_own(c)]
 
@@ -42,7 +43,7 @@ def runs_harness(command_line, dialect="bash"):
 
 
 def runs_session_start(command_line, dialect="bash"):
-    """Whether a shell line runs the harness's SessionStart entry (boot.py session_start, entry/session_start.py),
+    """Whether a shell line runs the harness's SessionStart entry (anchor.py session_start, entry/session_start.py),
     which only Claude Code runs, when a session begins."""
     return any("session_start" in args[1:2] or re.search(r"session_start\.py$", args[0] if args else "")
                for args in harness_runs(command_line, dialect))

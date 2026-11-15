@@ -11,6 +11,7 @@ from harness.utils.contracts import YES
 from harness.utils.plan import desk
 from harness.utils.plan.approval import approvals
 from harness.utils.plan.steps import StepError, step_done
+from tests import entry_of
 from tests.e2e import copy_tree, git_repo, run
 
 TEST = "import unittest\n\nclass T(unittest.TestCase):\n    def test_x(self):\n        pass\n"
@@ -110,10 +111,10 @@ class CliTest(unittest.TestCase):
             (self.repo / name).write_text("X = 1\n", encoding="utf-8")
 
     def test_the_entry_runs_from_a_terminal(self):
-        code, out, _ = run(self.claude_dir / "entry" / "cli.py", args=("--session", "s1", "behaviors", "list"))
+        code, out, _ = run(entry_of(self.claude_dir, "cli"), args=("--session", "s1", "behaviors", "list"))
         self.assertEqual(code, 0)
         self.assertIn("s1.sets-a", out) if "s1.sets-a" in out else self.assertIn("No behaviour", out)
-        self.assertEqual(run(self.claude_dir / "entry" / "cli.py", args=("bogus",))[0], 1)
+        self.assertEqual(run(entry_of(self.claude_dir, "cli"), args=("bogus",))[0], 1)
 
 
 if __name__ == "__main__":

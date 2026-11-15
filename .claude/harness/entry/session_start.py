@@ -1,5 +1,5 @@
-"""Claude Code SessionStart hook (installed by entry/install.py): when a session begins, bring the harness to the newest
-main of its clone and put it in force when its doctor is clean (assemble/engine/cli_live.py session_update). A cloud
+"""Claude Code SessionStart hook (installed by harness/entry/install.py): when a session begins, bring the harness to
+the newest main of its clone and put it in force when its doctor is clean (assemble/engine/cli_live.py session_update). A cloud
 machine is prepared ahead of time, so the setup script's harness can be hours old by then. It never blocks: whatever
 fails, the session starts on the harness it has and reads why. A session cannot run it itself (agent.session_start)."""
 import json
@@ -7,8 +7,8 @@ import os
 import sys
 from pathlib import Path
 
-CODE_DIR = Path(__file__).resolve().parent.parent  # the code this entry belongs to (a release, or the work tree)
-CLAUDE_DIR = Path(os.environ.get("HARNESS_HOME") or CODE_DIR)  # the home: state, config, skills (entry/boot.py)
+CODE_DIR = Path(__file__).resolve().parent.parent.parent  # the code this entry belongs to (a release, or the work tree)
+CLAUDE_DIR = Path(os.environ.get("HARNESS_HOME") or CODE_DIR)  # the home: state, config, skills (anchor.py)
 
 
 def main():

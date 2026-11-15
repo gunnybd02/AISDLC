@@ -1,4 +1,4 @@
-"""The doctor door entry/doctor.py calls: every problem of the tree, and the report of them."""
+"""The doctor door harness/entry/doctor.py calls: every problem of the tree, and the report of them."""
 from pathlib import Path
 
 from harness.assemble.engine.build import CLAUDE_DIR, build_runner, code_of, items_of

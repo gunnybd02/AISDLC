@@ -9,11 +9,11 @@ Every session runs under one harness, the core: its `.claude/` folder holds the 
 (`state/harness.db`). The repositories a session works on are outside it and hold no harness of their own.
 
 - On a PC the core is a clone of this repository, and Claude Code is started in it: its `.claude/settings.json` and
-  `.mcp.json` switch the harness on (they call `entry/boot.py ... --project`).
+  `.mcp.json` switch the harness on (they call `anchor.py ... --project`).
 - In the cloud the core is installed for the user by the setup script (below): `~/.harness`, hooks and MCP server in
   the user's own settings.
 - A copy that is not the core gives way. When a harness is installed for the user, a repository's own wiring does
-  nothing in its hooks and hands its MCP server over to the core (`boot.py`: `--project`). So a clone of this repository
+  nothing in its hooks and hands its MCP server over to the core (`anchor.py`: `--project`). So a clone of this repository
   that a cloud session works on is never a second harness, and its `.mcp.json` is how the cloud loads the core's tools.
 
 ## Wire it into a project
@@ -28,20 +28,20 @@ The project is a git repository with this `.claude/` folder in it (the home). Ad
 
 ```json
 {"hooks": {
-  "PreToolUse":       [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook --project"}]}],
-  "PostToolUse":      [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook --project"}]}],
-  "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook --project"}]}],
-  "Stop":             [{"hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook --project"}]}]}}
+  "PreToolUse":       [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/anchor.py\" hook --project"}]}],
+  "PostToolUse":      [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/anchor.py\" hook --project"}]}],
+  "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/anchor.py\" hook --project"}]}],
+  "Stop":             [{"hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/anchor.py\" hook --project"}]}]}}
 ```
 
 `.mcp.json` in the project root gives the model the harness's MCP server (on Windows: `python` and a Windows path):
 
 ```json
-{"mcpServers": {"harness": {"type": "stdio", "command": "python3", "args": [".claude/entry/boot.py", "mcp_server", "--project"]}}}
+{"mcpServers": {"harness": {"type": "stdio", "command": "python3", "args": ["anchor.py", "mcp_server", "--project"]}}}
 ```
 
-Then publish the code once (the user answers the form it gives): `python3 -m entry.cli live publish` from
-`.claude/`. Until a release is published, boot runs the work tree.
+Then publish the code once (the user answers the form it gives): `python3 anchor.py cli live publish` from
+the core's root. Until a release is published, boot runs the work tree.
 
 ## Run it
 
@@ -53,7 +53,7 @@ claude -p "Create hello.py that prints hello" --output-format stream-json --verb
 ```
 
 A headless session cannot answer a form: the user's click on "Duyệt" is the hook event a form answer gives
-(PostToolUse of AskUserQuestion with `tool_response.answers`), sent to `entry/hook.py` with the session's id.
+(PostToolUse of AskUserQuestion with `tool_response.answers`), sent to `harness/entry/hook.py` with the session's id.
 
 ## What the live run showed
 
@@ -76,11 +76,11 @@ was refused (no plan), editing `entry/boot.py` was refused as an anchor, and the
 
 ## Every session of a machine: install
 
-`python3 .claude/entry/install.py` (from a clone of this repository) installs the harness for every Claude Code
+`python3 .claude/harness/entry/install.py` (from a clone of this repository) installs the harness for every Claude Code
 session of the user: its hooks merged into `~/.claude/settings.json` (the user's own hooks stay) and its MCP server
 at user scope (`claude mcp add-json --scope user`, else `~/.claude.json`). The clone is the harness's home (ledger,
 config, releases); the repositories a session works on are its plan roots. Its own CLI is allowed in the user's
-permissions (`Bash(python3 "<home>/entry/boot.py" cli:*)` and the same with the installer's python, unquoted, or from
+permissions (`Bash(python3 "<core>/anchor.py" cli:*)` and the same with the installer's python, unquoted, or from
 `~`), so a session in auto mode may run `cli tool ...` and `cli live update`: the hooks still judge each call, and a
 new release still needs the user's "Cho phép". It is safe to run again;
 `--uninstall` takes out only what it put in.
@@ -88,7 +88,7 @@ new release still needs the user's "Cho phép". It is safe to run again;
 A cloud environment gets the latest harness in every new session with a setup script, run before Claude starts:
 
 ```bash
-git clone -q --depth 1 https://github.com/gunnybd02/AISDLC "$HOME/.harness" && python3 "$HOME/.harness/.claude/entry/install.py"
+git clone -q --depth 1 https://github.com/gunnybd02/AISDLC "$HOME/.harness" && python3 "$HOME/.harness/.claude/harness/entry/install.py"
 ```
 
 Checked: a fresh home, the clone, install, then a session in an unrelated repository: the `harness` MCP server
@@ -99,9 +99,9 @@ govern it, but the MCP server is loaded only at start, so the session has no `mc
 are a shell command away (the same server, actions and judge; the hook links the session that runs it):
 
 ```bash
-python3 ~/.harness/.claude/entry/boot.py cli tool guide plan
-python3 ~/.harness/.claude/entry/boot.py cli tool run plan plan_present '{"plan": {"title": "...", "files": ["a.py"]}}'
-python3 ~/.harness/.claude/entry/boot.py cli tool find verify tests
+python3 ~/.harness/anchor.py cli tool guide plan
+python3 ~/.harness/anchor.py cli tool run plan plan_present '{"plan": {"title": "...", "files": ["a.py"]}}'
+python3 ~/.harness/anchor.py cli tool find verify tests
 ```
 
 A refusal that names `run(...)` says so, with the home's own path.
@@ -109,7 +109,7 @@ A refusal that names `run(...)` says so, with the home's own path.
 ## Start on the newest harness
 
 A cloud machine is prepared before a session asks for it, and the setup script runs then: the harness it installs can
-be hours old. So the install adds a SessionStart hook (`boot.py session_start`, entry/session_start.py): when a session
+be hours old. So the install adds a SessionStart hook (`anchor.py session_start`, harness/entry/session_start.py): when a session
 begins, the clone is fast-forwarded to `origin/main`, the new code is built and its doctor run, and it is put in force
 when clean. When GitHub cannot be reached, the doctor finds problems, or the clone has local changes, the session keeps
 the harness it has; either way it reads which harness runs and why, and how to reach its tools from the shell
@@ -120,7 +120,7 @@ when it has no `mcp__harness__` tools. A session never runs it itself (agent.ses
 After a change of the harness is merged on GitHub, a running session takes it without a restart:
 
 ```bash
-python3 ~/.harness/.claude/entry/boot.py cli live update
+python3 ~/.harness/anchor.py cli live update
 ```
 
 It pins the code that runs now as a release (when none is), fast-forwards the clone to `origin/main` (refused over

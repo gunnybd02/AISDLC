@@ -6,10 +6,10 @@ import sys
 import unittest
 
 import harness.mcp as mcp_block
-from tests import CLAUDE_DIR
+from tests import CLAUDE_DIR, entry_of
 from tests.e2e import copy_tree, run
 
-SCRIPT = CLAUDE_DIR / "entry" / "mcp_server.py"
+SCRIPT = entry_of(CLAUDE_DIR, "mcp_server")
 
 
 def request(id, method, params=None):
@@ -49,7 +49,7 @@ class McpServerEntryTest(unittest.TestCase):
 
     def test_a_harness_that_exits_quietly_exits_2(self):
         root = copy_tree(self, {"harness/assemble/engine/build.py": "raise SystemExit(0)\n"})
-        self.assertEqual(run(root / "entry" / "mcp_server.py", request(1, "ping"))[0], 2)
+        self.assertEqual(run(entry_of(root, "mcp_server"), request(1, "ping"))[0], 2)
 
     def test_the_server_tools_are_declared_by_mcp(self):
         names = {i["name"] for i in mcp_block.ITEMS}

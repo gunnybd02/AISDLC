@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook --project"
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/anchor.py\" hook --project"
           }
         ]
       }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook --project"
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/anchor.py\" hook --project"
           }
         ]
       }
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook --project"
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/anchor.py\" hook --project"
           }
         ]
       }
@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook --project"
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/anchor.py\" hook --project"
           }
         ]
       }

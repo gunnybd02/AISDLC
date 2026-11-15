@@ -23,3 +23,13 @@ def tree(test, files):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
     return root
+
+
+def entry_of(home, name):
+    """An entry script of a .claude folder: harness/entry/<name>.py."""
+    return Path(home) / "harness" / "entry" / f"{name}.py"
+
+
+def anchor_of(home):
+    """The anchor of a .claude folder: anchor.py beside it."""
+    return Path(home).parent / "anchor.py"

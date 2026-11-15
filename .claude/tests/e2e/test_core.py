@@ -7,7 +7,8 @@ import unittest
 
 from harness.assemble.engine.cli_install import install
 from harness.assemble.engine.ports import LedgerPort
-from tests import tree
+from harness.utils.gateway.release import build, publish
+from tests import anchor_of, tree
 from tests.e2e import copy_tree, git_repo, run
 
 PLAN = {"plan": {"title": "Set X", "what": ["X becomes 2"], "files": ["a.py"], "tests": []}}
@@ -28,7 +29,7 @@ class OneCoreTest(unittest.TestCase):
     def hook(self, home, kind, tool, tool_input, project=True):
         payload = json.dumps({"hook_event_name": kind, "tool_name": tool, "tool_input": tool_input,
                               "session_id": "s1", "cwd": str(self.repo)})
-        return run(home / "entry" / "boot.py", payload, args=("hook", "--project") if project else ("hook",),
+        return run(anchor_of(home), payload, args=("hook", "--project") if project else ("hook",),
                    env=self.env)
 
     def write(self, home, project=True):
@@ -36,7 +37,7 @@ class OneCoreTest(unittest.TestCase):
                          project)
 
     def present(self, home):
-        code, out, err = run(home / "entry" / "boot.py", call("plan", "plan_present", PLAN),
+        code, out, err = run(anchor_of(home), call("plan", "plan_present", PLAN),
                              args=("mcp_server", "--project"), env=self.env, cwd=self.repo)
         self.assertEqual(code, 0, err)
         return json.loads(out)["result"]["content"][0]["text"]
@@ -75,6 +76,41 @@ class OneCoreTest(unittest.TestCase):
                 (self.user / "settings.json").write_text(text, encoding="utf-8")
                 code, out, _ = self.write(self.clone)
                 self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")
+
+    def test_a_machine_set_up_before_the_anchor_keeps_working(self):
+        old = self.clone / "entry" / "boot.py"  # what its hooks and MCP server still name
+        payload = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Write", "session_id": "s1",
+                              "cwd": str(self.repo), "tool_input": {"file_path": str(self.repo / "a.py")}})
+        code, out, err = run(old, payload, args=("hook",), env=self.env)
+        self.assertEqual(code, 0, err)
+        self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")  # forwarded, it judges
+        self.assertIn("0 errors", run(self.clone / "entry" / "doctor.py", env=self.env)[1])  # as its release check runs
+        code, out, _ = run(self.clone / "entry" / "install.py", env=self.env, args=(
+            "--user-dir", str(self.user), "--claude-json", str(self.user / "claude.json"), "--no-cli"))
+        self.assertEqual(code, 0, out)
+        self.assertIn(str(anchor_of(self.clone).resolve()), (self.user / "settings.json").read_text())
+
+    def test_a_core_installed_under_the_old_path_is_still_the_core(self):
+        core = copy_tree(self)
+        install(core, self.user, self.user / "claude.json", sys.executable, use_cli=False)
+        settings = self.user / "settings.json"
+        old = str((core / "entry" / "boot.py").resolve())
+        settings.write_text(settings.read_text().replace(str(anchor_of(core).resolve()), old), encoding="utf-8")
+        self.assertIn("boot.py", settings.read_text())
+        self.assertEqual(self.write(self.clone)[:2], (0, ""))  # the copy gives way to it
+        run(old, json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": "s1", "cwd": str(self.repo)}),
+            args=("hook",), env=self.env)
+        self.assertIn("waits for the user's approval", self.present(self.clone))
+        self.assertEqual(len(LedgerPort(core).waiting()), 1)  # in the core's ledger, through its old path
+
+    def test_a_release_built_before_the_entries_moved_still_runs(self):
+        sha = build(self.clone)
+        publish(self.clone, sha)
+        release = self.clone / "state" / "live" / sha
+        (release / "harness" / "entry" / "doctor.py").unlink()
+        (release / "entry" / "doctor.py").write_text("print('the doctor of an old release')\n", encoding="utf-8")
+        code, out, err = run(anchor_of(self.clone), args=("doctor",), env=self.env)
+        self.assertEqual((code, out.strip()), (0, "the doctor of an old release"), err)
 
 
 if __name__ == "__main__":

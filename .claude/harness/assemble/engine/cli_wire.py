@@ -1,4 +1,4 @@
-"""The CLI doors (entry/cli.py): verify, tool (the MCP tools from a terminal, cli_tool.py) and the doors that widen or
+"""The CLI doors (harness/entry/cli.py): verify, tool (the MCP tools from a terminal, cli_tool.py) and the doors that widen or
 shrink the approved plan of a session (docs 04, sections 4 and 5). The session is --session, else HARNESS_SESSION, else
 the last one the hook saw (tool: always that one, as for the MCP server). Each door answers
 (exit code, text): 0 done, 1 refused."""
@@ -21,7 +21,7 @@ class Refused(Exception):
 
 
 def parser():
-    top = argparse.ArgumentParser(prog="python3 -m entry.cli", exit_on_error=False)
+    top = argparse.ArgumentParser(prog="python3 anchor.py cli", exit_on_error=False)
     top.add_argument("--session", dest="top_session")
     doors = top.add_subparsers(dest="door", required=True)
     v = doors.add_parser("verify", exit_on_error=False)

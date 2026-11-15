@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from harness.assemble.engine.build import CODE_ENV
-from harness.utils.gateway.release import current, release_dir
+from harness.utils.gateway.release import current, entry_of, release_dir
 
 CHECK_TIMEOUT = 120
 
@@ -19,7 +19,7 @@ def healthy(home, code):
     """Whether the release's own doctor finds no problem, for the home."""
     env = {**os.environ, "HARNESS_HOME": str(home), CODE_ENV: str(code)}
     try:
-        p = subprocess.run([sys.executable, str(Path(code) / "entry" / "doctor.py")], env=env, capture_output=True,
+        p = subprocess.run([sys.executable, str(entry_of(code, "doctor"))], env=env, capture_output=True,
                            timeout=CHECK_TIMEOUT, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.TimeoutExpired):
         return False
@@ -39,7 +39,7 @@ def load(home, code):
 
 def serve_live(instream, outstream, home):
     home = Path(home)
-    live = bool(os.environ.get(CODE_ENV))  # started by entry/boot.py: it follows the releases
+    live = bool(os.environ.get(CODE_ENV))  # started by the anchor: it follows the releases
     from harness.assemble.engine.wire_mcp import build_server
     server, running, refused = build_server(home), current(home) if live else None, set()
     for line in instream:

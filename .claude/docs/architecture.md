@@ -1,11 +1,12 @@
 # Architecture of the harness
 
-Everything lives under `.claude/`. Python 3.13, standard library only.
+Everything lives under `.claude/`, but the anchor (`anchor.py` beside it). Python 3.13, standard library only.
 
 ```
+anchor.py       the one file Claude Code runs; it routes to an entry of the release in force
 .claude/
-  entry/        hook.py, mcp_server.py, doctor.py: what Claude Code runs; they call only assemble/engine
   harness/
+    entry/      hook.py, mcp_server.py, cli.py, doctor.py...: the doors; they call only assemble/engine
     hooks/      hook JSON in and out (io.py), the answers of a form (forms.py); decides nothing
     gear/       translate/ -> detect/ -> decide/arbiter.py, with the rule rows in rules/*.json
     mcp/        what the model calls: server/ (stdio, tool base), tools/ (find, guide, run), skills/ (library),
@@ -34,7 +35,7 @@ AskUserQuestion                          the user answers; only "Duyệt" to tha
                                          rec_plans, pl_behaviors with tests, the ticket, pl_approval, the events
                                          approved and executing, pl_logs gate-open and form
 Write / Edit, or a write by the shell     allowed only for the files of the approved plan (detect/tracked.py, detect/planfiles.py)
-python3 -m entry.cli verify [--in F] [--timeout S] [-- cmd]  (or run("verify", "run", {plan})): the test command
+python3 anchor.py cli verify [--in F] [--timeout S] [-- cmd]  (or run("verify", "run", {plan})): the test command
                                          (after --, else the config's verify) of the session's plan, no shell, under
                                          a lock in the git common dir (shared with worktrees), with HARNESS_DB set to
                                          a copy of the live ledger; exit 124 on the timeout (600 s, 1..3600), 127 when
@@ -133,7 +134,7 @@ A Bash or PowerShell call is read before it runs, so a write by the shell meets 
 - The harness's state is shut to every tool, reads too (`read.state`): every place a shell line names
   (`utils/shell/mentions.py`: words, option values, variables, redirections, wildcards expanded on the disk, both
   folders after `cd`) and the path of Read, Grep, Glob, LS and NotebookRead. The harness's own commands
-  (`python -m entry.<x>`, `python .../entry/<x>.py`) name nothing. The ledger is read only through
+  (`python .../anchor.py`, `python .../entry/<x>.py`) name nothing. The ledger is read only through
   `run("ledger", "db_query", {sql})`: one SELECT, opened read only, an authorizer that refuses writes, PRAGMA, ATTACH
   and the transcript tables (`tx_*`), at most 200 rows. A path the shell makes from a variable (`$D/harness.db`)
   cannot be told and gets past the reader.
@@ -145,7 +146,7 @@ A Bash or PowerShell call is read before it runs, so a write by the shell meets 
 - `utils` imports no block.
 - `assemble` connects: `engine/loader.py` reads the `ITEMS` of `hooks`, `mcp` and `gear` and the action files of
   `mcp/actions/`, and loads them by name. It is the one place of a dynamic import.
-- `entry/` imports only `assemble` (its doors: `engine/build.py`, `engine/wire_mcp.py`, `engine/checks.py`), and only
+- `harness/entry/` imports only `assemble` (its doors: `engine/build.py`, `engine/wire_mcp.py`, `engine/checks.py`), and only
   inside `main()`: the top of an entry script
   imports only the standard library. A harness that does not load, or quits (SystemExit), still answers: the hook
   exits 2.
@@ -168,7 +169,7 @@ A Bash or PowerShell call is read before it runs, so a write by the shell meets 
 
 ## The run of a hook
 ```
-Claude Code -> entry/hook.py   (standard library: the maint grant, the form, then the harness)
+Claude Code -> anchor.py -> harness/entry/hook.py   (standard library: the maint grant, the form, then the harness)
   -> assemble/engine/build.run_hook
   hooks/io.py: JSON -> Event
   select.py: the session's approved plan picks the pipeline (none: base, the floor); pipeline.py names the
@@ -191,7 +192,7 @@ the question from `run("maint", "grant", {minutes, why})` and `run("maint", "sta
 off. The grant is a row of the ledger (`pl_notes`, kind `maint.grant`, `{"until": seconds}`), written in one
 transaction with its trace in `pl_logs`: no trace, no grant. While it lasts, each call is traced in `pl_logs`.
 
-The top of `entry/hook.py` writes and reads these rows itself, with plain `sqlite3` and the statements of
+The top of `harness/entry/hook.py` writes and reads these rows itself, with plain `sqlite3` and the statements of
 `schema.sql`, so the grant works even when the harness is broken. It is the one place outside `utils/ledger/db.py`
 that opens the ledger; `tests/utils/test_grant.py` keeps its names the same as `utils/maint/grant.py`.
 
@@ -202,16 +203,17 @@ minutes is no grant, and the state folder stays closed to the editing tools whil
 UTF-8 bytes, whatever the console's code page.
 
 ## Releases: the code a session runs
-Claude Code runs `entry/boot.py <entry>`: that entry of the release in force (`state/live/<sha>/`, named by
+Claude Code runs `anchor.py <entry>`: that entry (`harness/entry/`) of the release in force (`state/live/<sha>/`, named by
 `state/live/current`), never the work tree a session edits; with no release, the work tree's own. The entry gets the
 home (`HARNESS_HOME`) and the code (`HARNESS_CODE`, read by `build.code_of`). A file a session writes into the
-harness runs nowhere until `python3 -m entry.cli live publish` builds the release (`utils/gateway/release.py`), its own
+harness runs nowhere until `python3 anchor.py cli live publish` builds the release (`utils/gateway/release.py`), its own
 doctor is clean, and the user answers Cho phép to `Cho phép phát hành harness <sha>?`. The MCP server
 (`engine/live_mcp.py`) checks each new release with its doctor and swaps it in without a restart; one that fails is
-never taken. `entry/boot.py`, `.claude/settings.json` and `.mcp.json` are never written in a session (agent.anchor).
+never taken. `anchor.py`, `.claude/settings.json` and `.mcp.json` are never written in a session (agent.anchor).
+`.claude/entry/` holds only forwarders (`boot.py`, `doctor.py`, `install.py`) for machines set up before the anchor.
 
 ## The MCP server
-`entry/mcp_server.py` serves three tools over stdio (JSON-RPC 2.0):
+`harness/entry/mcp_server.py` serves three tools over stdio (JSON-RPC 2.0):
 - `find`: skills and blocks ranked by the words of the request.
 - `guide`: a skill, or the actions of a block.
 - `run`: one action of the action table, with its arguments checked.
@@ -257,7 +259,7 @@ through its `-wal` and `-shm`, and only the `-shm` (the readers' shared index) m
 ERROR, never a match. The path is this machine's: where it does not exist, the doctor says so.
 
 ## Nets
-`entry/doctor.py` (also `run("health", "doctor")`) reports every problem as an ERROR, in this order:
+`harness/entry/doctor.py` (also `run("health", "doctor")`) reports every problem as an ERROR, in this order:
 - the indexes;
 - each item's ref, which must load;
 - the build (config, pipeline, rules), and each action file, which must load;
@@ -283,7 +285,7 @@ them. Review keeps that out, and no net claims to.
 
 A file that does not decode as UTF-8 is reported by `size`, and a file that does not parse by `imports`. No net
 crashes on it. An index or a skill that does not decode is also reported by the loader or the skill library, which
-need it. The nets read `harness/`, `entry/` and `nets/`. A test file that does not parse is shown by the test run
+need it. The nets read `harness/`, `entry/`, `nets/` and the anchor. A test file that does not parse is shown by the test run
 itself.
 
 ## How to add a thing
@@ -291,4 +293,4 @@ itself.
 2. Write the class in its block, a translator or a detector on the base classes of `utils/contracts.py`.
 3. Declare it with one line in the block's `ITEMS`.
 4. Name it in a pipeline (`assemble/pipelines/`), and give each finding it reports a rule row in `gear/rules/`, with its test.
-5. Run the tests and `entry/doctor.py` until both are clean.
+5. Run the tests and `harness/entry/doctor.py` until both are clean.

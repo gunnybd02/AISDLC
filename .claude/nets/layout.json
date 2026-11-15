@@ -4,6 +4,7 @@
     "project.json",
     "settings.json",
     "entry/*.py",
+    "harness/entry/*.py",
     "harness/__init__.py",
     "harness/utils/*.py",
     "harness/utils/ledger/*.py",

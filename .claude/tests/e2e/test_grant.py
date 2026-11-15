@@ -7,7 +7,7 @@ import time
 import unittest
 
 from harness.utils.contracts import YES
-from tests import CLAUDE_DIR
+from tests import CLAUDE_DIR, entry_of
 from tests.e2e import WINDOWS_CONSOLE, copy_tree, run
 
 BROKEN = {"harness/assemble/engine/build.py": "raise RuntimeError('broken')\n"}
@@ -16,7 +16,7 @@ NO = "Kh\u00f4ng"
 
 
 def hook(root, payload):
-    return run(root / "entry" / "hook.py", json.dumps(payload), env=WINDOWS_CONSOLE)
+    return run(entry_of(root, "hook"), json.dumps(payload), env=WINDOWS_CONSOLE)
 
 
 def write_call():

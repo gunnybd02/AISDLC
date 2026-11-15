@@ -31,6 +31,9 @@ class MentionsTest(unittest.TestCase):
     def test_the_harness_own_commands_name_nothing(self):
         self.assertEqual(self.found("HARNESS_DB=s/h.db python3 -m entry.cli verify"), [])
         self.assertEqual(self.found("python3 .claude/entry/doctor.py s/h.db"), [])
+        self.assertEqual(self.found("python3 /core/anchor.py cli verify s/h.db"), [])
+        self.assertEqual(self.found("python3 .claude/harness/entry/doctor.py s/h.db"), [])
+        self.assertNotEqual(self.found("python3 my_anchor.py s/h.db"), [])  # only a file named anchor.py
 
 
 class DriveTest(unittest.TestCase):

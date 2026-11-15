@@ -4,7 +4,7 @@
       "type": "stdio",
       "command": "python3",
       "args": [
-        ".claude/entry/boot.py",
+        "anchor.py",
         "mcp_server",
         "--project"
       ]

@@ -2,7 +2,7 @@
 off, for N minutes, at most 120. It is a row of the ledger (pl_notes, kind maint.grant, text {"until": seconds}), and
 every call that passes while it lasts is a row of pl_logs.
 
-entry/hook.py writes and reads these rows itself, with plain sqlite3, so the grant works when the harness is broken:
+harness/entry/hook.py writes and reads these rows itself, with plain sqlite3, so the grant works when the harness is broken:
 the one place outside utils/ledger/db.py that opens the ledger. KIND, MAX_MINUTES and the question must match it
 (tests/utils/test_grant.py checks they do)."""
 import json

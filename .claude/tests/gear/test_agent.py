@@ -7,7 +7,7 @@ from harness.gear.decide.arbiter import Decide
 from harness.gear.detect.agent import AgentFiles
 from harness.gear.translate.place import Places
 from harness.utils.contracts import Event
-from tests import CLAUDE_DIR
+from tests import CLAUDE_DIR, tree
 from tests.e2e import git_repo
 
 
@@ -45,17 +45,25 @@ class AgentTest(unittest.TestCase):
         self.assertIn("live publish", rules["agent.anchor"]["why"])
         event = Event("PreToolUse", "Write", {"file_path": "/r/.claude/entry/hook.py"}, "s1", "/r")
         self.assertEqual(AgentFiles().detect(event, Places().translate(event)), [])  # the gates judge it; publish ships it
+        core = tree(self, {".claude/harness/__init__.py": "", "src/anchor.py": ""})
+        for path, kinds in ((core / "anchor.py", ["agent.anchor"]), (core / "src" / "anchor.py", [])):
+            with self.subTest(path=path):  # only the anchor.py beside a .claude that holds a harness
+                event = Event("PreToolUse", "Write", {"file_path": str(path)}, "s1", str(core))
+                self.assertEqual([f.kind for f in AgentFiles().detect(event, Places().translate(event))], kinds)
 
     def test_a_session_never_runs_the_session_start_itself(self):
         rules = Decide.load(CLAUDE_DIR).rules
         boot = "/root/.harness/.claude/entry/boot.py"
         for line in (f"python3 {boot} session_start", f'echo {{}} | python3 "{boot}" session_start',
+                     "python3 /root/.harness/anchor.py session_start",
+                     "python3 /root/.harness/.claude/harness/entry/session_start.py",
                      "python3 /root/.harness/.claude/entry/session_start.py"):
             with self.subTest(line=line):
                 event = Event("PreToolUse", "Bash", {"command": line}, "s1", "/r")
                 self.assertEqual([f.kind for f in AgentFiles().detect(event, Places().translate(event))],
                                  ["agent.session_start"])
-        for line in (f"python3 {boot} cli live update", "python3 session_start.py", "echo session_start"):
+        for line in (f"python3 {boot} cli live update", "python3 /root/.harness/anchor.py cli live update",
+                     "python3 session_start.py", "echo session_start"):
             with self.subTest(line=line):
                 event = Event("PreToolUse", "Bash", {"command": line}, "s1", "/r")
                 self.assertEqual(AgentFiles().detect(event, Places().translate(event)), [])
