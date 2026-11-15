@@ -1,4 +1,4 @@
-"""live status | live publish | live update (docs: blue/green release). publish builds a release of the work tree's
+"""live status | live publish | live update | live hint (docs: blue/green release). publish builds a release of the work tree's
 code, runs its own doctor (every check of a start: loader, names, argument types, ports, effects, rules, nets) and puts
 it in force only with the user's word: a one-use pass of exactly that sha, given by the answer Cho ph\u00e9p to the
 form question 'Cho ph\u00e9p ph\u00e1t h\u00e0nh harness <sha>?' (a session cannot answer a form; utils/git/asks.py
@@ -8,7 +8,11 @@ no release is in force (so the new code is not run before the user's word), fast
 and publishes as above. Hooks run the new release at their next call, MCP servers at their next request.
 session_update is what Claude Code runs when a session starts (harness/entry/session_start.py, a SessionStart hook): a cloud
 machine is prepared ahead of time, so the harness is brought to the newest main then, with the trust of the setup
-script that installed it, and put in force when its doctor is clean; otherwise the session keeps what it runs."""
+script that installed it, and put in force when its doctor is clean; otherwise the session keeps what it runs. The
+code that runs then is the one the machine was prepared with: when it put a newer release in force, that release says
+how to reach the tools and which skill to read (its door live hint), so the session never reads of a thing it lacks."""
+import subprocess
+import sys
 from pathlib import Path
 
 from harness.assemble.engine.live_mcp import healthy
@@ -62,17 +66,38 @@ def pin(home):
     return f"Pinned the code that runs now as release {sha}. "
 
 
-TOOLS_HINT = (" Its tools: mcp__harness__find, mcp__harness__guide and mcp__harness__run when this session has them. "
+TOOLS_HINT = ("Its tools: mcp__harness__find, mcp__harness__guide and mcp__harness__run when this session has them. "
               "If it has none, the same from the shell: python3 \"{boot}\" cli tool guide <block> lists a block's "
               "actions, python3 \"{boot}\" cli tool run <block> <action> '<args as JSON>' runs one, python3 \"{boot}\" "
               "cli tool find <words> finds what fits. Read the skill work before any work: guide, name work, mode "
               "skills (from the shell: python3 \"{boot}\" cli tool guide work --mode skills).")
 
 
+def tools_hint(home):
+    """How a session reaches the tools and which skill it reads first (the door live hint prints it)."""
+    return TOOLS_HINT.format(boot=anchor(home).as_posix())
+
+
+def release_hint(home):
+    """The hint as the release in force writes it (its door live hint); this code's own when it cannot be asked."""
+    try:
+        done = subprocess.run([sys.executable, str(anchor(home)), "cli", "live", "hint"], capture_output=True,
+                              timeout=30)
+        text = done.stdout.decode("utf-8").strip()
+        if done.returncode == 0 and text:
+            return text
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    return tools_hint(home)
+
+
 def session_update(home):
     """The text the session reads when it begins: which harness runs and why, and how to reach its tools (Claude Code
-    can start before the setup script registers the MCP server, so a session may have none of them)."""
-    return harness_update(home) + TOOLS_HINT.format(boot=anchor(home).as_posix())
+    can start before the setup script registers the MCP server, so a session may have none of them). The hint is the
+    release's own when this start put a newer one in force."""
+    ran = current(home) or stamp(home)
+    text = harness_update(home)
+    return f"{text} {tools_hint(home) if current(home) == ran else release_hint(home)}"
 
 
 def harness_update(home):
