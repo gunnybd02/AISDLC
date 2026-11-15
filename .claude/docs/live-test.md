@@ -5,6 +5,10 @@ The unit tests drive each piece; this is how the whole harness runs inside a liv
 
 ## Wire it into a project
 
+A project is wired by hand like this, or every session gets the harness by the install below: never both, since two
+harnesses keep two ledgers and each blocks what the other approved. This repository carries no wiring of its own, so a
+session working on it runs under the installed harness, and the code it edits never guards it.
+
 The project is a git repository with this `.claude/` folder in it (the home). Add `.claude/project.json`:
 
 ```json
@@ -89,3 +93,16 @@ python3 ~/.harness/.claude/entry/boot.py cli tool find verify tests
 ```
 
 A refusal that names `run(...)` says so, with the home's own path.
+
+## Update a running session
+
+After a change of the harness is merged on GitHub, a running session takes it without a restart:
+
+```bash
+python3 ~/.harness/.claude/entry/boot.py cli live update
+```
+
+It pins the code that runs now as a release (when none is), fast-forwards the clone to `origin/main` (refused over
+local changes or off `main`), builds the new code and runs its doctor, then asks the user the form
+`Cho phép phát hành harness <sha>?`. After "Cho phép", `cli live publish` puts it in force: the hooks run it at their
+next call, the MCP server at its next request. Nothing new runs before the user's word.
