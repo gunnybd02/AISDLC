@@ -1,19 +1,23 @@
-"""h22.install: the harness installs for every session of a user: its hooks merged into the user's settings and its MCP
-server at user scope; running it again changes nothing; uninstall takes out only what it put in."""
+"""h22.install: the harness installs for every session of a user: its hooks merged into the user's settings, its CLI
+allowed in the user's permissions, and its MCP server at user scope; running it again changes nothing; uninstall takes
+out only what it put in."""
 import json
 import unittest
+from pathlib import Path
 
-from harness.assemble.engine.cli_install import install, uninstall
+from harness.assemble.engine.cli_install import allow_rules, install, uninstall
 from tests import CLAUDE_DIR, tree
 from tests.e2e import run
 
 MINE = {"type": "command", "command": "echo mine"}
+MY_RULE = "Bash(npm test:*)"
 
 
 class InstallTest(unittest.TestCase):
     def setUp(self):
-        self.user = tree(self, {"settings.json": json.dumps({"theme": "dark", "hooks": {
-            "PreToolUse": [{"matcher": "Bash", "hooks": [MINE]}]}})})
+        mine = {"PreToolUse": [{"matcher": "Bash", "hooks": [MINE]}]}
+        self.user = tree(self, {"settings.json": json.dumps({"theme": "dark", "permissions": {"allow": [MY_RULE]},
+                                                             "hooks": mine})})
         self.claude_json = self.user / "claude.json"
         self.claude_json.write_text(json.dumps({"numStartups": 7, "mcpServers": {"other": {"command": "x"}}}))
         self.boot = str((CLAUDE_DIR / "entry" / "boot.py").resolve())
@@ -37,6 +41,11 @@ class InstallTest(unittest.TestCase):
         self.assertEqual(servers["numStartups"], 7)
         self.assertEqual(servers["mcpServers"]["harness"]["args"], [self.boot, "mcp_server"])
         self.assertIn("other", servers["mcpServers"])
+        allow = data["permissions"]["allow"]
+        self.assertEqual(allow[0], MY_RULE)  # the user's own rule stays
+        self.assertIn(f'Bash(python3 "{Path(self.boot).as_posix()}" cli:*)', allow)  # the form refusals give
+        self.assertIn(f'Bash("python3" "{self.boot}" cli:*)', allow)
+        self.assertTrue(all(r.endswith(" cli:*)") for r in allow[1:]))
         self.go()
         self.assertEqual(self.settings(), data)  # again: nothing more
 
@@ -46,7 +55,15 @@ class InstallTest(unittest.TestCase):
         data = self.settings()
         self.assertEqual(data["hooks"]["PreToolUse"], [{"matcher": "Bash", "hooks": [MINE]}])
         self.assertEqual(data["hooks"]["Stop"], [])
+        self.assertEqual(data["permissions"]["allow"], [MY_RULE])
         self.assertEqual(json.loads(self.claude_json.read_text())["mcpServers"], {"other": {"command": "x"}})
+
+    def test_a_harness_under_the_users_home_is_also_allowed_from_tilde(self):
+        boot = Path("/home/u/.harness/.claude/entry/boot.py")
+        rules = allow_rules("/usr/bin/python3", boot, Path("/home/u"))
+        self.assertIn("Bash(python3 ~/.harness/.claude/entry/boot.py cli:*)", rules)
+        self.assertNotIn("~", " ".join(allow_rules("/usr/bin/python3", boot, Path("/srv"))))
+        self.assertTrue(all(r.startswith("Bash(") and r.endswith(" cli:*)") for r in rules))
 
     def test_a_settings_file_that_is_not_an_object_is_left_alone(self):
         (self.user / "settings.json").write_text("[1]")

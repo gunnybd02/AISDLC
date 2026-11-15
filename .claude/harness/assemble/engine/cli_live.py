@@ -26,10 +26,10 @@ def publish_door(port, home):
     if not healthy(home, release_dir(home, sha)):
         return 1, f"refused: the doctor of release {sha} finds problems; run python3 entry/doctor.py and fix them"
     if not take(port, f"live-publish:{sha}"):
-        q = f"{ALLOW_LABEL} ph\u00e1t h\u00e0nh harness {sha}?"
+        q, boot = f"{ALLOW_LABEL} ph\u00e1t h\u00e0nh harness {sha}?", (home / "entry" / "boot.py").as_posix()
         return 0, (f"Release {sha} is built and its doctor is clean. Publishing needs the user's word: ask with "
                    f"AskUserQuestion, one question, exactly: {q} Options: \"{ALLOW_LABEL}\", \"{NO_LABEL}\". Never "
-                   f"fill in the answer. Then run live publish again.")
+                   f"fill in the answer. Then run: python3 \"{boot}\" cli live publish")
     publish(home, sha)
     return 0, f"Release {sha} is in force: hooks run it at once, MCP servers at their next call."
 
