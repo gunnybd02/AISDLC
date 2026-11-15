@@ -72,7 +72,8 @@ session cannot read the old chat; it reads this file. Details not here are in `d
    asked for: children as separate cloud sessions. The card travels in the brief; the child works on its own branch
    and pushes it; the handback comes back as a message; the parent fetches the branch, runs the AC tests, merges.
    Nothing important stays only in a child's ledger. Children as subagents on the parent's machine are the second
-   option (close to spec 05, one ledger). Spec 05 itself is only in the old chat: ask the user to paste it again.
+   option (close to spec 05, one ledger). Spec 05 itself is saved as the user pasted it: `docs/05-orchestra.md` (sections 1-7) and
+   `docs/05-orchestra-2.md` (sections 8-12).
 3. **Orchestra, spec 05, for the PC**: not built. Today: `children` is a plan item the desk accepts and prints, the
    `pl_children` table exists (without the `why` and `checks` columns), the verify lock is worktree-aware. Missing:
    units in the config, worktrees (`utils/worktree`), the card (`utils/plan/children.py`), the crew and the rest of
