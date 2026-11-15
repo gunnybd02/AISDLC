@@ -24,8 +24,9 @@ def doctor(claude_dir=CLAUDE_DIR):
 
 
 def built(claude_dir):
-    """What fails when the tree is put together: a ref that does not load, the build, the skill library."""
-    out, items = [], items_of(claude_dir)
+    """What fails when the tree is put together: a ref that does not load, the build, the skill library (a skill
+    that does not read, or names an action, a block or a skill that is not there)."""
+    out, items, actions = [], items_of(claude_dir), []
     for item in items.values():
         try:
             Loader.resolve(item)
@@ -33,14 +34,17 @@ def built(claude_dir):
             out.append(f"item {item.name}: {item.ref} does not load ({type(e).__name__}: {e})")
     for action_file in Loader(code_of(claude_dir)).action_files():
         try:
-            out += [f"actions {action_file.module}: {p}" for p in action_problems(Loader.actions(action_file))]
+            entries = Loader.actions(action_file)
+            out += [f"actions {action_file.module}: {p}" for p in action_problems(entries)]
+            actions += [f"{block}.{name}" for block, name, _ in entries]
         except Exception as e:
             out.append(f"actions {action_file.module} do not load ({type(e).__name__}: {e})")
     if out:
         return out
     try:
         build_runner(claude_dir, items)
-        out += Loader.resolve(items["skills"])(skill_docs(claude_dir)).problems()
+        skills = Loader.resolve(items["skills"])(skill_docs(claude_dir))
+        out += skills.problems() + skills.stale(actions)
     except Exception as e:
         out.append(f"build: {type(e).__name__}: {e}")
     return out

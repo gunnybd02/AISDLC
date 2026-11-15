@@ -1,10 +1,14 @@
 """Skills: the library of skills, one folder each with a SKILL.md that starts with a frontmatter of name and
-description; the name is the folder's. Claude Code does not list it; find and guide serve it."""
+description; the name is the folder's. Claude Code does not list it; find and guide serve it. A skill names what it
+uses as the model calls it: run("block", "action", ...), guide("block", "mcp"), guide("skill", "skills"); stale() names
+each that is not there, so a skill does not outlive the thing it teaches."""
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 FRONT = re.compile(r"\A---\n(.*?)\n---(?:\n|\Z)", re.S)
+RUN = re.compile(r"""\brun\(\s*["'](\w+)["']\s*,\s*["'](\w+)["']""")
+GUIDE = re.compile(r"""\bguide\(\s*["']([\w-]+)["']\s*,\s*["'](skills|mcp)["']""")
 
 
 class SkillError(ValueError):
@@ -53,6 +57,17 @@ class Skills:
             if skill.name in seen:
                 out.append(f"skill {rel}: the name {skill.name} is used twice (also {seen[skill.name]})")
             seen[skill.name] = rel
+        return out
+
+    def stale(self, actions):
+        """Each action, block or skill a skill names that is not there; actions are the "block.name" of the server."""
+        actions, out = set(actions), []
+        blocks, names = {a.split(".")[0] for a in actions}, {s.name for s in self.all()}
+        for skill in self.all():
+            said = [f"the action {b}.{n}" for b, n in RUN.findall(skill.text) if f"{b}.{n}" not in actions]
+            said += [f"the {'skill' if mode == 'skills' else 'block'} {name}" for name, mode in GUIDE.findall(skill.text)
+                     if name not in (names if mode == "skills" else blocks)]
+            out += [f"skill {skill.name}: names {what}, which is not there" for what in dict.fromkeys(said)]
         return out
 
     @staticmethod

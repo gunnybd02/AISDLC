@@ -9,7 +9,7 @@ from harness.mcp.skills.library import SkillError, Skills
 from harness.mcp.tools.find import Find
 from harness.mcp.tools.guide import Guide
 from harness.mcp.tools.run import Run
-from harness.tests import tree
+from harness.tests import CLAUDE_DIR, tree
 
 SKILL = "---\nname: {name}\ndescription: {about}\n---\n# {name}\nThe body of {name}.\n"
 
@@ -54,6 +54,45 @@ class SkillsTest(unittest.TestCase):
         self.assertIn("folder a", found)
         self.assertIn("twice", found)
         self.assertEqual(library(self, plan="x").problems(), [])
+
+    def test_a_skill_that_names_what_is_not_there_is_stale(self):
+        body = ('run("plan", "step_done", {}) and run(\'plan\', \'gone\', {}); guide("plan", "mcp"), guide("git", "mcp"); '
+                'guide("a", "skills"), guide("lost-one", "skills"); run("<block>", "<action>") is a frame, not a call')
+        lib = Skills(tree(self, {"a/SKILL.md": SKILL.format(name="a", about="x") + body}))
+        self.assertEqual(lib.stale(["plan.step_done", "plan.plan_show"]), [
+            "skill a: names the action plan.gone, which is not there",
+            "skill a: names the block git, which is not there",
+            "skill a: names the skill lost-one, which is not there"])
+        self.assertEqual(library(self, plan="x").stale([]), [])
+
+    def test_the_skills_of_the_harness_read_and_start_lists_each(self):
+        lib = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs")
+        self.assertEqual(lib.problems(), [])
+        names = [s.name for s in lib.all()]
+        self.assertEqual(names, ["close", "harness-action", "harness-map", "harness-release", "harness-rule",
+                                 "harness-skill", "plan", "refused", "ship", "start", "step"])
+        start = lib.get("start").text
+        for name in names:
+            with self.subTest(skill=name):
+                self.assertTrue(name == "start" or f"| `{name}` |" in start, f"start does not list {name}")
+                self.assertIn("\n## ", lib.get(name).text)  # the frame: a title and sections
+
+    def test_a_request_in_plain_words_finds_its_skill_first(self):
+        find = Find(Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs"), ActionTable())
+        for words, name in (("how do I start working in this session", "start"),
+                            ("write and present a plan for approval", "plan"),
+                            ("verify the tests and end the step with step_done", "step"),
+                            ("push the branch and open a merge request", "ship"),
+                            ("close the plan as delivered", "close"),
+                            ("my tool call was refused or denied", "refused"),
+                            ("where are the folders of the harness", "harness-map"),
+                            ("add a rule with a detector and a rule row", "harness-rule"),
+                            ("add an action to a tool block", "harness-action"),
+                            ("write a skill text", "harness-skill"),
+                            ("publish a release and update a running session", "harness-release")):
+            with self.subTest(words=words):
+                first = find.call({"query": words, "mode": "skills"}).text.splitlines()[0]
+                self.assertTrue(first.startswith(f"[skills] {name} "), first)
 
     def test_a_bom_and_a_frontmatter_at_the_end_of_the_file_read(self):
         lib = Skills(tree(self, {"a/SKILL.md": "﻿---\nname: a\ndescription: d\n---"}))

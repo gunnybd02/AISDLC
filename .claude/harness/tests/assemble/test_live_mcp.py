@@ -76,7 +76,7 @@ class LiveTest(unittest.TestCase):
         for folder in ("harness/mcp/skill_docs/fresh", "project/skills/old-place"):
             (self.home / folder).mkdir(parents=True)
             (self.home / folder / "SKILL.md").write_text(text.replace("fresh", folder.split("/")[-1]), encoding="utf-8")
-        self.assertIn("# Example", guide("example"))  # read from harness/mcp/skill_docs of the release
+        self.assertIn("# Start", guide("start"))  # read from harness/mcp/skill_docs of the release
         self.assertIn("No skill fresh", guide("fresh"))  # the work tree alone serves nothing
         sha = build(self.home)
         self.assertNotEqual(sha, self.first)  # a skill text changes the release

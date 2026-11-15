@@ -262,7 +262,8 @@ ERROR, never a match. The path is this machine's: where it does not exist, the d
 - the indexes;
 - each item's ref, which must load;
 - the build (config, pipeline, rules), and each action file, which must load;
-- the skill library: each skill reads, its name is its folder's, and no name is used twice;
+- the skill library: each skill reads, its name is its folder's, no name is used twice, and each action, block or
+  skill it names (`run("block", "action"`, `guide("name", "mcp"|"skills")`) is there;
 - the real ledger's schema, when `project.json` names it;
 - then every net.
 

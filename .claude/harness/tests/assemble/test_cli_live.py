@@ -47,6 +47,8 @@ class LiveUpdateTest(unittest.TestCase):
         boot = (anchor_of(self.home)).as_posix()
         self.assertIn(f'If it has none, the same from the shell: python3 "{boot}" cli tool guide <block>', text)
         self.assertIn(f'python3 "{boot}" cli tool run <block> <action>', text)
+        self.assertIn(f'Read the skill start before any work: guide, name start, mode skills (from the shell: python3 '
+                      f'"{boot}" cli tool guide start --mode skills)', text)
         return text
 
     def allow(self, text):

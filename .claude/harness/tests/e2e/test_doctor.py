@@ -15,6 +15,8 @@ BAD = {
     "ref": {"harness/gear/__init__.py": '"""x"""\nITEMS = [{"kind": "rule", "name": "decide", '
                                         '"ref": "harness.gear.decide.arbiter:Typo"}]\n'},
     "skill": {"harness/mcp/skill_docs/bad/SKILL.md": "# no frontmatter\n"},
+    "stale skill": {"harness/mcp/skill_docs/old/SKILL.md":
+                    '---\nname: old\ndescription: d\n---\nCall run("plan", "plan_gone", {}).\n'},
 }
 
 
