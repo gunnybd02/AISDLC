@@ -24,7 +24,7 @@ def rel_key(path):
 
 
 def named(plan):
-    return {rel_key(p) for p in plan["files"] + plan["tests"]}
+    return {rel_key(p) for p in plan["files"] + plan.get("tests", [])}
 
 
 def relative(path, root):

@@ -85,7 +85,7 @@ def close_facts(port, ticket, plan):
     prefix = os.path.relpath(os.path.realpath(plan["root"]), os.path.realpath(repo)).replace("\\", "/") if repo else "."
     rel = [p if prefix == "." else p[len(prefix) + 1:] for p in changed if prefix == "." or p.startswith(prefix + "/")]
     unplanned = [p for p in rel if not allows(plan, p)]
-    untouched = [p for p in plan["files"] + plan["tests"] if not is_pattern(p) and p not in rel]
+    untouched = [p for p in plan["files"] + plan.get("tests", []) if not is_pattern(p) and p not in rel]
     receipt = port.receipt(plan)
     skipped = sorted(b for b, e in port.registry(plan).items() if e["status"] == "skipped")
     lines = [f"Commit: {', '.join(s[:12] for s in ticket['commits']) or 'none'}",
