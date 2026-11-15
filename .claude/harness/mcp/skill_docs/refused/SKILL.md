@@ -11,10 +11,10 @@ A refusal names its reason. Do what the reason says; never try another spelling 
 ## Edits and reads
 | Finding | Meaning | Move |
 |---|---|---|
-| `plan.none` | no plan is approved in this session | `guide("plan", "skills")`: present, ask the form |
-| `plan.outside` | the plan does not name this file | `add file` (`guide("step", "skills")`) or `plan_revise` |
+| `plan.none` | no plan is approved in this session | `guide("work", "skills")`, part 2: present, ask the form |
+| `plan.outside` | the plan does not name this file | `add file` or `plan_revise` (`guide("work", "skills")`, part 3) |
 | `write.state`, `read.state` | `.claude/state/` is closed to every tool | `run("ledger", "db_query", {"sql": "SELECT ..."})` |
-| `agent.rules` | a rule file in `.claude/rules/` | write a skill: `guide("harness-skill", "skills")` |
+| `agent.rules` | a rule file in `.claude/rules/` | write a skill: `guide("harness-dev", "skills")` |
 | `agent.memory` | a memory file | tell the user; notes are not built yet |
 | `agent.registry` | the behaviour registry file | the `add test` and `behaviors add` doors |
 | `agent.anchor` | `anchor.py`, `.claude/settings.json`, `.mcp.json`, `.claude/entry/boot.py` | the user changes these outside a session |
@@ -39,7 +39,7 @@ wildcard, inline code that may write. Simple commands with plain paths pass with
 | Finding | Meaning | Move |
 |---|---|---|
 | `commit.raw` | a commit from the shell | `run("plan", "step_done", {"message"})` |
-| `git.add_all`, `git.no_verify`, `git.reset_hard`, `git.force_push`, `git.protected_write`, `push.never_repo`, `push.agent_files`, `git.unread` | a protected branch is touched | `guide("ship", "skills")`: `run("git", "run", ...)` and the user's word |
+| `git.add_all`, `git.no_verify`, `git.reset_hard`, `git.force_push`, `git.protected_write`, `push.never_repo`, `push.agent_files`, `git.unread` | a protected branch is touched | `guide("work", "skills")`, part 4: `run("git", "run", ...)` and the user's word |
 | `commit.secret` | a secret in an added line | take it out of the file, revoke it, verify again |
 | `commit.ai_mark` | an AI co-author, footer, tool name, robot emoji or Mermaid diagram in the message | write the message as the author of the change |
 | `commit.banned_word` | a word `project.json` bans | say it another way |
