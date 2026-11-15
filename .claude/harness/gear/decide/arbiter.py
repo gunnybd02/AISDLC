@@ -2,8 +2,8 @@
 findings wins, with the reasons of the findings that gave it. A finding no rule names asks the user, its name and detail
 in the question. No finding: allow.
 
-A rule row: {"finding": kind, "verdict": allow|ask|refuse, "why": the sentence shown, "test": "tests/<file>.py#<test>"};
-a row whose test is not a test function under tests/ does not load."""
+A rule row: {"finding": kind, "verdict": allow|ask|refuse, "why": the sentence shown, "test": "harness/tests/<file>.py#<test>"};
+a row whose test is not a test function under harness/tests/ does not load."""
 import json
 import re
 from pathlib import Path
@@ -12,7 +12,7 @@ from harness.utils.contracts import ALLOW, ASK, VERDICTS, Verdict
 
 RULES = ("harness", "gear", "rules")  # under the .claude folder
 FIELDS = ("finding", "verdict", "why", "test")
-TEST = re.compile(r"^tests/(?:[A-Za-z_][\w]*/)*test_\w+\.py#test_\w+$")
+TEST = re.compile(r"^harness/tests/(?:[A-Za-z_][\w]*/)*test_\w+\.py#test_\w+$")
 
 
 class RuleError(Exception):
@@ -62,7 +62,7 @@ class Decide:
                 re.search(rf"^\s*def {name}\(", path.read_text(encoding="utf-8-sig"), re.M)
         except UnicodeDecodeError:
             found = False
-        return "" if found else f"the test {row['test']} is not a test function of a file under tests/"
+        return "" if found else f"the test {row['test']} is not a test function of a file under harness/tests/"
 
     def decide(self, findings):
         if not findings:
