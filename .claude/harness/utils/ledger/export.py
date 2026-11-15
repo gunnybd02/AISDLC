@@ -2,7 +2,11 @@
 it). The copy is made with SQLite's own backup, so a ledger in use copies whole; it is kept only when its schema is
 exactly the one schema.sql gives, so every copy a store holds reads the same way. The copy is named
 <session>__<UTC time>__<newest commit, 7 characters, or nocommit>__s<the schema's fingerprint, 8 characters>.db: copies
-with the same last part have the same schema. An older copy of the same session in the folder is taken away."""
+with the same last part have the same schema. An older copy of the same session in the folder is taken away.
+
+The copy goes to <the session's working folder>/.harness-export/: the Drive tool reads a file by reference only from
+the folders a session works in (a temp folder is refused). The folder ignores itself for git (its own .gitignore), so
+a copy is never committed with the work."""
 import hashlib
 import re
 import sqlite3
@@ -13,6 +17,7 @@ from harness.utils.ledger.db import LedgerError, fingerprint, pinned
 
 FOLDER_ID = re.compile(r"^[A-Za-z0-9_-]{10,}$")
 MIME = "application/x-sqlite3"
+FOLDER = ".harness-export"
 
 
 def session_part(sid):
@@ -31,6 +36,8 @@ def snapshot(db_path, out_dir, sid, now=None):
     if not db_path.is_file():
         raise LedgerError("there is no ledger yet: nothing to export")
     out_dir.mkdir(parents=True, exist_ok=True)
+    if not (out_dir / ".gitignore").exists():
+        (out_dir / ".gitignore").write_text("*\n", encoding="utf-8")  # git never sees a copy
     session = session_part(sid)
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(now))
     work = out_dir / f"{session}.copying"
@@ -67,4 +74,5 @@ def upload_call(copy, folder):
             f"  disableConversionToGoogleType: true\n"
             f"  base64Content: sha256:{copy['sha256']}:{copy['path']}\n"
             "The store only grows: never change, move or trash a file in it. With no Google Drive tool in this "
-            "session, tell the user the copy was not uploaded.")
+            "session, tell the user the copy was not uploaded. If Drive answers that the file cannot be sent by "
+            "reference, export again with {into: '<a folder inside this session's working folder>'}.")
