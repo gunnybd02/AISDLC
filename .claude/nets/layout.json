@@ -30,7 +30,7 @@
     "harness/assemble/pipelines/*.json",
     "nets/*.py",
     "nets/layout.json",
-    "project/skills/*/SKILL.md",
+    "harness/mcp/skill_docs/*/SKILL.md",
     "docs/*.md",
     "tests/**"
   ]

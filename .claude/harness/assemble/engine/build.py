@@ -21,6 +21,13 @@ CODE_ENV = "HARNESS_CODE"  # the release a session runs (anchor.py); unset: the 
 def code_of(claude_dir):
     """The folder whose code runs for the home claude_dir: the release boot chose, or the home itself."""
     return Path(os.environ.get(CODE_ENV) or claude_dir)
+
+
+def skill_docs(claude_dir):
+    """The folder of the skill texts (<name>/SKILL.md) of the code that runs: part of a release, as its rules are."""
+    return code_of(claude_dir) / "harness" / "mcp" / "skill_docs"
+
+
 BASES = {"translator": Translator, "detector": Detector}
 SHELL_HINT = (" (No mcp__harness__ tools in this session? The same from the shell: python3 \"{boot}\" cli tool run "
               "<block> <action> '<args as JSON>'; python3 \"{boot}\" cli tool guide <block> lists a block's actions.)")

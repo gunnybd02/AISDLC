@@ -64,6 +64,26 @@ class LiveTest(unittest.TestCase):
         self.assertIn("as the doctor sees it", ask(4))  # its doctor fails: never swapped in
         self.assertEqual(current(self.home), broken)
 
+    def test_a_skill_is_part_of_a_release(self):
+        def guide(name):
+            line = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {
+                "name": "guide", "arguments": {"name": name, "mode": "skills"}}}) + "\n"
+            code, out, err = run(anchor_of(self.home), line, args=("mcp_server",))
+            self.assertEqual(code, 0, err)
+            return json.loads(out)["result"]["content"][0]["text"]
+
+        text = "---\nname: fresh\ndescription: A skill written after the release.\n---\n# Fresh\nThe new words.\n"
+        for folder in ("harness/mcp/skill_docs/fresh", "project/skills/old-place"):
+            (self.home / folder).mkdir(parents=True)
+            (self.home / folder / "SKILL.md").write_text(text.replace("fresh", folder.split("/")[-1]), encoding="utf-8")
+        self.assertIn("# Example", guide("example"))  # read from harness/mcp/skill_docs of the release
+        self.assertIn("No skill fresh", guide("fresh"))  # the work tree alone serves nothing
+        sha = build(self.home)
+        self.assertNotEqual(sha, self.first)  # a skill text changes the release
+        publish(self.home, sha)
+        self.assertIn("The new words.", guide("fresh"))
+        self.assertIn("No skill old-place", guide("old-place"))  # project/skills is no longer read
+
     def test_publish_needs_the_doctor_and_the_users_word(self):
         port = LedgerPort(self.home)
         self.edit_health_summary("The health of the harness, read by the doctor")

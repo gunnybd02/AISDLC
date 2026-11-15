@@ -9,13 +9,12 @@ anchor.py       the one file Claude Code runs; it routes to an entry of the rele
     entry/      hook.py, mcp_server.py, cli.py, doctor.py...: the doors; they call only assemble/engine
     hooks/      hook JSON in and out (io.py), the answers of a form (forms.py); decides nothing
     gear/       translate/ -> detect/ -> decide/arbiter.py, with the rule rows in rules/*.json
-    mcp/        what the model calls: server/ (stdio, tool base), tools/ (find, guide, run), skills/ (library),
-                actions/ (one file per block of actions, ACTIONS = [...])
+    mcp/        what the model calls: server/ (stdio, tool base), tools/ (find, guide, run), skills/ (library) and
+                skill_docs/ (its texts, <name>/SKILL.md), actions/ (one file per block, ACTIONS = [...])
     assemble/   engine/ (loader, config, ports, runner, select, pipeline, build, wire_mcp, checks) and pipelines/
     utils/      shared code with no policy: contracts, ledger/, plan/, shell/, git/
   nets/         the rules of the tree, checked by the doctor
   project.json  the values of the user (name, verify: the unit's test command, ledger: the real ledger)
-  project/skills/  the skill library, served by find and guide
   docs/         this file, transfer.md, migration-map.md
   tests/        tests/<block>/test_<module>.py, plus nets/ and e2e/
   state/        private, not in git: harness.db, the ledger, the one store of the harness's data

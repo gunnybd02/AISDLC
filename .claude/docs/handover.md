@@ -35,6 +35,8 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #9 | SessionStart hook: a session starts on the newest main when its doctor is clean |
 | #10 | The session-start message says how to reach the tools without the MCP server |
 | #11 | One core: the repository's own wiring is back and gives way to an installed core |
+| #15 | `anchor.py` at the repository root is the one file Claude Code runs; the doors are in `harness/entry/`; `.claude/entry/` keeps three forwarders (`boot.py`, `doctor.py`, `install.py`) for machines set up before it |
+| skill docs | The skill texts are in `harness/mcp/skill_docs/<name>/SKILL.md`, part of a release (a changed skill needs "Cho phép") |
 
 361 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
@@ -62,6 +64,14 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 - A cloud session can open other cloud sessions with a tool (`create_session`), each on its own machine with its own
   ledger; the harness code cannot start them itself.
 - This cloud connection cannot delete branches on GitHub (403); merging and pushing work.
+
+## The folder layout the user asked for
+
+`anchor.py` at the root, and everything that runs in one folder, `.claude/harness/`: `entry/`, `gear/`, `hooks/`,
+`mcp/` (code in `skills/`, texts in `skill_docs/`), `assemble/`, `utils/`. Done: the anchor and `entry/` (#15), the
+skill texts. **Still to do (plan 3 of 3): move `nets/` and `tests/` into `harness/`**, so a release is exactly the
+`harness/` folder; about 40 rule rows name their test by path, and the checks and docs name both folders. `docs/`
+stays outside (a doc fix must not be a new release). Later: remove the forwarders in `.claude/entry/`.
 
 ## What comes next, in this order
 
