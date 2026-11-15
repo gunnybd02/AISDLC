@@ -65,8 +65,8 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 
 ## What comes next, in this order
 
-1. **A real governed run with the user**: a small change in a new cloud session, with the "Duyệt" click. Fix what it
-   shows.
+1. **A real governed run with the user**: done on 2026-11-15 (the "Duyệt" click, edit, gate refusals). It fixed
+   verify on a plan without tests and wrote `docs/05b-orchestra-cloud.md`; what it left open is item 5.
 2. **Spec "05b - Orchestra in the cloud"** (a document first, for the user's review). The user's spec 05 (delegated
    plans with children) assumes one machine: shared ledger, worktrees, `claude --bg`. The cloud extension the user
    asked for: children as separate cloud sessions. The card travels in the brief; the child works on its own branch
@@ -83,5 +83,12 @@ session cannot read the old chat; it reads this file. Details not here are in `d
    it); the wiring files use `python3` (a Windows PC with only `python` needs that word changed; never tested on
    Windows, nor against the user's real ledger); a real GitLab merge request was never opened; `ports.py` is near the
    400-line cap; the notes block and the gitlab read actions are not built.
-5. For the user to do: delete the merged branches on GitHub (`harness/*`, `install/user-level`,
+5. Found by the first governed run (2026-11-15), not fixed: (a) the harness's `verify` fails 24 tests in its own
+   environment (the MCP server's; one of them fails as soon as `CLAUDE_PROJECT_DIR` is set) while the same command
+   passes 364 by hand, so `step_done` cannot commit a change to this repository; that run was committed with the guards
+   off. (b) Running the unit tests by hand in a governed shell leaves a test plan in the live ledger (session `flow`,
+   root under `/tmp/harness-test-*`), and `cli verify` then picks that plan. (c) The shell-write gate reads a
+   relative path from the session's kept folder, not from the `cd` in the command. (d) An approved plan cannot have a
+   file path corrected: `add file` needs a behaviour, so a docs plan needs a new plan and a new approval.
+6. For the user to do: delete the merged branches on GitHub (`harness/*`, `install/user-level`,
    `refactor/block-folders`, `wire/harness-session`, `test/mcp-json`).

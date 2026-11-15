@@ -6,6 +6,7 @@ import unittest
 
 import harness.gear as gear_block
 from harness.assemble.engine.config import Config
+from harness.utils.plan.closing import close_facts
 from harness.utils.plan.verify import verify
 from harness.assemble.engine.build import build_runner
 from harness.assemble.engine.ports import LedgerPort
@@ -130,6 +131,17 @@ class CommitFlowTest(unittest.TestCase):
         self.assertIsNone(port.approved("s1"))
         row = port.ledger.one("SELECT commit_sha FROM rec_commits")
         self.assertEqual(row["commit_sha"], git(repo, "rev-parse", "HEAD").strip())
+
+
+class NoTestsPlanTest(unittest.TestCase):
+    def test_the_close_form_counts_a_plan_without_tests(self):
+        claude_dir = copy_tree(self, {"project.json": json.dumps({"name": "t", "verify": ["{python}", "-c", "pass"]})})
+        repo = git_repo(self, {"a.md": "one\n"})
+        port = LedgerPort(claude_dir)
+        port.present({"title": "t", "files": ["a.md"], "root": str(repo)})  # a docs plan: no tests
+        port.approve("s1", port.waiting()[0])
+        lines = close_facts(port, port.ticket("s1"), port.approved("s1"))
+        self.assertIn("untouched a.md", " ".join(lines))
 
 
 if __name__ == "__main__":

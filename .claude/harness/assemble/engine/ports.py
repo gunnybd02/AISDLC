@@ -286,7 +286,7 @@ class LedgerPort:
         """A verify receipt of an approved plan: {files: {path: blob id}, tests, commands, code, ok, why, ms}."""
         self.write(lambda con, rec: rec.insert(con, "pl_verify", {
             "uid": uuid.uuid4().hex, "sid": "", "plan_id": plan["id"], "repo": plan["root"],
-            "files": json.dumps(receipt["files"]), "tests": json.dumps(plan["tests"]),
+            "files": json.dumps(receipt["files"]), "tests": json.dumps(plan.get("tests", [])),
             "commands": json.dumps(receipt["commands"]), "code": receipt["code"], "ok": int(receipt["ok"]),
             "why": receipt["why"], "ms": receipt["ms"], "at": now()}))
 

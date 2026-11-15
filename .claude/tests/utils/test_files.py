@@ -3,7 +3,7 @@ add file grants and drop grants (the newest decides), and a folder above a plann
 import unittest
 
 from harness.gear.detect.planfiles import PlanFiles
-from harness.utils.plan.files import allows, holds
+from harness.utils.plan.files import allows, holds, named, rel_key
 from tests import tree
 
 PLAN = {"files": ["src/**/*.py", "docs/", "a?.md", "one.py"], "tests": ["tests/test_*.py"],
@@ -33,6 +33,9 @@ class FilesTest(unittest.TestCase):
         self.assertTrue(PlanFiles.allowed(plan, f"{root}/src"))  # mkdir src: held? no file named under src
         self.assertFalse(PlanFiles.allowed(plan, f"{root}/one.py"))
         self.assertFalse(PlanFiles.allowed(plan, "/elsewhere/src/a.py"))
+
+    def test_a_plan_without_tests_names_its_files(self):
+        self.assertEqual(named({"files": ["docs/a.md"]}), {rel_key("docs/a.md")})
 
 
 if __name__ == "__main__":

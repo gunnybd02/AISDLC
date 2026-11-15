@@ -26,6 +26,15 @@ class VerifyBlockTest(unittest.TestCase):
         self.assertIn("changed while", verify(port, Config.load(claude_dir).verify, plan_id))
         self.assertEqual(port.receipt(port.approved("s1"))["ok"], 0)
 
+    def test_a_plan_without_tests_verifies(self):
+        claude_dir = copy_tree(self, {"project.json": json.dumps({"name": "t", "verify": ["{python}", "-c", "pass"]})})
+        repo = git_repo(self, {"a.md": "one\n"})
+        port = LedgerPort(claude_dir)
+        plan_id, _, q = port.present({"title": "t", "files": ["a.md"], "root": str(repo)})  # a docs plan: no tests
+        port.approve("s1", port.waiting()[0])
+        self.assertIn("passed", verify(port, Config.load(claude_dir).verify, plan_id))
+        self.assertEqual(port.receipt(port.approved("s1"))["ok"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

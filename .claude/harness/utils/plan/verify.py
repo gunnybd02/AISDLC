@@ -34,7 +34,7 @@ def dirty(plan):
 
 def blobs(plan):
     """{path from the root: blob id or None} of the plan's named files and every changed file it allows."""
-    named = [p for p in plan["files"] + plan["tests"] if not is_pattern(p)]
+    named = [p for p in plan["files"] + plan.get("tests", []) if not is_pattern(p)]
     try:
         return {p: blob(plan["root"], p) for p in dict.fromkeys(named + dirty(plan))}
     except GitError as e:
