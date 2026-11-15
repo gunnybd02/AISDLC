@@ -65,7 +65,8 @@ def pin(home):
 TOOLS_HINT = (" Its tools: mcp__harness__find, mcp__harness__guide and mcp__harness__run when this session has them. "
               "If it has none, the same from the shell: python3 \"{boot}\" cli tool guide <block> lists a block's "
               "actions, python3 \"{boot}\" cli tool run <block> <action> '<args as JSON>' runs one, python3 \"{boot}\" "
-              "cli tool find <words> finds what fits.")
+              "cli tool find <words> finds what fits. Read the skill start before any work: guide, name start, mode "
+              "skills (from the shell: python3 \"{boot}\" cli tool guide start --mode skills).")
 
 
 def session_update(home):
