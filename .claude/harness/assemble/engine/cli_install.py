@@ -1,5 +1,6 @@
 """Install the harness for every Claude Code session of a user (entry/install.py): the hooks go into the user's own
-settings (~/.claude/settings.json), merged with the hooks already there, and the harness's MCP server is registered at
+settings (~/.claude/settings.json), merged with the hooks already there (SessionStart brings the harness up to date
+when a session begins: entry/session_start.py), and the harness's MCP server is registered at
 user scope (~/.claude.json mcpServers), so any repository a session works on runs under the harness from its first
 prompt. Its own CLI (boot.py cli ...) is allowed in the user's permissions, so a session in auto mode may run it:
 the hooks still judge every call, and a new release still needs the user's word. The harness's home is the .claude
@@ -13,7 +14,8 @@ from pathlib import Path
 
 from harness.utils.contracts import PERMISSIONS_KEY
 
-EVENTS = {"PreToolUse": "*", "PostToolUse": "*", "UserPromptSubmit": None, "Stop": None}
+EVENTS = {"PreToolUse": "*", "PostToolUse": "*", "UserPromptSubmit": None, "Stop": None, "SessionStart": None}
+ENTRY = {"SessionStart": "session_start"}  # the entry of boot.py each event runs (hook when not named)
 SERVER = "harness"
 
 
@@ -35,8 +37,8 @@ def write_json(path, data):
     os.replace(tmp, path)
 
 
-def hook_command(python, boot):
-    return f'"{python}" "{boot}" hook'
+def hook_command(python, boot, entry="hook"):
+    return f'"{python}" "{boot}" {entry}'
 
 
 def ours(entry, boot):
@@ -51,7 +53,7 @@ def install_hooks(settings_path, python, boot):
         groups = hooks.setdefault(event, [])
         if any(ours(h, boot) for g in groups if isinstance(g, dict) for h in g.get("hooks", [])):
             continue
-        group = {"hooks": [{"type": "command", "command": hook_command(python, boot)}]}
+        group = {"hooks": [{"type": "command", "command": hook_command(python, boot, ENTRY.get(event, "hook"))}]}
         groups.append({"matcher": matcher, **group} if matcher else group)
         added.append(event)
     write_json(settings_path, data)

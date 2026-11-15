@@ -1,18 +1,19 @@
 """h22.live-update: live update brings the newest main of the harness's own clone into a running session: it pins the
 code that runs now, fast-forwards the clone, and the new code goes in force only with the user's Cho phép of
 exactly its sha; an update over local changes, or off main, is refused."""
+import json
 import re
 import shutil
 import subprocess
 import unittest
 
-from harness.assemble.engine.cli_live import update_door
+from harness.assemble.engine.cli_live import session_update, update_door
 from harness.assemble.engine.ports import LedgerPort
 from harness.assemble.engine.runner import Act
 from harness.utils.contracts import Event, Verdict
 from harness.utils.gateway.release import current, stamp
 from tests import tree
-from tests.e2e import copy_tree
+from tests.e2e import copy_tree, run
 
 HEALTH = ("harness", "mcp", "actions", "health.py")
 OLD, NEW = "Every problem of the tree", "Every problem of the tree, as the doctor sees it"
@@ -80,6 +81,38 @@ class LiveUpdateTest(unittest.TestCase):
         code, text = update_door(self.port, self.home)
         self.assertEqual(code, 1)
         self.assertIn("not main", text)
+
+    def test_a_session_starts_on_the_newest_main_when_its_doctor_is_clean(self):
+        running = stamp(self.home)
+        self.assertIn("up to date", session_update(self.home))
+        self.assertEqual(current(self.home), running)  # pinned
+        self.merge_on_origin()
+        text = session_update(self.home)
+        self.assertIn("brought up to date", text)
+        self.assertEqual(current(self.home), stamp(self.home))  # in force without a form: the session has not begun
+        self.assertNotEqual(current(self.home), running)
+
+    def test_a_session_keeps_its_harness_when_the_newest_main_is_broken_or_mixed(self):
+        bad = self.origin / ".claude" / "harness" / "mcp" / "actions" / "broken.py"
+        bad.write_text("ACTIONS = [(\"health.x\", \"Missing\")]\n", encoding="utf-8")
+        git(self.origin, "add", "-A")
+        git(self.origin, "commit", "-q", "-m", "Break the actions")
+        running = stamp(self.home)
+        text = session_update(self.home)
+        self.assertIn("finds problems", text)
+        self.assertEqual(current(self.home), running)  # the broken main never runs
+        path = self.home / "/".join(HEALTH)
+        path.write_text(path.read_text(encoding="utf-8") + "\n# a local edit\n", encoding="utf-8")
+        self.assertIn("local changes", session_update(self.home))
+        self.assertEqual(current(self.home), running)
+
+    def test_the_entry_never_blocks_a_session_from_starting(self):
+        lone = copy_tree(self)  # a home in no git clone
+        code, out, err = run(lone / "entry" / "boot.py", "{}", args=("session_start",))
+        self.assertEqual(code, 0, err)
+        context = json.loads(out)["hookSpecificOutput"]
+        self.assertEqual(context["hookEventName"], "SessionStart")
+        self.assertIn("keeps release", context["additionalContext"])
 
 
 if __name__ == "__main__":

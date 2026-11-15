@@ -33,10 +33,12 @@ class InstallTest(unittest.TestCase):
         data = self.settings()
         self.assertEqual(data["theme"], "dark")
         self.assertIn(MINE, data["hooks"]["PreToolUse"][0]["hooks"])  # the user's own hook stays
-        for event in ("PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop"):
+        for event in ("PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop", "SessionStart"):
             with self.subTest(event=event):
                 commands = [h["command"] for g in data["hooks"][event] for h in g["hooks"]]
                 self.assertEqual(sum(self.boot in c for c in commands), 1)
+        self.assertTrue(data["hooks"]["SessionStart"][0]["hooks"][0]["command"].endswith(" session_start"))
+        self.assertTrue(data["hooks"]["Stop"][0]["hooks"][0]["command"].endswith(" hook"))
         servers = json.loads(self.claude_json.read_text())
         self.assertEqual(servers["numStartups"], 7)
         self.assertEqual(servers["mcpServers"]["harness"]["args"], [self.boot, "mcp_server"])
@@ -55,6 +57,7 @@ class InstallTest(unittest.TestCase):
         data = self.settings()
         self.assertEqual(data["hooks"]["PreToolUse"], [{"matcher": "Bash", "hooks": [MINE]}])
         self.assertEqual(data["hooks"]["Stop"], [])
+        self.assertEqual(data["hooks"]["SessionStart"], [])
         self.assertEqual(data["permissions"]["allow"], [MY_RULE])
         self.assertEqual(json.loads(self.claude_json.read_text())["mcpServers"], {"other": {"command": "x"}})
 

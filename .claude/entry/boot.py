@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 HOME = Path(__file__).resolve().parent.parent
-ENTRIES = ("hook", "mcp_server", "doctor", "cli")
+ENTRIES = ("hook", "mcp_server", "doctor", "cli", "session_start")
 
 
 def code_dir(home):

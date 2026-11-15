@@ -5,7 +5,10 @@ form question 'Cho ph\u00e9p ph\u00e1t h\u00e0nh harness <sha>?' (a session cann
 keeps the pass).
 update brings the newest main of the harness's own clone into a running session: it pins the code that runs now when
 no release is in force (so the new code is not run before the user's word), fast-forwards the clone (utils/git/pull.py)
-and publishes as above. Hooks run the new release at their next call, MCP servers at their next request."""
+and publishes as above. Hooks run the new release at their next call, MCP servers at their next request.
+session_update is what Claude Code runs when a session starts (entry/session_start.py, a SessionStart hook): a cloud
+machine is prepared ahead of time, so the harness is brought to the newest main then, with the trust of the setup
+script that installed it, and put in force when its doctor is clean; otherwise the session keeps what it runs."""
 from harness.assemble.engine.live_mcp import healthy
 from harness.utils.gateway.release import ALLOW_LABEL, NO_LABEL, build, current, publish, release_dir, stamp
 from harness.utils.git.asks import take
@@ -36,11 +39,7 @@ def publish_door(port, home):
 
 def update_door(port, home):
     """(exit code, text): 0 up to date, asked or published; 1 refused."""
-    pinned = ""
-    if current(home) is None:  # what runs now is the work tree: pin it before the clone changes under it
-        sha = build(home)
-        publish(home, sha)
-        pinned = f"Pinned the code that runs now as release {sha}. "
+    pinned = pin(home)  # what runs now is the work tree: pin it before the clone changes under it
     try:
         before, after = fast_forward(home)
     except PullError as e:
@@ -50,3 +49,28 @@ def update_door(port, home):
     code, text = publish_door(port, home)
     news = f"main {before[:12]} -> {after[:12]}. " if before != after else ""
     return code, pinned + news + text
+
+
+def pin(home):
+    """Put the code that runs now in force when no release is (boot then runs the work tree); the pin text."""
+    if current(home) is not None:
+        return ""
+    sha = build(home)
+    publish(home, sha)
+    return f"Pinned the code that runs now as release {sha}. "
+
+
+def session_update(home):
+    """The text the session reads: which harness runs and why."""
+    pinned = pin(home)
+    try:
+        before, after = fast_forward(home)
+    except PullError as e:
+        return f"{pinned}The harness keeps release {current(home)}: {e}"
+    sha = build(home)
+    if current(home) == sha:
+        return f"{pinned}The harness is up to date: main {after[:12]}, release {sha}."
+    if not healthy(home, release_dir(home, sha)):
+        return f"{pinned}The harness keeps release {current(home)}: the doctor of main {after[:12]} finds problems."
+    publish(home, sha)
+    return f"{pinned}The harness was brought up to date: main {before[:12]} -> {after[:12]}, release {sha} in force."

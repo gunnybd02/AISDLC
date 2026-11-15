@@ -97,6 +97,14 @@ python3 ~/.harness/.claude/entry/boot.py cli tool find verify tests
 
 A refusal that names `run(...)` says so, with the home's own path.
 
+## Start on the newest harness
+
+A cloud machine is prepared before a session asks for it, and the setup script runs then: the harness it installs can
+be hours old. So the install adds a SessionStart hook (`boot.py session_start`, entry/session_start.py): when a session
+begins, the clone is fast-forwarded to `origin/main`, the new code is built and its doctor run, and it is put in force
+when clean. When GitHub cannot be reached, the doctor finds problems, or the clone has local changes, the session keeps
+the harness it has; either way it reads which harness runs and why. A session never runs it itself (agent.session_start).
+
 ## Update a running session
 
 After a change of the harness is merged on GitHub, a running session takes it without a restart:
