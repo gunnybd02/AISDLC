@@ -25,8 +25,8 @@ class McpServerEntryTest(unittest.TestCase):
         lines = [request(1, "initialize", {"protocolVersion": "2025-06-18"}),
                  json.dumps({"jsonrpc": "2.0", "method": "notifications/initialized"}),
                  request(2, "tools/list"),
-                 call(3, "find", {"query": "start a session"}),
-                 call(4, "guide", {"name": "start", "mode": "skills"}),
+                 call(3, "find", {"query": "start here in every session"}),
+                 call(4, "guide", {"name": "work", "mode": "skills"}),
                  call(5, "guide", {"name": "health", "mode": "mcp"}),
                  call(6, "run", {"block": "health", "action": "items"})]
         code, out, err = run(SCRIPT, "\n".join(lines) + "\n")
@@ -36,8 +36,8 @@ class McpServerEntryTest(unittest.TestCase):
         self.assertEqual(answers[1]["result"]["protocolVersion"], "2025-06-18")
         self.assertEqual([t["name"] for t in answers[2]["result"]["tools"]], ["find", "guide", "run"])
         text = {i: answers[i]["result"]["content"][0]["text"] for i in (3, 4, 5, 6)}
-        self.assertIn("[skills] start", text[3])
-        self.assertIn("name: start", text[4])
+        self.assertIn("[skills] work", text[3])
+        self.assertIn("name: work", text[4])
         self.assertIn("items()", text[5])
         self.assertIn("gear rule decide", text[6])
 

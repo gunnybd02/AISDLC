@@ -39,6 +39,7 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #16 | The skill texts are in `harness/mcp/skill_docs/<name>/SKILL.md`, part of a release (a changed skill needs "Cho phép") |
 | #17 | `nets/` and `tests/` are inside `harness/` |
 | #18 | The first real skills: `start`, `plan`, `step`, `ship`, `close`, `refused` (working under the harness) and `harness-map`, `harness-rule`, `harness-action`, `harness-skill`, `harness-release` (developing it); the session-start message points to `start`; the doctor refuses a skill that names an action, block or skill that is not there |
+| #19 | The skills are whole workflows, three files: `work` (any repository: gather context, plan, build, ship, close), `harness-dev` (the harness itself: gather context, plan, build, check, pull request, release) and `refused` (the lookup of every refusal); the session-start message points to `work` |
 
 373 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
@@ -93,7 +94,7 @@ forwarders in `.claude/entry/`.
    units in the config, worktrees (`utils/worktree`), the card (`utils/plan/children.py`), the crew and the rest of
    `utils/orchestra/`, the sessions port, the actions, `orchestra watch`, the skill. Order: units, worktrees, card and
    delegated opening, crew (spawn, take, handback), check and accept, watch, reach and cleanup, lineage.
-4. Skills: the eleven of #18 were written from this code. The user's own skills (their old harness on the PC, such
+4. Skills: the three of #19 were written from this code. The user's own skills (their old harness on the PC, such
    as `orchestrate`) were never in this repository; they go beside these when the user pushes or pastes them. Two
    rule rows still name the old command (`stop.unverified` and `agent.registry` say `python3 -m entry.cli ...`; it is
    `python3 <core>/anchor.py cli ...`, as the `refused` skill says).

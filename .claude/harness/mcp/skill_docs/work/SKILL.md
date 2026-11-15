@@ -1,0 +1,130 @@
+---
+name: work
+description: Start here in every session - the whole workflow under the harness in one file, gather context, write and present a plan, the approval form, build each step, tests, verify, step_done, commit, push, merge request, close the plan.
+---
+# Work
+Read this first in every session. The harness judges each tool call; work passes only through an approved plan. This
+is the whole way, from the request to the closed plan.
+
+## The tools
+| Tool | Use |
+|---|---|
+| `find(query, mode?)` | the skills and tool blocks that fit some words |
+| `guide(name, mode)` | read a skill (`mode: "skills"`) or the actions of a block (`mode: "mcp"`) |
+| `run(block, action, args)` | run one action |
+
+With the MCP server they are `mcp__harness__find`, `mcp__harness__guide`, `mcp__harness__run`. Without it, the same
+from the shell (`<core>` is the path the session-start message names):
+```
+python3 <core>/anchor.py cli tool find <words>
+python3 <core>/anchor.py cli tool guide <name> --mode skills
+python3 <core>/anchor.py cli tool run <block> <action> '<args as JSON>'
+```
+
+## Always
+- No edit before the user's "Duyệt" in the form. A typed "ok" approves nothing.
+- Only the user answers a form: call AskUserQuestion with the questions alone, exactly as the harness gave them.
+- Never `git commit` in the shell: `step_done` commits.
+- Never open `.claude/state/`: read the ledger with `run("ledger", "db_query", {"sql": "SELECT ..."})`.
+- Say in a shell call's description, in plain words, what the command does and what it changes.
+- A call was refused: read the reason, then `guide("refused", "skills")`. Never look for a way around a gate.
+- The work is on the harness itself: `guide("harness-dev", "skills")`.
+
+## 1. Gather context
+Reading needs no plan. Read the code the request touches, its tests, and how the project runs them (`verify` in
+`project.json`). Ask the user what is unclear. Go on when you can name every file to change and the test of each
+behaviour.
+
+## 2. Plan
+1. Stand in the repository the work is in: the plan's root is the folder the call is made from, and every path of
+   the plan is relative to it (no `..`, nothing in `.git`).
+2. Pick the tier. Light, for a small change: `title`, `what`, `files`, and `tests` when there are any.
+   ```json
+   {"title": "Fix the date parser", "what": ["A date without a year reads as this year"],
+    "files": ["src/dates.py"], "tests": ["tests/test_dates.py"]}
+   ```
+   Full, for anything with steps: `steps`, and then `overview`, `code`, `services`, `checks`, `assumptions`,
+   `notDoing` and `risks` are needed too.
+   ```json
+   {"title": "Add the export door",
+    "overview": {"problem": ["..."], "need": ["..."], "how": ["..."], "accept": ["..."]},
+    "services": ["agent-code"], "what": ["..."], "checks": ["..."], "assumptions": ["..."],
+    "notDoing": ["..."], "risks": ["..."],
+    "code": [{"file": "src/export.py", "code": "def export(rows): ...", "reason": "the one new function"}],
+    "steps": [{"commit": "Add export", "points": ["write export()"], "files": ["src/export.py"],
+               "tests": ["tests/test_export.py"],
+               "behaviors": [{"id": "export.csv", "what": "rows become CSV lines", "how": "unit test",
+                              "why": "the user reads them in a sheet", "test": "tests/test_export.py"}]}]}
+   ```
+   - `title`: one line, 3 to 80 characters, two words at least, no double quote.
+   - Points (`what`, `checks`...): at most 10, each at most 200 characters. `overview`: all four keys, 5 points each
+     at most.
+   - A behaviour id looks like `a.b-c`; one in a step becomes `s<n>.<id>`. Each needs `what`, `how`, `why`.
+   - `services`: `agent-code` (the work is in this root) or the declared units.
+3. `run("plan", "plan_present", {"plan": {...}})`. Problems come back as a list: fix all of them, present again.
+4. The answer ends with the form call. Write one line (the title and the revision), then call AskUserQuestion with
+   exactly that question, header and options. Nothing after it.
+5. "Duyệt" opens the plan. "Sửa plan": take the user's words,
+   `run("plan", "plan_revise", {"plan": "<pd-id>", "changes": {...}})` with only the items that change, ask the new form.
+
+`run("plan", "plan_show", {})` shows the plan as the user reads it; `run("plan", "plan_status", {})` its state;
+`run("plan", "plan_drop", {})` stops one that still waits. A new plan approved while another is open closes the old
+one as superseded: to change work in hand, revise.
+
+## 3. Build each step
+1. Edit only the files the plan names; any other file is refused.
+2. Write the step's tests: each behaviour of the step needs its test file to exist.
+3. Verify: `run("verify", "run", {"plan": "<pd-id>"})`, or `python3 <core>/anchor.py cli verify` (another command:
+   add `-- <command>`; a longer run: `--timeout <seconds>`). It runs the tests in the plan's root and keeps a receipt
+   of each file as the tests saw it.
+4. Red: fix and verify again. A file changed after a green verify needs a new verify.
+5. Green: `run("plan", "step_done", {"message": "<the commit message>"})`. The harness checks what the step owes and
+   commits its changed files; the next step opens. Write the message as the author of the change: no AI co-author,
+   footer or tool name, no robot emoji.
+6. A step that will not be done: `run("plan", "step_skip", {"why": "<one line>"})`, with changed plan files put back.
+
+| `step_done` refuses | Move |
+|---|---|
+| `step-nothing-to-commit`: no plan file changed | do the work, or `step_skip` |
+| `step-other-files`: a changed file belongs to another step | commit it in its own step |
+| `step-owed`: a behaviour without its test, or no green verify of the current files | write the test, verify again |
+| `step-protected-branch`: the branch is protected | work on a branch of the plan |
+| a commit guard: a secret, an AI mark, a banned word, agent files | `guide("refused", "skills")` |
+
+One more file or test with no new approval, from the shell:
+```
+python3 <core>/anchor.py cli add file <path> --behavior <id> --why "<why>"
+python3 <core>/anchor.py cli add test <test file> --behavior <id> --what "<what it proves>"
+python3 <core>/anchor.py cli add drop-file <path> --why "<why>"
+python3 <core>/anchor.py cli behaviors add <id> --what "..." --how "..." --why "..." --test <file>
+python3 <core>/anchor.py cli behaviors list
+```
+A wider change (a new step, another unit) is `plan_revise` and a new form. The turn does not end while a code file of
+the plan changed since the last green verify.
+
+## 4. Ship
+- Commit named files outside a step: `run("git", "commit", {"files": ["a.py"], "message": "..."})`. Paths from the
+  plan's root, never `.` or a folder; the next `step_done` adopts the commit.
+- Push: `run("git", "push", {})` pushes the plan's branch to origin, after the last step, from a unit's repository,
+  on a branch that is not protected. The repository that holds the harness never pushes this way.
+- Merge request: push first, then `run("git", "mr_open", {"title": "...", "description": "...", "target": "main"})`.
+  The answer is a form with the full text; ask it exactly as given, and after the user's "Cho phép" call `mr_open`
+  again with exactly the same text. No AI mark and no banned word in it. It goes through GitLab REST.
+
+Git is free except where a protected branch is touched (`main`, `master`, or `protected` in `project.json`). There
+these ask the user first: `git add -A`/`.`, `--no-verify`, `reset --hard`, a force push, any write on the branch, a
+push from the harness's repository, agent files (`.claude/`, `CLAUDE.md`, `.mcp.json`, `AGENTS.md`) staged or
+pushed, git with `-c`/`--git-dir`/`--work-tree`. To run one:
+`run("git", "run", {"repo": "<folder>", "args": ["push", "origin", "work"]})` (`args` are the words after `git`). Asked:
+the answer is a form question; ask it exactly as given, then run exactly the same command again. Prefer a branch of
+the plan and a merge request.
+
+## 5. Close
+1. A plan in the harness's own repository closes itself as delivered after its last `step_done`.
+2. Any other plan: `run("plan", "plan_close", {"summary": "<what was done>"})`. The harness builds the account from
+   the ledger and answers with the close form. Ask it exactly as given; only the user's answer closes the plan:
+   "Đã giao" (delivered), "Bỏ plan" (abandoned), "Giữ mở" (it stays open).
+3. Tell the user in one or two lines what was delivered and what was not.
+4. Old plans still open: `run("ledger", "plans_settle", {})` lists them and what proves their end; with
+   `{"write": true}` it ends the proven ones; `{"drop": ["<pd-id>"]}` ends unproven plans of sessions that no longer
+   run, after the user's "Cho phép" in the form it gives.

@@ -65,31 +65,30 @@ class SkillsTest(unittest.TestCase):
             "skill a: names the skill lost-one, which is not there"])
         self.assertEqual(library(self, plan="x").stale([]), [])
 
-    def test_the_skills_of_the_harness_read_and_start_lists_each(self):
+    def test_the_skills_of_the_harness_are_whole_workflows(self):
         lib = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs")
         self.assertEqual(lib.problems(), [])
-        names = [s.name for s in lib.all()]
-        self.assertEqual(names, ["close", "harness-action", "harness-map", "harness-release", "harness-rule",
-                                 "harness-skill", "plan", "refused", "ship", "start", "step"])
-        start = lib.get("start").text
-        for name in names:
-            with self.subTest(skill=name):
-                self.assertTrue(name == "start" or f"| `{name}` |" in start, f"start does not list {name}")
-                self.assertIn("\n## ", lib.get(name).text)  # the frame: a title and sections
+        self.assertEqual([s.name for s in lib.all()], ["harness-dev", "refused", "work"])
+        work, dev = lib.get("work").text, lib.get("harness-dev").text
+        for part in ("## 1. Gather context", "## 2. Plan", "## 3. Build each step", "## 4. Ship", "## 5. Close",
+                     'guide("refused", "skills")', 'guide("harness-dev", "skills")'):
+            self.assertIn(part, work)
+        for part in ("## 1. Gather context", "## 2. Plan", "## 3. Build", "## 4. Check", "## 5. Pull request",
+                     "## 6. Release", 'guide("work", "skills")'):
+            self.assertIn(part, dev)
 
     def test_a_request_in_plain_words_finds_its_skill_first(self):
         find = Find(Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs"), ActionTable())
-        for words, name in (("how do I start working in this session", "start"),
-                            ("write and present a plan for approval", "plan"),
-                            ("verify the tests and end the step with step_done", "step"),
-                            ("push the branch and open a merge request", "ship"),
-                            ("close the plan as delivered", "close"),
+        for words, name in (("where do I start in this session", "work"),
+                            ("write and present a plan for approval", "work"),
+                            ("verify the tests and end the step with step_done", "work"),
+                            ("push the branch and open a merge request", "work"),
+                            ("close the plan", "work"),
                             ("my tool call was refused or denied", "refused"),
-                            ("where are the folders of the harness", "harness-map"),
-                            ("add a rule with a detector and a rule row", "harness-rule"),
-                            ("add an action to a tool block", "harness-action"),
-                            ("write a skill text", "harness-skill"),
-                            ("publish a release and update a running session", "harness-release")):
+                            ("develop the harness itself", "harness-dev"),
+                            ("add a rule with a detector", "harness-dev"),
+                            ("add an action or a skill to the harness", "harness-dev"),
+                            ("publish a release and update sessions", "harness-dev")):
             with self.subTest(words=words):
                 first = find.call({"query": words, "mode": "skills"}).text.splitlines()[0]
                 self.assertTrue(first.startswith(f"[skills] {name} "), first)
