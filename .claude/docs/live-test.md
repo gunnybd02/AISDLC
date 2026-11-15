@@ -3,11 +3,20 @@
 The unit tests drive each piece; this is how the whole harness runs inside a live session, as it was checked on
 2026-11-14 (a headless `claude -p` session on Linux).
 
-## Wire it into a project
+## The core: one harness, one ledger
 
-A project is wired by hand like this, or every session gets the harness by the install below: never both, since two
-harnesses keep two ledgers and each blocks what the other approved. This repository carries no wiring of its own, so a
-session working on it runs under the installed harness, and the code it edits never guards it.
+Every session runs under one harness, the core: its `.claude/` folder holds the code, the config and the one ledger
+(`state/harness.db`). The repositories a session works on are outside it and hold no harness of their own.
+
+- On a PC the core is a clone of this repository, and Claude Code is started in it: its `.claude/settings.json` and
+  `.mcp.json` switch the harness on (they call `entry/boot.py ... --project`).
+- In the cloud the core is installed for the user by the setup script (below): `~/.harness`, hooks and MCP server in
+  the user's own settings.
+- A copy that is not the core gives way. When a harness is installed for the user, a repository's own wiring does
+  nothing in its hooks and hands its MCP server over to the core (`boot.py`: `--project`). So a clone of this repository
+  that a cloud session works on is never a second harness, and its `.mcp.json` is how the cloud loads the core's tools.
+
+## Wire it into a project
 
 The project is a git repository with this `.claude/` folder in it (the home). Add `.claude/project.json`:
 
@@ -19,16 +28,16 @@ The project is a git repository with this `.claude/` folder in it (the home). Ad
 
 ```json
 {"hooks": {
-  "PreToolUse":       [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook"}]}],
-  "PostToolUse":      [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook"}]}],
-  "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook"}]}],
-  "Stop":             [{"hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook"}]}]}}
+  "PreToolUse":       [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook --project"}]}],
+  "PostToolUse":      [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook --project"}]}],
+  "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook --project"}]}],
+  "Stop":             [{"hooks": [{"type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/entry/boot.py\" hook --project"}]}]}}
 ```
 
 `.mcp.json` in the project root gives the model the harness's MCP server (on Windows: `python` and a Windows path):
 
 ```json
-{"mcpServers": {"harness": {"type": "stdio", "command": "python3", "args": [".claude/entry/boot.py", "mcp_server"]}}}
+{"mcpServers": {"harness": {"type": "stdio", "command": "python3", "args": [".claude/entry/boot.py", "mcp_server", "--project"]}}}
 ```
 
 Then publish the code once (the user answers the form it gives): `python3 -m entry.cli live publish` from
