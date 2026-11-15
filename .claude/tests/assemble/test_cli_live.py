@@ -41,6 +41,14 @@ class LiveUpdateTest(unittest.TestCase):
         path.write_text(path.read_text(encoding="utf-8").replace(OLD, NEW, 1), encoding="utf-8")
         git(self.origin, "commit", "-q", "-am", "Say what the doctor sees")
 
+    def started(self):
+        """What a session reads when it begins; it always says how to reach the tools without the MCP server."""
+        text = session_update(self.home)
+        boot = (self.home / "entry" / "boot.py").as_posix()
+        self.assertIn(f'If it has none, the same from the shell: python3 "{boot}" cli tool guide <block>', text)
+        self.assertIn(f'python3 "{boot}" cli tool run <block> <action>', text)
+        return text
+
     def allow(self, text):
         q = re.search(r"exactly: (.+?\?) Options", text).group(1)
         event = Event("PostToolUse", "AskUserQuestion", {"questions": [{"question": q}]}, "s1", "/tmp")
@@ -84,10 +92,10 @@ class LiveUpdateTest(unittest.TestCase):
 
     def test_a_session_starts_on_the_newest_main_when_its_doctor_is_clean(self):
         running = stamp(self.home)
-        self.assertIn("up to date", session_update(self.home))
+        self.assertIn("up to date", self.started())
         self.assertEqual(current(self.home), running)  # pinned
         self.merge_on_origin()
-        text = session_update(self.home)
+        text = self.started()
         self.assertIn("brought up to date", text)
         self.assertEqual(current(self.home), stamp(self.home))  # in force without a form: the session has not begun
         self.assertNotEqual(current(self.home), running)
@@ -98,12 +106,12 @@ class LiveUpdateTest(unittest.TestCase):
         git(self.origin, "add", "-A")
         git(self.origin, "commit", "-q", "-m", "Break the actions")
         running = stamp(self.home)
-        text = session_update(self.home)
+        text = self.started()
         self.assertIn("finds problems", text)
         self.assertEqual(current(self.home), running)  # the broken main never runs
         path = self.home / "/".join(HEALTH)
         path.write_text(path.read_text(encoding="utf-8") + "\n# a local edit\n", encoding="utf-8")
-        self.assertIn("local changes", session_update(self.home))
+        self.assertIn("local changes", self.started())
         self.assertEqual(current(self.home), running)
 
     def test_the_entry_never_blocks_a_session_from_starting(self):
@@ -113,6 +121,7 @@ class LiveUpdateTest(unittest.TestCase):
         context = json.loads(out)["hookSpecificOutput"]
         self.assertEqual(context["hookEventName"], "SessionStart")
         self.assertIn("keeps release", context["additionalContext"])
+        self.assertIn(f'python3 "{(lone / "entry" / "boot.py").as_posix()}" cli tool run', context["additionalContext"])
 
 
 if __name__ == "__main__":

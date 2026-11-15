@@ -9,6 +9,8 @@ and publishes as above. Hooks run the new release at their next call, MCP server
 session_update is what Claude Code runs when a session starts (entry/session_start.py, a SessionStart hook): a cloud
 machine is prepared ahead of time, so the harness is brought to the newest main then, with the trust of the setup
 script that installed it, and put in force when its doctor is clean; otherwise the session keeps what it runs."""
+from pathlib import Path
+
 from harness.assemble.engine.live_mcp import healthy
 from harness.utils.gateway.release import ALLOW_LABEL, NO_LABEL, build, current, publish, release_dir, stamp
 from harness.utils.git.asks import take
@@ -60,8 +62,20 @@ def pin(home):
     return f"Pinned the code that runs now as release {sha}. "
 
 
+TOOLS_HINT = (" Its tools: mcp__harness__find, mcp__harness__guide and mcp__harness__run when this session has them. "
+              "If it has none, the same from the shell: python3 \"{boot}\" cli tool guide <block> lists a block's "
+              "actions, python3 \"{boot}\" cli tool run <block> <action> '<args as JSON>' runs one, python3 \"{boot}\" "
+              "cli tool find <words> finds what fits.")
+
+
 def session_update(home):
-    """The text the session reads: which harness runs and why."""
+    """The text the session reads when it begins: which harness runs and why, and how to reach its tools (Claude Code
+    can start before the setup script registers the MCP server, so a session may have none of them)."""
+    return harness_update(home) + TOOLS_HINT.format(boot=(Path(home) / "entry" / "boot.py").as_posix())
+
+
+def harness_update(home):
+    """Bring the harness to the newest main of its clone; which harness runs and why."""
     pinned = pin(home)
     try:
         before, after = fast_forward(home)

@@ -103,7 +103,8 @@ A cloud machine is prepared before a session asks for it, and the setup script r
 be hours old. So the install adds a SessionStart hook (`boot.py session_start`, entry/session_start.py): when a session
 begins, the clone is fast-forwarded to `origin/main`, the new code is built and its doctor run, and it is put in force
 when clean. When GitHub cannot be reached, the doctor finds problems, or the clone has local changes, the session keeps
-the harness it has; either way it reads which harness runs and why. A session never runs it itself (agent.session_start).
+the harness it has; either way it reads which harness runs and why, and how to reach its tools from the shell
+when it has no `mcp__harness__` tools. A session never runs it itself (agent.session_start).
 
 ## Update a running session
 
