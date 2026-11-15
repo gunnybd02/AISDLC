@@ -16,6 +16,8 @@ from harness.tests import anchor_of, tree
 from harness.tests.e2e import copy_tree, run
 
 HEALTH = ("harness", "mcp", "actions", "health.py")
+LIVE = ("harness", "assemble", "engine", "cli_live.py")
+WIRE = ("harness", "assemble", "engine", "cli_wire.py")
 OLD, NEW = "Every problem of the tree", "Every problem of the tree, as the doctor sees it"
 
 
@@ -26,7 +28,9 @@ def git(repo, *args):
 class LiveUpdateTest(unittest.TestCase):
     def setUp(self):
         self.origin = tree(self, {".gitignore": ".claude/state/\n__pycache__/\n"})
-        shutil.copytree(copy_tree(self), self.origin / ".claude")
+        copy = copy_tree(self)
+        shutil.copytree(copy, self.origin / ".claude")
+        shutil.copy(copy.parent / "anchor.py", self.origin / "anchor.py")
         for args in (("init", "-q", "-b", "main"), ("config", "user.name", "t"), ("config", "user.email", "t@t"),
                      ("add", "-A"), ("commit", "-q", "-m", "start")):
             git(self.origin, *args)
@@ -40,6 +44,13 @@ class LiveUpdateTest(unittest.TestCase):
         path = self.origin / ".claude" / "/".join(HEALTH)
         path.write_text(path.read_text(encoding="utf-8").replace(OLD, NEW, 1), encoding="utf-8")
         git(self.origin, "commit", "-q", "-am", "Say what the doctor sees")
+
+    def change_on_origin(self, rel, old, new, message):
+        path = self.origin / ".claude" / "/".join(rel)
+        text = path.read_text(encoding="utf-8")
+        self.assertIn(old, text)
+        path.write_text(text.replace(old, new, 1), encoding="utf-8")
+        git(self.origin, "commit", "-q", "-am", message)
 
     def started(self):
         """What a session reads when it begins; it always says how to reach the tools without the MCP server."""
@@ -101,6 +112,33 @@ class LiveUpdateTest(unittest.TestCase):
         self.assertIn("brought up to date", text)
         self.assertEqual(current(self.home), stamp(self.home))  # in force without a form: the session has not begun
         self.assertNotEqual(current(self.home), running)
+
+    def test_the_release_put_in_force_at_start_writes_the_hint(self):
+        # the machine was prepared with this code; main now names another skill to read first
+        self.change_on_origin(LIVE, "Read the skill work before any work: guide, name work,",
+                              "Read the skill flow before any work: guide, name flow,", "Name the skill flow")
+        text = session_update(self.home)
+        self.assertIn("brought up to date", text)
+        self.assertIn("Read the skill flow before any work", text)  # the new release's words
+        self.assertNotIn("Read the skill work", text)
+        self.assertIn(f'python3 "{anchor_of(self.home).as_posix()}" cli tool run <block> <action>', text)
+        code, out, err = run(anchor_of(self.home), "{}", args=("session_start",))  # the next start runs the release
+        self.assertEqual(code, 0, err)
+        again = json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("up to date", again)
+        self.assertIn("Read the skill flow before any work", again)  # its own words
+
+    def test_a_release_that_cannot_say_the_hint_leaves_the_old_one(self):
+        self.change_on_origin(WIRE, '("status", "publish", "update", "hint")', '("status", "publish", "update")',
+                              "Lose the hint door")
+        text = self.started()  # the hint of the code that ran: the session still reads how to reach the tools
+        self.assertIn("brought up to date", text)
+
+    def test_the_hint_door_prints_the_hint(self):
+        code, out, err = run(anchor_of(self.home), args=("cli", "live", "hint"))
+        self.assertEqual(code, 0, out + err)
+        self.assertTrue(out.strip().startswith("Its tools: mcp__harness__find"), out)
+        self.assertIn("cli tool guide work --mode skills", out)
 
     def test_a_session_keeps_its_harness_when_the_newest_main_is_broken_or_mixed(self):
         bad = self.origin / ".claude" / "harness" / "mcp" / "actions" / "broken.py"
