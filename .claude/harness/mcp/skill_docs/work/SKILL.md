@@ -82,6 +82,7 @@ one as superseded: to change work in hand, revise.
    commits its changed files; the next step opens. Write the message as the author of the change: no AI co-author,
    footer or tool name, no robot emoji.
 6. A step that will not be done: `run("plan", "step_skip", {"why": "<one line>"})`, with changed plan files put back.
+7. When the answer of a commit ends with a `Store:` line, the ledger's copy is due: `guide("store", "skills")`.
 
 | `step_done` refuses | Move |
 |---|---|
