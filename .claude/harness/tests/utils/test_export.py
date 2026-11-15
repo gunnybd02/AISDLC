@@ -41,7 +41,9 @@ class ExportTest(unittest.TestCase):
         self.assertIn("__19700101T000100Z__abcdef0__", second["title"])
         self.assertFalse(Path(first["path"]).exists())  # one copy a session on the machine
         self.assertTrue(Path(other["path"]).exists())  # another session's copy stays
-        self.assertEqual(sorted(p.name for p in self.out.iterdir()), sorted([second["title"], other["title"]]))
+        self.assertEqual(sorted(p.name for p in self.out.iterdir()),
+                         sorted([".gitignore", second["title"], other["title"]]))
+        self.assertEqual((self.out / ".gitignore").read_text(encoding="utf-8"), "*\n")  # git never sees a copy
 
     def test_a_ledger_that_drifted_or_is_not_there_is_never_exported(self):
         con = sqlite3.connect(self.db)
@@ -51,7 +53,7 @@ class ExportTest(unittest.TestCase):
         with self.assertRaises(LedgerError) as e:
             snapshot(self.db, self.out, "s1")
         self.assertIn("schema", str(e.exception))
-        self.assertEqual(list(self.out.iterdir()), [])  # nothing is left to upload
+        self.assertEqual([p.name for p in self.out.iterdir()], [".gitignore"])  # nothing is left to upload
         with self.assertRaises(LedgerError):
             snapshot(self.root / "none.db", self.out, "s1")
 

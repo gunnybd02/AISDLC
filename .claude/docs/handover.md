@@ -42,8 +42,9 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #19 | The skills are whole workflows, three files: `work` (any repository: gather context, plan, build, ship, close), `harness-dev` (the harness itself: gather context, plan, build, check, pull request, release) and `refused` (the lookup of every refusal); the session-start message points to `work` |
 | #20 | The release a session start puts in force writes the start message's hint (`cli live hint`): a machine prepared with older code no longer names a skill the new release lacks |
 | #21 | The ledger store on Google Drive: `run("ledger", "export")` copies the whole ledger (schema checked, named by session, time, commit and schema) and says the one Drive `create_file` call that uploads it; a commit's answer says the copy is due; the skill `store`; trashing, moving or renaming a Drive file asks the user (`drive.remove`, `drive.move`). The folder id is the environment variable `HARNESS_DRIVE_FOLDER`, never in the tree (the repository is public) |
+| #22 | The ledger's copy goes to `.harness-export/` of the session's working folder (git ignores it): the Drive tool reads a file by reference only from a session's own folders, a temp folder is refused (found by the live check of #21) |
 
-386 tests pass (1 skipped, Windows only); doctor: 0 errors.
+387 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 ## The cloud, as it runs now
 

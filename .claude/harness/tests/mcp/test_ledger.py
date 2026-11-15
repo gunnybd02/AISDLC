@@ -62,20 +62,20 @@ class ExportActionTest(unittest.TestCase):
         self.port.write(lambda con, rec: con.execute("INSERT INTO pl_logs (uid, body, at) VALUES ('u', 'b', 1)"))
         self.port.touch_session("s-export-test")
         self.run_action = caller(self.root)
-        self.temp = tree(self, {})
-        patch = mock.patch("tempfile.gettempdir", return_value=str(self.temp))
-        patch.start()
-        self.addCleanup(patch.stop)
+        self.work = tree(self, {})  # the session's working folder
 
     def export(self, folder_env="", **args):
         with mock.patch.dict(os.environ, {"HARNESS_DRIVE_FOLDER": folder_env}):
-            return self.run_action("ledger", "export", **args)
+            return self.run_action("ledger", "export", **{"into": str(self.work), **args})
 
     def test_with_no_store_folder_nothing_is_copied(self):
         for result in (self.export(), self.export(folder="no")):
             self.assertTrue(result.is_error)
             self.assertIn("HARNESS_DRIVE_FOLDER", result.text)
-        self.assertFalse((self.temp / "harness-export").exists())
+        self.assertFalse((self.work / ".harness-export").exists())
+        lost = self.export("folder-from-env-1", into=str(self.work / "none"))
+        self.assertTrue(lost.is_error)
+        self.assertIn("is not a folder", lost.text)
 
     def test_the_answer_is_the_drive_call_of_a_copy_with_the_ledgers_rows(self):
         for result, folder in ((self.export("folder-from-env-1"), "folder-from-env-1"),
@@ -83,12 +83,22 @@ class ExportActionTest(unittest.TestCase):
             self.assertFalse(result.is_error, result.text)
             self.assertIn(f"  parentId: {folder}", result.text.splitlines())
             self.assertIn("create_file", result.text)
-        (copy,) = (self.temp / "harness-export").glob("s-export-test__*.db")  # one copy a session
+        (copy,) = (self.work / ".harness-export").glob("s-export-test__*.db")  # one copy a session
+        self.assertEqual((self.work / ".harness-export" / ".gitignore").read_text(encoding="utf-8"), "*\n")
         self.assertIn(f"base64Content: sha256:", result.text)
         self.assertIn(copy.resolve().as_posix(), result.text)
         con = sqlite3.connect(copy)
         self.assertEqual(con.execute("SELECT uid FROM pl_logs").fetchall(), [("u",)])
         con.close()
+
+    def test_without_into_the_copy_goes_to_the_folder_the_call_is_made_from(self):
+        here = os.getcwd()
+        self.addCleanup(os.chdir, here)
+        os.chdir(self.work)
+        with mock.patch.dict(os.environ, {"HARNESS_DRIVE_FOLDER": "folder-from-env-1"}):
+            result = self.run_action("ledger", "export")
+        self.assertFalse(result.is_error, result.text)
+        self.assertEqual(len(list((self.work / ".harness-export").glob("*.db"))), 1)
 
     def test_a_commits_answer_says_the_copy_is_due_only_with_a_store(self):
         from harness.mcp.actions.ledger import STORE_NOTE, store_note

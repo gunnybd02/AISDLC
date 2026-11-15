@@ -12,8 +12,9 @@ they can be read together later.
 - When the user asks to save, back up or sync the session's database.
 
 ## Steps
-1. `run("ledger", "export", {})`. The harness copies the whole ledger to a temp folder, checks that its schema is
-   exactly the harness's, and answers with one Drive call.
+1. `run("ledger", "export", {})`. The harness copies the whole ledger into `.harness-export/` of the folder the
+   call is made from (git ignores it), checks that its schema is exactly the harness's, and answers with one Drive
+   call.
 2. Make that call with the Google Drive tool `create_file`, with exactly the values of the answer:
    | Field | Value |
    |---|---|
@@ -36,6 +37,7 @@ they can be read together later.
 |---|---|---|
 | `no store folder` | no folder id is set on this machine | ask the user for the Drive folder's id, then `run("ledger", "export", {"folder": "<id>"})`; the lasting place is the environment variable `HARNESS_DRIVE_FOLDER` |
 | `the ledger's schema is not the harness's` | the ledger drifted from `schema.sql` | do not upload; tell the user, `run("health", "doctor", {})` |
+| Drive: `can't be sent by reference` | the Drive tool reads a file only from the session's own folders | `run("ledger", "export", {"into": "<a folder inside this session's working folder>"})`, then the new call |
 | no Google Drive tool in this session | the connector is not on | tell the user the copy was not uploaded and where it is |
 
 ## Notes

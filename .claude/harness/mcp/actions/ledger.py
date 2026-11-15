@@ -2,11 +2,11 @@
 (read.state); a query here is one read-only SELECT, and the transcript tables (tx_*) stay out of it. export makes a
 whole copy for a store outside the machine (utils/ledger/export.py) and says the one Drive call that uploads it: the
 harness cannot call Drive itself, the model does."""
-import tempfile
+import os
 from pathlib import Path
 
 from harness.utils.contracts import READ, WRITE, ActionError, McpAction
-from harness.utils.ledger.export import FOLDER_ID, snapshot, upload_call
+from harness.utils.ledger.export import FOLDER, FOLDER_ID, snapshot, upload_call
 from harness.utils.plan.life import settle
 from harness.utils.ledger.db import LedgerError, query
 
@@ -50,8 +50,10 @@ class PlansSettle(McpAction):
 class Export(McpAction):
     block, name, effect = "ledger", "export", WRITE
     summary = ("Copy the whole ledger for the store outside this machine (same schema as every copy, named by session, "
-               "time and commit) and say the one Google Drive call that uploads it; refused with no store folder")
-    args_schema = {"type": "object", "properties": {"folder": {"type": "string"}}, "required": []}
+               "time and commit) into .harness-export/ of the working folder (or of the folder into) and say the one "
+               "Google Drive call that uploads it; refused with no store folder")
+    args_schema = {"type": "object", "properties": {"folder": {"type": "string"}, "into": {"type": "string"}},
+                   "required": []}
     needs = ("ledger", "session", "store")
 
     def run(self, ctx, args):
@@ -59,9 +61,11 @@ class Export(McpAction):
         if not FOLDER_ID.match(folder):
             raise ActionError("no store folder: the environment variable HARNESS_DRIVE_FOLDER holds the id of the "
                               "Google Drive folder (or pass {folder: '<id>'}); ask the user for it")
+        into = Path(str(args.get("into") or os.getcwd()))  # the Drive tool reads only from a session's own folders
+        if not into.is_dir():
+            raise ActionError(f"into is a folder of this session's working folder; {into} is not a folder")
         try:
-            copy = snapshot(ctx.ports["ledger"].path, Path(tempfile.gettempdir()) / "harness-export",
-                            ctx.ports["session"]())
+            copy = snapshot(ctx.ports["ledger"].path, into / FOLDER, ctx.ports["session"]())
         except LedgerError as e:
             raise ActionError(str(e)) from e
         return upload_call(copy, folder)
