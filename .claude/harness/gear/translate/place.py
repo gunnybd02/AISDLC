@@ -9,10 +9,11 @@
 After cd X, a relative path is read both from the folder before and from X: the gate sees every place it may be.
 - mentions: every place a call names, read or written (utils/shell/mentions.py for a shell line; the path of Read,
   Grep, Glob, LS and NotebookRead, their folder when they name none), so the gate keeps the harness's state shut.
-- harness_cli: the shell line runs the harness's own CLI (the session is linked to it, as for its MCP tools)."""
+- harness_cli: the shell line runs the harness's own CLI (the session is linked to it, as for its MCP tools);
+  harness_session_start: it runs the SessionStart entry, which only Claude Code runs (agent.session_start)."""
 from harness.utils.contracts import Translator
 from harness.utils.shell.paths import absolute
-from harness.utils.shell.mentions import mentioned, runs_harness
+from harness.utils.shell.mentions import mentioned, runs_harness, runs_session_start
 from harness.utils.shell.place_ops import shell_places
 
 KEYS = {"Write": "file_path", "Edit": "file_path", "MultiEdit": "file_path", "NotebookEdit": "notebook_path"}
@@ -45,6 +46,8 @@ class Places(Translator):
             seen = mentioned(command, dialect, event.cwd)
             if runs_harness(command, dialect):
                 facts = {**facts, "harness_cli": True}
+            if runs_session_start(command, dialect):
+                facts = {**facts, "harness_session_start": True}
             return {**facts, "mentions": seen} if seen else facts
         if event.tool in READERS:
             return {"mentions": reader_places(event)} if event.kind == "PreToolUse" else {}

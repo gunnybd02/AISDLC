@@ -5,7 +5,9 @@
 - agent.memory: a write into a memory/ folder of .claude (a point to keep is a note, kept in SQL);
 - agent.registry: a write to the behaviour registry file (.claude/project/behaviors.json: add test, behaviors add);
 - agent.anchor: a write to what decides which code a session runs: .claude/entry/boot.py, .claude/settings.json, or the
-  .mcp.json beside .claude (the user changes them outside a session)."""
+  .mcp.json beside .claude (the user changes them outside a session);
+- agent.session_start: a shell line that runs the SessionStart entry, which puts the newest main in force without the
+  user's word: only Claude Code runs it, when a session begins (in a session: live update and the form)."""
 from harness.gear.detect.git import agent_file
 from harness.utils.contracts import Detector, Finding
 
@@ -17,6 +19,8 @@ def parts(path):
 class AgentFiles(Detector):
     def detect(self, event, facts):
         out = []
+        if event.kind == "PreToolUse" and facts.get("harness_session_start"):
+            out.append(Finding("agent.session_start", event.input.get("command", "")))
         repo, view = facts.get("commit_repo"), facts.get("git_view")
         agents = [f for f in facts.get("commit_files", []) if agent_file(f)]
         if agents and repo and not (view and view.is_home(repo)):

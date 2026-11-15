@@ -29,10 +29,23 @@ def harness_own(command):
     return bool(args) and re.search(r"(^|[\\/])entry[\\/]\w+\.py$", args[0]) is not None
 
 
+def harness_runs(command_line, dialect="bash"):
+    """The words of each command of a shell line that runs the harness itself (python ... entry/<x>.py ...)."""
+    return [[w.text for w in c.args] for c in read(command_line, dialect).commands
+            if c.words and not c.words[0].dynamic and harness_own(c)]
+
+
 def runs_harness(command_line, dialect="bash"):
     """Whether a shell line runs the harness itself in one of its commands (the session's link to the harness's CLI,
     as a call of its MCP tools is)."""
-    return any(c.words and not c.words[0].dynamic and harness_own(c) for c in read(command_line, dialect).commands)
+    return bool(harness_runs(command_line, dialect))
+
+
+def runs_session_start(command_line, dialect="bash"):
+    """Whether a shell line runs the harness's SessionStart entry (boot.py session_start, entry/session_start.py),
+    which only Claude Code runs, when a session begins."""
+    return any("session_start" in args[1:2] or re.search(r"session_start\.py$", args[0] if args else "")
+               for args in harness_runs(command_line, dialect))
 
 
 def texts(command):

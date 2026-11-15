@@ -46,6 +46,22 @@ class AgentTest(unittest.TestCase):
         event = Event("PreToolUse", "Write", {"file_path": "/r/.claude/entry/hook.py"}, "s1", "/r")
         self.assertEqual(AgentFiles().detect(event, Places().translate(event)), [])  # the gates judge it; publish ships it
 
+    def test_a_session_never_runs_the_session_start_itself(self):
+        rules = Decide.load(CLAUDE_DIR).rules
+        boot = "/root/.harness/.claude/entry/boot.py"
+        for line in (f"python3 {boot} session_start", f'echo {{}} | python3 "{boot}" session_start',
+                     "python3 /root/.harness/.claude/entry/session_start.py"):
+            with self.subTest(line=line):
+                event = Event("PreToolUse", "Bash", {"command": line}, "s1", "/r")
+                self.assertEqual([f.kind for f in AgentFiles().detect(event, Places().translate(event))],
+                                 ["agent.session_start"])
+        for line in (f"python3 {boot} cli live update", "python3 session_start.py", "echo session_start"):
+            with self.subTest(line=line):
+                event = Event("PreToolUse", "Bash", {"command": line}, "s1", "/r")
+                self.assertEqual(AgentFiles().detect(event, Places().translate(event)), [])
+        self.assertEqual(rules["agent.session_start"]["verdict"], "refuse")
+        self.assertIn("live update", rules["agent.session_start"]["why"])
+
 
 if __name__ == "__main__":
     unittest.main()
