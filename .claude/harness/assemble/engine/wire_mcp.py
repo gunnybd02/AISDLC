@@ -5,7 +5,7 @@ by the same rules as a tool call."""
 import shlex
 from pathlib import Path
 
-from harness.assemble.engine.build import CLAUDE_DIR, build_runner, code_of, items_of
+from harness.assemble.engine.build import CLAUDE_DIR, build_runner, code_of, items_of, skill_docs
 from harness.assemble.engine.checks import doctor, report
 from harness.assemble.engine.config import Config
 from harness.assemble.engine.loader import Loader
@@ -57,7 +57,7 @@ def build_server(claude_dir):
     claude_dir = Path(claude_dir)
     items = items_of(claude_dir)
     table = action_table(items, code_of(claude_dir))
-    skills = Loader.resolve(items["skills"])(claude_dir / "project" / "skills")
+    skills = Loader.resolve(items["skills"])(skill_docs(claude_dir))
     tools = [Loader.resolve(items[n])(skills, table) for n in ("find", "guide")]
     tools.append(Loader.resolve(items["run"])(table, ports_of(items, claude_dir)))
     return Loader.resolve(items["stdio"])(*SERVER, tools)

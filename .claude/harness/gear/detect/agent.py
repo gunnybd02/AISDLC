@@ -1,7 +1,7 @@
 """AgentFiles: what agent files never take.
 - commit.agent_files: a commit of a unit (any repository but the home, which holds the harness) holds agent files
   (.claude/, CLAUDE.md, CLAUDE.local.md, .mcp.json, AGENTS.md);
-- agent.rules: a write into a .claude/rules/ folder (a rule is a skill: project/skills/);
+- agent.rules: a write into a .claude/rules/ folder (a rule is a skill: harness/mcp/skill_docs/);
 - agent.memory: a write into a memory/ folder of .claude (a point to keep is a note, kept in SQL);
 - agent.registry: a write to the behaviour registry file (.claude/project/behaviors.json: add test, behaviors add);
 - agent.anchor: a write to what decides which code a session runs: anchor.py beside a .claude that holds a harness,
