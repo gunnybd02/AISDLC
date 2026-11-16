@@ -15,15 +15,18 @@ types and their documentation only.
 | Behaviour | an entry of the behaviour registry of a plan | utils/plan/grants.py |
 | Receipt | the result of one verify run | utils/plan/verify.py |
 | StoreRecord, ExportCopy, SavedCopy | a ledger copy for the store, and what the store holds | utils/ledger/store.py |
+| GitJudge, CommitJudge | the rules' verdict on a git command, on a commit | assemble/engine/wire_mcp.py |
+| PlanStore | the ledger port; its parts and their methods are in shapes_store.py | assemble/engine/ports.py |
 """
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Optional, Protocol, TypedDict, TypeVar
 
+from harness.utils.shapes_store import DeskStore, LedgerAccess, PlanFacts, TicketStore
+
 if TYPE_CHECKING:
-    from harness.utils.contracts import Event, Finding, Verdict
+    from harness.utils.contracts import Verdict
     from harness.utils.ledger.recorder import Recorder
 
 T = TypeVar("T")
@@ -39,6 +42,10 @@ Grant = tuple[str, str]
 
 Change = Callable[[sqlite3.Connection, "Recorder"], T]
 """A write to the ledger: change(con, rec) runs inside one transaction; rec inserts rows (chained ones too)."""
+
+RawChange = tuple[Optional[str], Optional[str], Optional[str]]
+"""(old mode, new mode, new blob id) of one path a git diff changes (utils/git/facts.py raw_changes); a mode is None
+where the path is absent, the blob None when the change deletes it."""
 
 
 class PlanBehaviour(TypedDict, total=False):
@@ -92,7 +99,8 @@ class Revision(TypedDict, total=False):
     """A kept revision of a desk plan (pl_plan_revs) with its newest event (pl_plan_events): plan_id is the desk id
     (pd-...), rev the revision number, sid the session that presented it, sha the hash of its items, at the time in ms,
     revisions how many it has, event and event_rev the newest event and the revision it was for. question is added
-    for a waiting revision: the form question that approves it."""
+    for a waiting revision: the form question that approves it; ref for an open plan (utils/plan/life.py): the plan
+    number of its newest approval, or None."""
     plan_id: str
     rev: int
     sid: str
@@ -103,6 +111,7 @@ class Revision(TypedDict, total=False):
     event: Optional[str]
     event_rev: Optional[int]
     question: str
+    ref: Optional[int]
 
 
 class ApprovedPlan(PlanItems, total=False):
@@ -123,7 +132,8 @@ class Ticket(TypedDict, total=False):
     """The run of one approved plan (pl_tickets body; utils/plan/tickets.py): state open or closed; phase prepare,
     execute or deliver; the plan in force; draft (the desk id) and rootId; step (from 0); the commits, skips and done
     steps; noted (commits git.commit made, waiting for step_done); stepCommits by step; closeReason (delivered,
-    abandoned, superseded); what a superseded ticket carried over (priorCommits, spentPlan)."""
+    abandoned, superseded); what a superseded ticket carried over (priorCommits, spentPlan); backs how many times a
+    write sent it back from deliver to execute, and backTold, set False each time it goes back."""
     id: str
     sid: str
     seq: int
@@ -143,6 +153,8 @@ class Ticket(TypedDict, total=False):
     spentPlan: int
     freshApproval: bool
     units: list[str]
+    backs: int
+    backTold: bool
 
 
 class Behaviour(TypedDict, total=False):
@@ -211,8 +223,15 @@ class GitJudge(Protocol):
     """judge(repo, words): the rules' verdict on running `git <words>` in the repository repo (wire_mcp git_event)."""
 
     def __call__(self, repo: str, words: list[str]) -> Verdict:
-        """Judge one git command; the verdict says whether it may run, needs the user's word, or may not."""
-        ...
+        """Judge one git command; the verdict says whether it may run, needs the user's word, or may not.
+
+        Args:
+            repo: the repository the command runs in.
+            words: the words after `git`.
+
+        Returns:
+            The rules' verdict on the event HarnessGit.
+        """
 
 
 class CommitJudge(Protocol):
@@ -220,149 +239,19 @@ class CommitJudge(Protocol):
     banned words, agent files; wire_mcp commit_event)."""
 
     def __call__(self, repo: str, files: list[str], message: str) -> Verdict:
-        """Judge one commit before it is made."""
-        ...
+        """Judge one commit before it is made.
+
+        Args:
+            repo: the repository's root.
+            files: the paths to commit, from the repository root.
+            message: the commit message.
+
+        Returns:
+            The rules' verdict on the event HarnessCommit.
+        """
 
 
-class PlanStore(Protocol):
+class PlanStore(LedgerAccess, PlanFacts, DeskStore, TicketStore, Protocol):
     """The ledger port as utils, gear and mcp use it (assemble/engine/ports.py LedgerPort): the ledger's rows, the
-    plans, tickets, receipts and registry of the sessions. Every write is one transaction."""
-    path: Path
-
-    def rows(self, sql: str, args: tuple | list = ()) -> list[Row]:
-        """The rows of one read query; [] when there is no ledger yet."""
-        ...
-
-    def write(self, change: Change[T]) -> T:
-        """Run change(con, rec) in one transaction and give back what it returns."""
-        ...
-
-    def read(self, look: Callable[[sqlite3.Connection], T]) -> Optional[T]:
-        """look(con) on the ledger, or None when there is no ledger yet."""
-        ...
-
-    def touch_session(self, sid: str) -> None:
-        """Mark the session as the one at work now."""
-        ...
-
-    def session(self) -> str:
-        """The session the hook saw last ("" when none)."""
-        ...
-
-    def ticket(self, sid: str) -> Optional[Ticket]:
-        """The newest ticket of the session, or None."""
-        ...
-
-    def present(self, items: PlanItems, plan_id: Optional[str] = None, sid: str = "",
-                why: Optional[dict] = None) -> tuple[str, int, str]:
-        """Keep a revision of a desk plan: (plan id, revision, the form question)."""
-        ...
-
-    def revision(self, plan_id: str) -> Optional[Revision]:
-        """The newest revision of a desk plan, or None."""
-        ...
-
-    def drop(self, plan_id: str, rev: int, sid: str) -> None:
-        """Drop a waiting revision."""
-        ...
-
-    def feedback(self, plan_id: str, rev: int, sid: str, text: str) -> None:
-        """Keep the user's words on a revision."""
-        ...
-
-    def unread(self, plan_id: str, since: int) -> list[Row]:
-        """Feedback on the plan not answered since the revision since."""
-        ...
-
-    def waiting(self) -> list[Revision]:
-        """The revisions waiting for their approval, each with its question."""
-        ...
-
-    def approve(self, sid: str, waiting: Revision) -> int:
-        """Open an approved revision in the session; its plan number."""
-        ...
-
-    def approved(self, sid: str) -> Optional[ApprovedPlan]:
-        """The plan in force in the session with its grants, or None."""
-        ...
-
-    def grants(self, plan: ApprovedPlan) -> list[Grant]:
-        """The file grants of the plan, in the order given."""
-        ...
-
-    def approved_plan(self, plan_id: str) -> Optional[ApprovedPlan]:
-        """The plan in force whose desk id is plan_id, whatever its session, or None."""
-        ...
-
-    def protected(self, branch: str) -> bool:
-        """Whether the branch is protected."""
-        ...
-
-    def registry(self, plan: ApprovedPlan) -> dict[str, Behaviour]:
-        """The behaviour registry of the plan: {behaviour id: entry}."""
-        ...
-
-    def changed_files(self, plan: ApprovedPlan) -> list[str]:
-        """The files of the plan's root that differ from HEAD."""
-        ...
-
-    def door(self, sid: str, plan: ApprovedPlan, grants: tuple | list = (), behaviors: tuple | list = ()) -> None:
-        """Keep the rows of one CLI door: file grants (op, path, why) and behaviour rows (op, id, entry)."""
-        ...
-
-    def is_home(self, repo: str) -> bool:
-        """Whether repo is the repository that holds the harness."""
-        ...
-
-    def note_commit(self, sid: str, plan: ApprovedPlan, repo: str, sha: str) -> None:
-        """Keep a commit git.commit made; step_done adopts it."""
-        ...
-
-    def step_commit(self, sid: str, ticket: Ticket, plan: ApprovedPlan, repo: str, sha: Optional[str],
-                    fixing: bool) -> Ticket:
-        """Keep the step's commit and move the ticket on; the ticket after."""
-        ...
-
-    def step_skip(self, sid: str, ticket: Ticket, plan: ApprovedPlan, ids: list[str], why: str) -> Ticket:
-        """Give the current step up; the ticket after."""
-        ...
-
-    def close_plan(self, sid: str, ticket: Ticket, reason: str, facts: dict) -> None:
-        """Close the ticket's plan as the user answered the close form."""
-        ...
-
-    def holder(self, plan_id: str) -> Optional[Ticket]:
-        """The newest ticket that holds the desk plan, open or closed, or None."""
-        ...
-
-    def end_plan(self, plan: Revision, how: str, abandon: bool = False) -> None:
-        """End a desk plan with the event how (delivered or dropped)."""
-        ...
-
-    def back(self, sid: str) -> None:
-        """Send a ticket in deliver back to execute."""
-        ...
-
-    def decision(self, event: Event, plan: Optional[ApprovedPlan], finding: Finding, verdict: str) -> None:
-        """Keep one finding of a hook call with the word Claude Code was given."""
-        ...
-
-    def keep_verify(self, plan: ApprovedPlan, receipt: Receipt) -> None:
-        """Keep a verify receipt of the plan."""
-        ...
-
-    def green_receipt(self, plan: ApprovedPlan) -> Optional[Receipt]:
-        """The newest passing receipt of the plan ({ok, files}), or None."""
-        ...
-
-    def receipt(self, plan: ApprovedPlan) -> Optional[Receipt]:
-        """The newest receipt of the plan ({ok, files}), or None."""
-        ...
-
-    def committed(self, sha: str) -> bool:
-        """Whether the ledger keeps the commit sha."""
-        ...
-
-    def deliver(self, sid: str, plan: ApprovedPlan, repo: str, sha: str) -> None:
-        """Keep the plan's commit and close its ticket delivered."""
-        ...
+    plans, tickets, receipts and registry of the sessions. Every write is one transaction. Its methods are documented
+    by part in shapes_store.py (LedgerAccess, PlanFacts, DeskStore, TicketStore)."""

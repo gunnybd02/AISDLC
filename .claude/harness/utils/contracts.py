@@ -1,7 +1,12 @@
 """What the blocks share: the event of a hook, a finding, a verdict, and the base classes of a translator, a detector
 and a port. The verdict words live here and in gear/decide/arbiter.py only (verdict_net)."""
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import Any
+
+from harness.utils.shapes import Facts
 
 ALLOW, ASK, REFUSE = "allow", "ask", "refuse"
 VERDICTS = (ALLOW, ASK, REFUSE)  # from the weakest to the strongest
@@ -39,7 +44,15 @@ class Translator(ABC):
     """Describes what a tool call does, as facts; it never judges."""
 
     @abstractmethod
-    def translate(self, event: Event) -> dict:
+    def translate(self, event: Event) -> Facts:
+        """Describe one hook call as facts.
+
+        Args:
+            event: the hook call of Claude Code.
+
+        Returns:
+            The facts this translator gives, by fact name ({} when the call is none of its business).
+        """
         ...
 
 
@@ -47,7 +60,16 @@ class Detector(ABC):
     """Reports findings about an event and its facts; it never judges."""
 
     @abstractmethod
-    def detect(self, event: Event, facts: dict) -> list:
+    def detect(self, event: Event, facts: Facts) -> list[Finding]:
+        """Report what this detector sees in one hook call.
+
+        Args:
+            event: the hook call of Claude Code.
+            facts: what the translators and ports said about the call, by fact name.
+
+        Returns:
+            The findings, [] when there is nothing to report.
+        """
         ...
 
 
@@ -56,7 +78,15 @@ class Port(ABC):
     given as a view the detector calls only when the call needs it."""
 
     @abstractmethod
-    def read(self, event: Event) -> dict:
+    def read(self, event: Event) -> Facts:
+        """Read the facts this port gives for one hook call.
+
+        Args:
+            event: the hook call of Claude Code.
+
+        Returns:
+            The facts by fact name; a fact that costs a read may be a callable view.
+        """
         ...
 
 
@@ -86,22 +116,56 @@ class McpAction(ABC):
     effect = READ
 
     @abstractmethod
-    def run(self, ctx: ActionContext, args: dict) -> str:
+    def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
+        """Do the action.
+
+        Args:
+            ctx: the ports the action names in needs.
+            args: the arguments of the call, already checked against args_schema.
+
+        Returns:
+            The text for the model.
+
+        Raises:
+            ActionError: the action will not do what it was asked; the model reads the message.
+        """
         ...
 
 
-def judged_allow(verdict):
+def judged_allow(verdict: Verdict) -> bool:
     """Whether a verdict lets a write action run: an allow that a rule row decided. An allow with no finding is no rule's
-    decision (write-unjudged), and an ask is not an allow: the server cannot ask the user."""
+    decision (write-unjudged), and an ask is not an allow: the server cannot ask the user.
+
+    Args:
+        verdict: the verdict of the rules on the action's event.
+
+    Returns:
+        True only for an allow with at least one finding.
+    """
     return verdict.decision == ALLOW and bool(verdict.findings)
 
 
-def asked(verdict):
-    """Whether the rules want the user's word before the call runs."""
+def asked(verdict: Verdict) -> bool:
+    """Whether the rules want the user's word before the call runs.
+
+    Args:
+        verdict: the verdict of the rules on a call.
+
+    Returns:
+        True when the decision is ask.
+    """
     return verdict.decision == ASK
 
 
-def refused(verdict):
+def refused(verdict: Verdict) -> bool:
+    """Whether the rules stop the call.
+
+    Args:
+        verdict: the verdict of the rules on a call.
+
+    Returns:
+        True when the decision is refuse.
+    """
     return verdict.decision == REFUSE
 
 

@@ -4,22 +4,34 @@ pl_file_grants (add, drop) and pl_behaviors (add, retire). A wider change (a uni
 
 A behaviour of the registry is {what, how, why, tests: [file or file#name], status, step}; rows replay in order: add
 merges and unions tests, retire and skip set the status (active, pending, skipped, retired)."""
+from __future__ import annotations
+
 import json
 import os
 import re
+from collections.abc import Iterable, Sequence
+from typing import Optional
 
-from harness.utils.plan.desk import BEHAVIOR_ID
+from harness.utils.plan.item_checks import BEHAVIOR_ID
 from harness.utils.plan.files import allows, relative
+from harness.utils.shapes import ApprovedPlan, Behaviour, PlanStore
 
 LONGEST_WHY = 200
 
 
 class DoorError(ValueError):
-    pass
+    """A CLI door refuses its arguments; the message says why."""
 
 
-def replay(rows):
-    """{id: behaviour} from the pl_behaviors rows (op, id, entry), in the order they were written."""
+def replay(rows: Iterable[tuple[str, str, Optional[str]]]) -> dict[str, Behaviour]:
+    """{id: behaviour} from the pl_behaviors rows (op, id, entry), in the order they were written.
+
+    Args:
+        rows: (op, behaviour id, entry as JSON or None) of each row; op add, skip or retire (others change nothing).
+
+    Returns:
+        {behaviour id: Behaviour}; a new entry starts active with no test.
+    """
     out = {}
     for op, bid, entry in rows:
         entry = json.loads(entry or "{}")
@@ -33,8 +45,16 @@ def replay(rows):
     return out
 
 
-def test_missing(root, test):
-    """Why a test (file or file#name, from the root) is missing, or "": no file, or no test of that name in it."""
+def test_missing(root: str, test: str) -> str:
+    """Why a test (file or file#name, from the root) is missing, or "": no file, or no test of that name in it.
+
+    Args:
+        root: the plan's root.
+        test: "file" or "file#name" from the root; a name ending in * is a prefix.
+
+    Returns:
+        "<file> does not exist", "<file> has no test <name>", or "" when it is there.
+    """
     file, _, name = test.partition("#")
     path = os.path.join(root, file)
     if not os.path.isfile(path):
@@ -49,15 +69,37 @@ def test_missing(root, test):
     return "" if found else f"{file} has no test {name}"
 
 
-def why_of(why):
+def why_of(why: Optional[str]) -> str:
+    """The --why of a door, checked.
+
+    Args:
+        why: the reason given.
+
+    Returns:
+        The reason without spaces around it.
+
+    Raises:
+        DoorError: it is empty, more than one line, or longer than LONGEST_WHY.
+    """
     text = str(why or "").strip()
     if not text or "\n" in text or len(text) > LONGEST_WHY:
         raise DoorError(f"--why is one line of at most {LONGEST_WHY} characters")
     return text
 
 
-def path_of(plan, path):
-    """The path from the plan's root of an absolute file path the plan may be widened with."""
+def path_of(plan: ApprovedPlan, path: str) -> str:
+    """The path from the plan's root of an absolute file path the plan may be widened with.
+
+    Args:
+        plan: the plan in force; its root is read.
+        path: an absolute file path.
+
+    Returns:
+        The path from the plan's root with forward slashes.
+
+    Raises:
+        DoorError: not absolute, a folder, outside the plan's root, or under .git.
+    """
     if not os.path.isabs(str(path)):
         raise DoorError(f"{path} is not an absolute path")
     if os.path.isdir(path):
@@ -70,19 +112,61 @@ def path_of(plan, path):
     return rel.replace("\\", "/")
 
 
-def known(plan, registry, bid):
+def known(plan: ApprovedPlan, registry: dict[str, Behaviour], bid: str) -> None:
+    """Check that a behaviour is named by the plan or the registry.
+
+    Args:
+        plan: the plan in force; its behaviors are read.
+        registry: the plan's behaviour registry.
+        bid: the behaviour id.
+
+    Raises:
+        DoorError: neither names it.
+    """
     if bid not in registry and bid not in {b["id"] for b in plan.get("behaviors", [])}:
         raise DoorError(f"no behaviour {bid} in the plan or the registry")
 
 
-def add_file(port, sid, plan, path, behavior, why):
+def add_file(port: PlanStore, sid: str, plan: ApprovedPlan, path: str, behavior: str, why: Optional[str]) -> str:
+    """The door `add file`: widen the plan with one file, for a behaviour.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id.
+        plan: the plan in force.
+        path: the file's absolute path.
+        behavior: the id of the behaviour it serves (in the plan or the registry).
+        why: the reason, one line.
+
+    Returns:
+        The text for the user: "<path> is a file of plan <id> now ([<behavior>])."
+
+    Raises:
+        DoorError: a bad path or reason, or an unknown behaviour.
+    """
     rel, text = path_of(plan, path), why_of(why)
     known(plan, port.registry(plan), behavior)
     port.door(sid, plan, grants=[("add", os.path.abspath(path), f"[{behavior}] {text}")])
     return f"{rel} is a file of plan {plan['plan_id']} now ([{behavior}])."
 
 
-def add_test(port, sid, plan, target, behavior, what):
+def add_test(port: PlanStore, sid: str, plan: ApprovedPlan, target: str, behavior: str, what: Optional[str]) -> str:
+    """The door `add test`: widen the plan with a test file and record it for a behaviour (pending until it exists).
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id.
+        plan: the plan in force.
+        target: the test's absolute path, with "#name" for one test in it.
+        behavior: the behaviour id (a.b-c).
+        what: what the test checks.
+
+    Returns:
+        The text for the user: "behaviour <id>: test <test> added (active|pending)."
+
+    Raises:
+        DoorError: a bad path, behaviour id or what, or a named test missing from an existing file.
+    """
     path, _, name = str(target).partition("#")
     rel = path_of(plan, path)
     if not BEHAVIOR_ID.match(str(behavior or "")):
@@ -99,7 +183,22 @@ def add_test(port, sid, plan, target, behavior, what):
     return f"behaviour {behavior}: test {test} added ({status})."
 
 
-def drop_file(port, sid, plan, path, why):
+def drop_file(port: PlanStore, sid: str, plan: ApprovedPlan, path: str, why: Optional[str]) -> str:
+    """The door `add drop-file`: take an unchanged file out of the plan.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id.
+        plan: the plan in force.
+        path: the file's absolute path.
+        why: the reason, one line.
+
+    Returns:
+        The text for the user: "<path> left plan <id>."
+
+    Raises:
+        DoorError: a bad path or reason, not a file of the plan, or the file is changed.
+    """
     rel, text = path_of(plan, path), why_of(why)
     if not allows(plan, rel):
         raise DoorError(f"{rel} is not a file of the plan")
@@ -109,7 +208,22 @@ def drop_file(port, sid, plan, path, why):
     return f"{rel} left plan {plan['plan_id']}."
 
 
-def retire_test(port, sid, plan, bid, why):
+def retire_test(port: PlanStore, sid: str, plan: ApprovedPlan, bid: str, why: Optional[str]) -> str:
+    """The doors `add retire-test` and `behaviors retire`: retire an active or pending behaviour.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id.
+        plan: the plan in force.
+        bid: the behaviour id.
+        why: the reason, one line.
+
+    Returns:
+        The text for the user: "behaviour <id> is retired."
+
+    Raises:
+        DoorError: a bad reason, no such behaviour in the registry, or it is neither active nor pending.
+    """
     text, registry = why_of(why), port.registry(plan)
     if bid not in registry:
         raise DoorError(f"no behaviour {bid} in the registry")
@@ -119,7 +233,26 @@ def retire_test(port, sid, plan, bid, why):
     return f"behaviour {bid} is retired."
 
 
-def behaviors_add(port, sid, plan, bid, what, how, why, tests):
+def behaviors_add(port: PlanStore, sid: str, plan: ApprovedPlan, bid: str, what: Optional[str], how: Optional[str],
+                  why: Optional[str], tests: Sequence[str]) -> str:
+    """The door `behaviors add`: add an active behaviour whose tests all exist.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id.
+        plan: the plan in force.
+        bid: the behaviour id (a.b-c).
+        what: what it does.
+        how: how it is proven.
+        why: why it matters.
+        tests: its tests, "file" or "file#name" from the plan's root.
+
+    Returns:
+        The text for the user: "behaviour <id> added (<n> test(s))."
+
+    Raises:
+        DoorError: a bad id, a missing field or test list, or a test that does not exist.
+    """
     if not BEHAVIOR_ID.match(str(bid or "")):
         raise DoorError(f"{bid!r} is not a behaviour id (a.b-c)")
     if not all(str(x or "").strip() for x in (what, how, why)) or not tests:
@@ -133,7 +266,16 @@ def behaviors_add(port, sid, plan, bid, what, how, why, tests):
     return f"behaviour {bid} added ({len(tests)} test(s))."
 
 
-def behaviors_list(port, plan):
+def behaviors_list(port: PlanStore, plan: ApprovedPlan) -> str:
+    """The door `behaviors list`: the plan's behaviour registry, one line each.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        plan: the plan in force.
+
+    Returns:
+        "<id> [<status>] <what> - <tests>" per behaviour, sorted by id; a sentence when there is none.
+    """
     registry = port.registry(plan)
     if not registry:
         return "No behaviour in the registry of this plan."
@@ -141,8 +283,16 @@ def behaviors_list(port, plan):
                      for bid, b in sorted(registry.items()))
 
 
-def behaviors_check(port, plan):
-    """(lines, how many active behaviours lost a test)."""
+def behaviors_check(port: PlanStore, plan: ApprovedPlan) -> tuple[list[str], int]:
+    """(lines, how many active behaviours lost a test).
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        plan: the plan in force.
+
+    Returns:
+        (one "<id>: <problem>" line per missing test, or one line saying all are there; the number of problems).
+    """
     gone = [f"{bid}: {problem}" for bid, b in sorted(port.registry(plan).items()) if b["status"] == "active"
             for problem in (test_missing(plan["root"], t) for t in b["tests"]) if problem]
     return (gone or ["Every active behaviour has its tests."]), len(gone)

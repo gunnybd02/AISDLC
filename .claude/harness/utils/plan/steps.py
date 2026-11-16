@@ -12,8 +12,12 @@ harness is the one writer of these commits. Refused, in order:
   added line, an AI mark or a banned word in the message, agent files in a unit's commit.
 A fix: the step was committed, the ticket went back to execute (a write in deliver), and plan files changed again.
 step_skip {why} gives the current step up: its behaviours are kept skipped, and the ticket moves on (no close)."""
+from __future__ import annotations
+
 import os
 import re
+from collections.abc import Sequence
+from typing import Optional
 
 from harness.utils.contracts import asked, refused
 from harness.utils.git.branches import current
@@ -24,6 +28,7 @@ from harness.utils.plan.files import matches
 from harness.utils.plan.grants import test_missing
 from harness.utils.plan.tickets import EXECUTE, approved_plan, steps_of
 from harness.utils.plan.verify import dirty
+from harness.utils.shapes import ApprovedPlan, CommitJudge, PlanBehaviour, PlanStore, Step, Ticket
 
 LONGEST_MESSAGE = 2000
 NO_PLAN = "no plan in force in this session: present one, and the user approves it in the form"
@@ -31,10 +36,22 @@ NOT_EXECUTE = "only a step in Execute can be done or skipped (the ticket is in {
 
 
 class StepError(ValueError):
-    pass
+    """step_done or step_skip refuses; the message starts with the refusal's code where it has one."""
 
 
-def in_force(port, sid):
+def in_force(port: PlanStore, sid: str) -> tuple[Ticket, ApprovedPlan]:
+    """The session's ticket and its plan in force, in execute.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id.
+
+    Returns:
+        (the ticket, its plan with its grants).
+
+    Raises:
+        StepError: no plan in force, or the ticket is not in execute.
+    """
     ticket = port.ticket(sid) if sid else None
     plan = approved_plan(ticket)
     if plan is None:
@@ -44,17 +61,35 @@ def in_force(port, sid):
     return ticket, {**plan, "grants": port.grants(plan)}
 
 
-def step_behaviors(plan, n):
-    """The behaviours the step n (from 0) owes: its own, or all of them when the plan has no steps."""
+def step_behaviors(plan: ApprovedPlan, n: int) -> list[PlanBehaviour]:
+    """The behaviours the step n (from 0) owes: its own, or all of them when the plan has no steps.
+
+    Args:
+        plan: the plan in force.
+        n: the step's index, from 0.
+
+    Returns:
+        The plan's behaviours of step n + 1 (one with no step belongs to the last step).
+    """
     if not plan.get("steps"):
         return list(plan.get("behaviors", []))
     return [b for b in plan.get("behaviors", []) if b.get("step", len(plan["steps"])) == n + 1]
 
 
-def owed(port, plan, n, files):
+def owed(port: PlanStore, plan: ApprovedPlan, n: int, files: Sequence[str]) -> list[str]:
     """What the step n still owes before its commit of files (paths from the root): each behaviour of the step active
     with tests that exist (the registry's, else the plan's), every pending or gone behaviour of the plan, and a green
-    verify that saw the current content of every file to commit."""
+    verify that saw the current content of every file to commit.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        plan: the plan in force with its grants.
+        n: the step's index, from 0.
+        files: the files to commit, from the plan's root.
+
+    Returns:
+        One line per debt; [] when the step owes nothing.
+    """
     out, registry = [], port.registry(plan)
     mine = {b["id"] for b in step_behaviors(plan, n)}
     for bid in sorted(mine | set(registry)):
@@ -81,9 +116,23 @@ def owed(port, plan, n, files):
     return out
 
 
-def step_done(port, sid, message, judge=None):
-    """judge(repo, files, message) -> the verdict of the rules on the commit; None judges nothing (tests of the steps
-    alone)."""
+def step_done(port: PlanStore, sid: str, message: Optional[str], judge: Optional[CommitJudge] = None) -> str:
+    """Commit the current step of the session's plan (or adopt the commits git.commit made) and open the next.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id.
+        message: the step's commit message.
+        judge: judge(repo, files, message) -> the verdict of the rules on the commit; None judges nothing (tests of
+            the steps alone).
+
+    Returns:
+        The text for the model: what was committed or adopted, and which step is open or that the plan is delivered.
+
+    Raises:
+        StepError: a refusal of the list above, with its code.
+        GitError: git fails while committing.
+    """
     text = str(message or "").strip()
     if not text:
         raise StepError("step-no-message: say what the step's commit does")
@@ -138,7 +187,18 @@ def step_done(port, sid, message, judge=None):
     return done_text(after, n, steps, head_line)
 
 
-def done_text(after, n, steps, head_line):
+def done_text(after: Ticket, n: int, steps: list[Step], head_line: str) -> str:
+    """The text of a done step.
+
+    Args:
+        after: the ticket after the step's commit.
+        n: the index of the step done, from 0.
+        steps: the plan's steps.
+        head_line: the first sentence (what was committed or adopted).
+
+    Returns:
+        head_line and what comes next: the plan delivered, the next step open, or the ticket in deliver.
+    """
     if after["state"] == "closed":
         return f"{head_line} The last step is done; the plan is delivered and its ticket is closed (no form is asked)."
     if after["phase"] == "execute":
@@ -146,8 +206,17 @@ def done_text(after, n, steps, head_line):
     return f"{head_line} The last step is done; the ticket is in Deliver: push it (git.push) and open its merge request."
 
 
-def committed_files(repo, plan, sha):
-    """The files (from the plan's root) the commit sha changes."""
+def committed_files(repo: str, plan: ApprovedPlan, sha: str) -> list[str]:
+    """The files (from the plan's root) the commit sha changes.
+
+    Args:
+        repo: the repository's root.
+        plan: the plan in force; its root is read.
+        sha: the commit.
+
+    Returns:
+        The changed paths under the plan's root, from it; [] when git fails.
+    """
     prefix = os.path.relpath(os.path.realpath(plan["root"]), os.path.realpath(repo)).replace("\\", "/")
     try:
         names = git(repo, "show", "--name-only", "--format=", sha).split()
@@ -156,7 +225,20 @@ def committed_files(repo, plan, sha):
     return [n if prefix == "." else n[len(prefix) + 1:] for n in names if prefix == "." or n.startswith(prefix + "/")]
 
 
-def step_skip(port, sid, why):
+def step_skip(port: PlanStore, sid: str, why: Optional[str]) -> str:
+    """Give the current step up: its behaviours are kept skipped and the ticket moves on.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id.
+        why: the reason, one line of at most 200 characters.
+
+    Returns:
+        The text for the model: the step given up and which step is open, or that the ticket is in deliver.
+
+    Raises:
+        StepError: a bad reason, no plan in force, not in execute, or plan files are changed.
+    """
     text = str(why or "").strip()
     if not text or "\n" in text or len(text) > 200:
         raise StepError("why is one line of at most 200 characters")

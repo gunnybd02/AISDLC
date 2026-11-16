@@ -1,6 +1,11 @@
 """The files a git command changes: a git that only reads writes nothing; one that changes the work tree, writes a file
 or runs a program is Unseen."""
-from harness.utils.shell.paths import Unseen
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+from harness.utils.shell.command import Word
+from harness.utils.shell.paths import Target, Unseen
 
 GIT_NO_FILES = frozenset((
     "status diff log show rev-parse ls-files ls-tree blame grep describe shortlog cat-file rev-list for-each-ref "
@@ -10,7 +15,19 @@ GIT_GLOBAL = {"--no-pager", "--paginate", "-p", "--no-optional-locks"}
 GIT_RUNS = ("--upload-pack", "--receive-pack", "--exec")
 
 
-def git(ws):
+def git(ws: Sequence[Word]) -> list[Target]:
+    """The places a git command writes: none for a git that only reads.
+
+    Args:
+        ws: the words after git.
+
+    Returns:
+        [] (a git the reader lets through writes no file it names).
+
+    Raises:
+        Unseen: a global option it does not follow, a subcommand that changes the work tree or reaches another
+            place, or an option that writes a file or runs a program.
+    """
     i = 0
     while i < len(ws) and ws[i].text.startswith("-"):
         if ws[i].text == "-C":

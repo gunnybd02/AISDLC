@@ -1,15 +1,27 @@
 """Approval: the user's answer to the form question of a waiting plan revision. The approval word approves it for the
 session; any other answer approves nothing, is kept as feedback and asks for a revision. A peer's message never approves: only the answers
 of a form, read from its PostToolUse, reach here."""
+from __future__ import annotations
+
 from harness.utils.contracts import YES
+from harness.utils.shapes import PlanStore
 
 APPROVED = "GATE: the user approved plan {plan} rev {rev} in the form. You may edit its files: {files}."
 REFINE = 'GATE: the user did not approve plan {plan} rev {rev}; they answered "{label}". Revise it, then ask again.'
 
 
-def approvals(port, session, answers):
+def approvals(port: PlanStore, session: str, answers: dict[str, str]) -> list[str]:
     """The notes of the user's answers to the form questions of the waiting plan revisions: the approval word approves
-    a revision for the session (the only door that opens a plan); any other answer asks for a revision."""
+    a revision for the session (the only door that opens a plan); any other answer asks for a revision.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        session: the Claude Code session id that asked the form.
+        answers: {form question: the label the user chose} of an AskUserQuestion call.
+
+    Returns:
+        One APPROVED or REFINE note per waiting revision whose question was answered.
+    """
     notes = []
     for waiting in port.waiting() if answers else []:
         label = answers.get(waiting["question"])
