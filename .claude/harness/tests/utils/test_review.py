@@ -45,10 +45,6 @@ class FakeGitHub:
         if method == "POST":
             self.head, self.base = fields["head"], fields["base"]
             return {"number": 5, "html_url": f"{URL}/pull/5"}
-        if method == "GET" and "/contents/" in path:
-            return {"sha": "blob1"}
-        if method == "DELETE":
-            return {}
         if method == "GET":
             return {"merged": self.merged}
         if self.conflict:
@@ -119,9 +115,12 @@ class ReviewTest(Scenario):
         accepted = review.accept(self.port, "s1", "hello", UNITS, github)
         self.assertIn("pull request #5", accepted)
         self.assertIn("receipt is kept in the ledger and taken off the branch", accepted)
-        delete = [c for c in github.calls if c[0] == "DELETE"][0]
-        self.assertEqual((delete[1], delete[2]["branch"], delete[2]["sha"]),
-                         ("repos/o/r/contents/.harness/handback/hello.json", f"orch/p{self.plan}/hello", "blob1"))
+        self.assertNotIn("DELETE", [c[0] for c in github.calls])  # a git commit, not a file API
+        on_branch = git(self.origin, "ls-tree", "-r", "--name-only", f"orch/p{self.plan}/hello")
+        self.assertNotIn(".harness/handback/hello.json", on_branch)
+        self.assertIn("orch-probe/hello.py", on_branch)
+        self.assertIn("Keep the receipt of hello out of work",
+                      git(self.origin, "log", "-1", "--format=%s", f"orch/p{self.plan}/hello"))
         self.assertEqual(self.port.ticket("s1")["crew"]["hello"]["receipt"]["name"], "hello")
         method, path, fields = github.calls[0]
         self.assertEqual((method, path, fields["head"], fields["base"]),

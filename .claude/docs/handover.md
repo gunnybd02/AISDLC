@@ -53,8 +53,9 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #31 | Units in `project.json` (`repo`, `path`, `verify`, `base`: any repository, or a folder of a shared one); orchestra gives a child its unit (clone, folder, test command, PR target); fixes from the live run: a child is never asked (the arbiter turns a question into a refusal with "go on", `child.no_keyboard`), its card plan waits for its handback, it keeps its role on a new ticket, the brief says to verify from the shell |
 | #32 | Orchestra, part 3, the parent: `check` (the receipt on the child's branch, the AC behaviours, the tests rerun by the parent), `accept` (one pull request into the unit's base, through `gh api`), `reject` (3 rounds), `answer`, `forget`, `read`, and `land`, the final route (merge every pull request, a conflict stops it for the parent to resolve or reject, each unit's tests on the merged base, the plan closes delivered) |
 | #34 | Orchestra, part 4: `release`, `remove` (one checklist the user ticks, then the `archive_session` calls), `digest`; the check-in for a child that dies silently; receipts kept out of the base (accept takes the file off the branch, the ledger keeps it); the skill `orchestrate`; the test leftovers `orch-probe/` and `.harness/handback/` removed from main |
+| #37 | Orchestra fixes from the two-child live run: `accept` takes the receipt off the child's branch with a git commit and a branch push (the cloud's proxy refuses GitHub's file API); `take` starts a child's branch from its unit's base |
 
-442 tests pass (1 skipped, Windows only); doctor: 0 errors.
+443 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 ## The cloud, as it runs now
 

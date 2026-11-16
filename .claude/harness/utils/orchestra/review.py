@@ -16,11 +16,11 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError, repo_of
-from harness.utils.git.run import git
+from harness.utils.git.run import GitError, git
 from harness.utils.orchestra import crew
 from harness.utils.orchestra.brief import branch
 from harness.utils.orchestra.card import card_of, unit_spec
-from harness.utils.orchestra.fetch import checkout, rerun
+from harness.utils.orchestra.fetch import FetchError, checkout, rerun
 from harness.utils.orchestra.work import RECEIPTS, find_receipt
 from harness.utils.plan import tickets
 from harness.utils.shapes import Card, CrewEntry, PlanStore, Ticket
@@ -213,33 +213,55 @@ def accept(port: PlanStore, sid: str, name: str, units: dict[str, Any], github: 
         raise ReviewError(f"the pull request was not opened: {e}") from e
     set_entry(port, sid, name, card, {"state": crew.ACCEPTED, "pr": {"number": pr.get("number"),
               "url": pr.get("html_url"), "repo": repo_of(url), "base": unit.get("base", "main")}}, crew.ACCEPTED)
-    kept = drop_receipt(github, repo_of(url), ref, name)
+    kept = drop_receipt(unit, repo, ref, name)
     return (f"{name} accepted: pull request #{pr.get('number')} ({pr.get('html_url')}) from {ref} into "
             f"{unit.get('base', 'main')}. {kept} Nothing is merged yet: when every child is accepted, run('orchestra', "
             "'land', {}) merges the pull requests.")
 
 
-def drop_receipt(github: Callable[..., Any], repo: str, ref: str, name: str) -> str:
-    """Take the receipt off the child's branch through GitHub, so the merge does not carry it into the base; the
-    parent's ledger keeps it (the crew entry's receipt, from check).
+def drop_receipt(unit: dict[str, Any], repo: str, ref: str, name: str) -> str:
+    """Take the receipt off the child's branch with one git commit, pushed to the branch, so the merge does not carry
+    it into the base; the parent's ledger keeps it (the crew entry's receipt, from check). A plain branch push: no
+    file API (the cloud's proxy refuses GitHub's), and only the child's own orch/ branch is written.
 
     Args:
-        github: call(method, path, fields) -> the JSON answer.
-        repo: owner/name of the unit's repository.
+        unit: the unit's spec {repo, path, verify, base}.
+        repo: the parent's repository root.
         ref: the child's branch.
         name: the child's name.
 
     Returns:
         A sentence for the answer: taken off, or why not (then it lands with the merge).
     """
-    path = f"repos/{repo}/contents/{RECEIPTS}/{name}.json"
+    rel = f"{RECEIPTS}/{name}.json"
     try:
-        sha = github("GET", f"{path}?ref={ref}").get("sha")
-        github("DELETE", path, {"message": f"Keep the receipt of {name} out of the base", "sha": str(sha),
-                                "branch": ref})
-    except (GitHubError, AttributeError) as e:
-        return f"The receipt stays on the branch ({e}); it lands with the merge."
+        with checkout(unit, repo, ref) as folder:
+            if not git(folder, "ls-files", "--", rel).strip():
+                return "The branch holds no receipt to take off."
+            who = [] if git_or_empty(folder, "config", "user.email") else \
+                ["-c", "user.name=harness", "-c", "user.email=harness@localhost"]
+            git(folder, "rm", "-q", "--", rel)
+            git(folder, *who, "commit", "-q", "-m", f"Keep the receipt of {name} out of {unit.get('base', 'main')}")
+            git(folder, "push", "-q", "origin", f"HEAD:refs/heads/{ref}", timeout=300)
+    except (FetchError, GitError) as e:
+        return f"The receipt stays on the branch ({str(e)[-300:]}); it lands with the merge."
     return "Its receipt is kept in the ledger and taken off the branch."
+
+
+def git_or_empty(folder: str, *args: str) -> str:
+    """The output of a git command, or "" when it fails (an unset config value).
+
+    Args:
+        folder: the folder git runs in.
+        *args: the words after git.
+
+    Returns:
+        Its output, stripped, or "".
+    """
+    try:
+        return git(folder, *args).strip()
+    except GitError:
+        return ""
 
 
 def reject(port: PlanStore, sid: str, name: str, why: str) -> str:

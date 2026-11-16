@@ -197,8 +197,14 @@ Not built: the base proof of spec 14.6 (a test already green on the base); delet
 180 minutes) for a child that dies silently; the delivered answer of `land` tells it to delete it.
 
 **Receipts stay out of the base** (decided by the user on 2026-11-16). `check` keeps the receipt on the crew entry;
-`accept` opens the pull request, then deletes the receipt file from the child's branch through GitHub's contents API,
-so the merge does not carry it. When that fails, the answer says so and the receipt lands with the merge.
+`accept` opens the pull request, then takes the receipt off the child's branch with one git commit ("Keep the receipt
+of <name> out of <base>") pushed to that branch: a plain branch push, which the cloud's proxy allows (its GitHub file
+API is refused: found by the two-child live run). When that fails, the answer says so and the receipt lands with the
+merge.
+
+**A child's branch starts from its unit's base.** `take` makes a new `orch/p<plan>/<name>` from `origin/<base>`, so a
+pull request into a base that is not the default branch holds only the child's commits; a base not on origin starts
+it from HEAD, and the answer says which.
 
 ## 9. Limits
 
