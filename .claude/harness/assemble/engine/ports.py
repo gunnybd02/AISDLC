@@ -23,6 +23,7 @@ from harness.utils.plan import grants, opening, render, request, revisions, stop
 from harness.utils.plan.verify import dirty
 from harness.utils.plan.desk import new_id
 from harness.utils.plan.files import key, relative
+from harness.utils.ledger import store
 from harness.utils.ledger.db import Ledger
 from harness.utils.ledger.recorder import Recorder
 
@@ -352,4 +353,5 @@ class PlanState(Port):
 
     def read(self, event):
         return {"plan": self.port.approved(event.session), "state_dir": str(self.port.path.parent).replace("\\", "/"),
-                "git_view": self.git, "stop_owed": lambda plan: stop.unverified(self.port, plan), "banned": self.banned}
+                "git_view": self.git, "stop_owed": lambda plan: stop.unverified(self.port, plan), "banned": self.banned,
+                "store_owed": lambda: store.owed(self.port) if store.folder() else []}

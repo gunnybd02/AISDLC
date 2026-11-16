@@ -18,6 +18,7 @@
     "secret_scan",
     "mark_scan",
     "agent_files",
-    "drive_guard"
+    "drive_guard",
+    "store_guard"
   ]
 }

@@ -9,7 +9,7 @@ from harness.tests import CLAUDE_DIR
 
 PINNED = {
     "health.doctor": READ, "health.items": READ,
-    "ledger.db_query": READ, "ledger.plans_settle": WRITE, "ledger.export": WRITE,
+    "ledger.db_query": READ, "ledger.plans_settle": WRITE, "ledger.export": WRITE, "ledger.store_status": READ,
     "maint.grant": READ, "maint.status": READ,
     "plan.plan_present": WRITE, "plan.plan_status": READ, "plan.plan_revise": WRITE, "plan.plan_show": READ,
     "plan.plan_drop": WRITE,

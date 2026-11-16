@@ -1,4 +1,5 @@
 """h11.one-store: the ledger is read only through db_query, one read-only SELECT that never reads transcripts."""
+import json
 import os
 import sqlite3
 import unittest
@@ -77,19 +78,25 @@ class ExportActionTest(unittest.TestCase):
         self.assertTrue(lost.is_error)
         self.assertIn("is not a folder", lost.text)
 
-    def test_the_answer_is_the_drive_call_of_a_copy_with_the_ledgers_rows(self):
+    def test_the_answer_is_the_drive_call_of_a_copy_that_holds_its_own_record(self):
         for result, folder in ((self.export("folder-from-env-1"), "folder-from-env-1"),
-                               (self.export("folder-from-env-1", folder="folder-given-22"), "folder-given-22")):
+                               (self.export("folder-from-env-1", folder="folder-given-22", reason="push"),
+                                "folder-given-22")):
             self.assertFalse(result.is_error, result.text)
             self.assertIn(f"  parentId: {folder}", result.text.splitlines())
             self.assertIn("create_file", result.text)
         (copy,) = (self.work / ".harness-export").glob("s-export-test__*.db")  # one copy a session
+        self.assertRegex(copy.name, r"^s-export-test__[0-9a-f]{6}-002__\d{8}T\d{6}Z__push__nocommit__s[0-9a-f]{8}\.db$")
         self.assertEqual((self.work / ".harness-export" / ".gitignore").read_text(encoding="utf-8"), "*\n")
-        self.assertIn(f"base64Content: sha256:", result.text)
         self.assertIn(copy.resolve().as_posix(), result.text)
         con = sqlite3.connect(copy)
         self.assertEqual(con.execute("SELECT uid FROM pl_logs").fetchall(), [("u",)])
+        (text,) = con.execute("SELECT text FROM pl_notes WHERE kind = 'store.export' AND key = '2'").fetchone()
         con.close()
+        inside = json.loads(text)  # the copy says by itself who made it, when and why
+        self.assertEqual((inside["title"], inside["seq"], inside["session"], inside["reason"]),
+                         (copy.name, 2, "s-export-test", "push"))
+        self.assertTrue(self.export("folder-from-env-1", reason="later").is_error)
 
     def test_without_into_the_copy_goes_to_the_folder_the_call_is_made_from(self):
         here = os.getcwd()
@@ -100,12 +107,17 @@ class ExportActionTest(unittest.TestCase):
         self.assertFalse(result.is_error, result.text)
         self.assertEqual(len(list((self.work / ".harness-export").glob("*.db"))), 1)
 
-    def test_a_commits_answer_says_the_copy_is_due_only_with_a_store(self):
+    def test_the_status_reads_the_store_and_the_note_follows_a_push_only_with_a_store(self):
         from harness.mcp.actions.ledger import STORE_NOTE, store_note
         from harness.utils.contracts import ActionContext
+        self.export("folder-from-env-1")
+        result = self.run_action("ledger", "store_status")
+        self.assertFalse(result.is_error, result.text)
+        self.assertIn("Newest copy made: 1 - s-export-test__", result.text)
+        self.assertIn("Newest copy in the store: none.", result.text)
         self.assertEqual(store_note(ActionContext({"store": lambda: ""})), "")
         self.assertEqual(store_note(ActionContext({"store": lambda: "folder-id-123"})), STORE_NOTE)
-        self.assertIn("run('ledger', 'export', {})", STORE_NOTE)
+        self.assertIn("run('ledger', 'export', {reason: 'push'})", STORE_NOTE)
 
 
 if __name__ == "__main__":

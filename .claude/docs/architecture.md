@@ -237,7 +237,7 @@ judged.
 | `verify` | `run` |
 | `plan` | `step_done`, `step_skip`, `plan_close` |
 | `git` | `run`, `commit`, `push`, `mr_open` |
-| `ledger` | `db_query`, `plans_settle`, `export` |
+| `ledger` | `db_query`, `plans_settle`, `export`, `store_status` |
 | `maint` | `grant`, `status` |
 | `health` | `items`, `doctor` |
 

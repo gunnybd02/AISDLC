@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 CLAUDE_DIR = Path(__file__).resolve().parent.parent.parent
+os.environ.pop("HARNESS_DRIVE_FOLDER", None)  # the tests never see the user's store: one that needs a folder sets its own
 WINDOWS = os.name == "nt"
 
 
