@@ -24,7 +24,7 @@ anchor.py       the one file Claude Code runs; it routes to an entry of the rele
 ```
 run("plan", "plan_present", {plan})      the plan is data (utils/plan/desk.py: clean, normalize, check; tier light
                                          or full); the revision waits in the ledger with the session that presented
-                                         it; the answer is the ## Plan block (render.py) and the form call
+                                         it; the answer is the head line, the form call and the ## Plan block
                                          Approve plan "<title>" (<pd-id> rev N)?; plan_revise keeps rev+1 with only
                                          the given items, plan_drop stops a waiting plan, plan_show and plan_status
                                          read one

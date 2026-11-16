@@ -45,7 +45,7 @@ def record(con: sqlite3.Connection, rec: Recorder, plan_id: str, sid: str, items
     rec.insert(con, "pl_plan_revs", {"plan_id": plan_id, "rev": rev, "sid": sid, "at": now(),
                                      "items": json.dumps(items, sort_keys=True, ensure_ascii=False),
                                      "why": json.dumps(why or {}, ensure_ascii=False),
-                                     "sha": sha(block(items, plan_id, rev))})
+                                     "sha": sha(block(items))})
     return rev
 
 

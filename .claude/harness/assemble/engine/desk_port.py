@@ -55,7 +55,7 @@ class DeskPort(LedgerCore):
             self.event(con, rec, plan_id, "waiting", rev, sid=sid)
             if sid:
                 held = (json.loads(r[0]) for r in con.execute("SELECT body FROM pl_approval WHERE sid = ?", (sid,)))
-                opening.approval(con, sid, {**next(held, {"open": False}), "pending": render.block(items, plan_id, rev),
+                opening.approval(con, sid, {**next(held, {"open": False}), "pending": render.block(items),
                                             "pendingAge": 0, "tool": {"planId": plan_id, "rev": rev,
                                                                       "sha": revisions.newest(con, plan_id)["sha"]}})
             return rev

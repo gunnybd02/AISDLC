@@ -28,7 +28,7 @@ class OpeningTest(unittest.TestCase):
 
     def test_present_keeps_the_pending_block_and_the_tool(self):
         body = json.loads(self.rows("SELECT body FROM pl_approval WHERE sid = 's1'")[0]["body"])
-        self.assertIn("## Plan: Ship the parser", body["pending"])
+        self.assertIn("## Plan\n", body["pending"])
         self.assertEqual((body["tool"]["planId"], body["tool"]["rev"]), (self.plan_id, 1))
 
     def test_the_approval_writes_every_row_of_the_opening(self):

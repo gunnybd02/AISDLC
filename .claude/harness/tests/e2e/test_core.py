@@ -47,7 +47,7 @@ class OneCoreTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")  # it judges
         self.hook(self.clone, "UserPromptSubmit", "", {})
-        self.assertIn("waits for the user's approval", self.present(self.clone))
+        self.assertIn("is waiting for the user's approval", self.present(self.clone))
         self.assertEqual(len(LedgerPort(self.clone).waiting()), 1)  # kept in its own ledger
 
     def test_with_a_harness_installed_the_repository_copy_gives_way(self):
@@ -57,7 +57,7 @@ class OneCoreTest(unittest.TestCase):
         code, out, _ = self.write(core, project=False)  # the core's own hook, as the user's settings run it
         self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")
         self.hook(core, "UserPromptSubmit", "", {}, project=False)
-        self.assertIn("waits for the user's approval", self.present(self.clone))  # the copy's .mcp.json entry
+        self.assertIn("is waiting for the user's approval", self.present(self.clone))  # the copy's .mcp.json entry
         self.assertEqual(len(LedgerPort(core).waiting()), 1)  # the plan is in the core's ledger
         self.assertFalse((self.clone / "state" / "harness.db").exists())  # the copy keeps none
 
@@ -67,7 +67,7 @@ class OneCoreTest(unittest.TestCase):
         code, out, _ = self.write(self.clone, project=False)
         self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")
         self.hook(self.clone, "UserPromptSubmit", "", {}, project=False)
-        self.assertIn("waits for the user's approval", self.present(self.clone))  # its own server, no hand-over
+        self.assertIn("is waiting for the user's approval", self.present(self.clone))  # its own server, no hand-over
 
     def test_settings_that_name_no_harness_leave_the_repository_copy_the_core(self):
         for text in ("[1]", "{not json", json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command":
@@ -100,7 +100,7 @@ class OneCoreTest(unittest.TestCase):
         self.assertEqual(self.write(self.clone)[:2], (0, ""))  # the copy gives way to it
         run(old, json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": "s1", "cwd": str(self.repo)}),
             args=("hook",), env=self.env)
-        self.assertIn("waits for the user's approval", self.present(self.clone))
+        self.assertIn("is waiting for the user's approval", self.present(self.clone))
         self.assertEqual(len(LedgerPort(core).waiting()), 1)  # in the core's ledger, through its old path
 
     def test_a_release_built_before_the_entries_moved_still_runs(self):
