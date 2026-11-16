@@ -34,7 +34,7 @@ def is_bridge(tree: ast.Module) -> bool:
 
 
 def check(claude_dir: Path) -> list[str]:
-    """Every module of harness/ (with its nets) and entry/ that only passes names on.
+    """Every module of harness/ (with its nets) that only passes names on.
 
     Args:
         claude_dir: the .claude folder read.
@@ -43,4 +43,4 @@ def check(claude_dir: Path) -> list[str]:
         "bridges: <file> only passes names on; ..." lines.
     """
     return [f"bridges: {rel} only passes names on; import them from where they live"
-            for rel, tree in python(claude_dir, ("harness", "entry", "harness/nets")) if is_bridge(tree)]
+            for rel, tree in python(claude_dir, ("harness", "harness/nets")) if is_bridge(tree)]

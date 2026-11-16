@@ -1,7 +1,7 @@
 """hints: every function of the harness says what it takes and gives. Each parameter (but the self or cls of a method)
 and each return has a type hint, *args and **kwargs too; each function at module level and each method has a
 docstring. A function nested in another (a closure such as change(con, rec)) needs its hints only: the function
-around it documents it. The code read is harness/ with its nets (not its tests), the forwarders of entry/ and the
+around it documents it. The code read is harness/ with its nets (not its tests) and the
 anchor.
 
 The data the hints name are in harness/utils/shapes.py (PlanItems, ApprovedPlan, Ticket, Receipt, PlanStore...)."""
@@ -56,10 +56,10 @@ def problems(rel: str, tree: ast.AST) -> list[str]:
 
 
 def check(claude_dir: Path) -> list[str]:
-    """Every function of harness/ (tests left out), entry/ and the anchor beside the tree without full hints or, at
+    """Every function of harness/ (tests left out) and the anchor beside the tree without full hints or, at
     module level and in a class, without a docstring."""
     out = []
-    for rel, tree in python(claude_dir, ("harness", "harness/nets", "entry")):
+    for rel, tree in python(claude_dir, ("harness", "harness/nets")):
         out += problems(rel, tree)
     anchor = Path(claude_dir).resolve().parent / "anchor.py"
     if Path(claude_dir).name == ".claude" and anchor.is_file():

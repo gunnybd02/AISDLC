@@ -1,6 +1,6 @@
 """imports: mcp and gear import only themselves and utils; utils imports no block; assemble connects them (it loads
 mcp and gear through its loader, the one place of a dynamic import, and imports the nets only inside a function, so
-they never load on a hook call); an entry (harness/entry/, entry/) imports only assemble. It also reports a file that does not parse, for every
+they never load on a hook call); an entry (harness/entry/) imports only assemble. It also reports a file that does not parse, for every
 net."""
 from __future__ import annotations
 
@@ -29,10 +29,10 @@ def owner(rel: str) -> str:
         rel: the file's posix path from the .claude folder.
 
     Returns:
-        "entry" (harness/entry/ or entry/), the block's folder under harness/, or "harness" for a file right in it.
+        "entry" (harness/entry/), the block's folder under harness/, or "harness" for a file right in it.
     """
     parts = rel.split("/")
-    return "entry" if "entry" in parts[:2] else (parts[1] if len(parts) > 2 else "harness")
+    return "entry" if parts[:2] == ["harness", "entry"] else (parts[1] if len(parts) > 2 else "harness")
 
 
 def targets(node: ast.Import | ast.ImportFrom, rel: str) -> list[str]:
@@ -83,7 +83,7 @@ def dynamic(node: ast.AST) -> bool:
 
 def check(claude_dir: Path) -> list[str]:
     """Every import that breaks the connection rule (ALLOWED), a dynamic import outside DYNAMIC_OK, assemble importing
-    the nets at load time, and a file of harness/ or entry/ that does not parse.
+    the nets at load time, and a file of harness/ that does not parse.
 
     Args:
         claude_dir: the .claude folder read.
@@ -92,7 +92,7 @@ def check(claude_dir: Path) -> list[str]:
         "imports: <file>:<line> ..." lines.
     """
     out = []
-    for rel, path in files(claude_dir, (".py",), ("harness", "entry", "harness/nets")):
+    for rel, path in files(claude_dir, (".py",), ("harness", "harness/nets")):
         try:
             tree = ast.parse(read(path))
         except UnicodeDecodeError:

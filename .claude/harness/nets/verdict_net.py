@@ -43,7 +43,7 @@ def judging(node: ast.AST) -> str:
 def check(claude_dir: Path) -> list[str]:
     """Every place outside the owners that judges: "verdict: <file>:<line> <what>; only ... judges"."""
     out = []
-    for rel, tree in python(claude_dir, ("harness", "entry")):
+    for rel, tree in python(claude_dir, ("harness",)):
         if rel in OWNERS:
             continue
         hints = hinted(tree)

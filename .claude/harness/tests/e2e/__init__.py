@@ -13,7 +13,7 @@ def copy_tree(test, extra=None):
     base = tree(test, {})
     root = base / ".claude"
     root.mkdir()
-    for name in ("harness", "entry", "project"):
+    for name in ("harness", "project"):
         if (CLAUDE_DIR / name).is_dir():
             shutil.copytree(CLAUDE_DIR / name, root / name, ignore=shutil.ignore_patterns("__pycache__"))
     shutil.copy(CLAUDE_DIR / "project.json", root / "project.json")

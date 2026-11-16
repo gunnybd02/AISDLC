@@ -24,7 +24,7 @@ def docstrings(tree: ast.Module) -> set[int]:
 
 
 def check(claude_dir: Path) -> list[str]:
-    """Every string of harness/ and entry/ but config.py, docstrings aside, that names project.json.
+    """Every string of harness/ but config.py, docstrings aside, that names project.json.
 
     Args:
         claude_dir: the .claude folder read.
@@ -33,7 +33,7 @@ def check(claude_dir: Path) -> list[str]:
         "config: <file>:<line> names project.json; ..." lines.
     """
     out = []
-    for rel, tree in python(claude_dir, ("harness", "entry")):
+    for rel, tree in python(claude_dir, ("harness",)):
         if rel == DOOR:
             continue
         skip = docstrings(tree)
