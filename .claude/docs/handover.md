@@ -56,7 +56,7 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #37 | Orchestra fixes from the two-child live run: `accept` takes the receipt off the child's branch with a git commit and a branch push (the cloud's proxy refuses GitHub's file API); `take` starts a child's branch from its unit's base |
 | #38 | A delegated plan is done only when every child's database is in the Drive store: copies carry the plan marker `orch.<plan id>.<child or parent>`; a child uploads at handback; the hook reads Drive's own search answer to verify each child's copy; `land` delivers and `remove` archives only verified children (a dead child only with the user's Allow) |
 
-449 tests pass (1 skipped, Windows only); doctor: 0 errors.
+448 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 ## The cloud, as it runs now
 
