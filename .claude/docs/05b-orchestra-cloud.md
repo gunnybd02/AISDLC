@@ -3,7 +3,7 @@
 > How this harness builds the user's spec 05 (`05-orchestra.md` to `05-orchestra-4.md`), which assumes one PC.
 > Decided by the user on 2026-11-16: a child is a **cloud session**; the card travels **in the brief** and the
 > handback receipt **on the child's branch** (no refs of the harness on the remote); at most **3** children run; a
-> live probe first, then one plan per part. Parts 1 and 2 are built; parts 3 and 4 are designed here.
+> live probe first, then one plan per part. Parts 1 to 3 are built; part 4 is designed here.
 
 ## 1. Why spec 05 changes here
 
@@ -82,8 +82,8 @@ sequenceDiagram
 |---|---|---|
 | 1 | Card rules, delegated opening, one delegated plan at a time, `spawn`, `started`, `status`, the brief, the `ls-remote` fix | built |
 | 2 | The child: binding on its first prompt, `take`, `push`, `question`, `handback` and its receipt, the child refusals | built |
-| 3 | The parent: `check`, `accept`, `reject`, `answer`, `land`, `forget`, `release`, `read`, the digest, the parent's close | next |
-| 4 | `remove` (checklist, then archive), the scheduled check-in, the `orchestrate` skill, a full live run | |
+| 3 | The parent: `check`, `accept` (one pull request), `reject`, `answer`, `forget`, `read`, `land` (the final route: merge, conflicts, close) | built |
+| 4 | `release`, `remove` (checklist, then archive), the digest, the scheduled check-in, the `orchestrate` skill, a full live run | next |
 
 ## 5. Part 1, as built
 
@@ -164,37 +164,33 @@ child on the unit's repository; `take` roots the card plan in the unit's folder 
 repository is a unit: a child that changes files under `.claude/` is refused at commit (`commit.agent_files`).
 Children cannot develop the harness itself in the cloud yet.
 
-## 7. Parts 3 and 4, designed
+## 7. Part 3, as built
 
-**`answer`** (part 3) sends the parent's reply with `send_message`. A message is a knock, never the proof: every fact
-the parent acts on comes from the branch.
+The parent reads no code; every fact comes from the child's branch (`utils/orchestra/review.py`, `fetch.py`,
+`land.py`; actions in `mcp/actions/orchestra_parent.py`). GitHub is reached through `gh api` (REST,
+`utils/git/github.py`, the port `github`): logged in on a PC, given its credentials by the proxy in the cloud.
 
-**`check` (part 3).** Fetch the branch; read the receipt (refused when it is missing, does not name the branch tip,
-or names uncommitted files); count one registered behaviour per AC (description starting `AC<n>:`, not retired, with
-a test); rerun those tests in a temporary checkout of the branch against a copy of the ledger; for a home child,
-rerun them at the base (green there is a warning, as spec 14.6). Green only with no AC missing, nothing red, nothing
-uncommitted.
+| Action | What it does |
+|---|---|
+| `check {name, timeoutMin?}` | A temporary checkout of the child's branch: a detached worktree of the parent's clone when the unit lives there, else a shallow clone of the unit's repository. Refused when the branch holds no receipt, the tip commit is not the receipt alone (then the receipt would not describe the code), the receipt is not of this child of this session, or it is not newer than the last send-back. Counts one active behaviour with a test per AC (`AC<n>:` at the start of its description), and **reruns the tests** with the unit's command in the unit's folder (once per test file when the command names `{test}`), without the harness's variables. Green only with no AC missing, nothing uncommitted, the child's verify ok and the rerun green; the result is kept on the crew entry (`lastCheck`, `checkedAt` = the round) with a `checked` story row. |
+| `accept {name}` | A green check this round; opens **one pull request** from `orch/p<plan>/<name>` into the unit's `base` (title the goal, body the AC), records it (`pr`) and the child is `accepted`. Nothing is merged. A child sent back after it (a conflict) keeps its pull request. |
+| `reject {name, why}` | Round n of 3, then the user decides; an accepted child whose pull request is not merged may be sent back too. The answer is the exact `send_message` to make. |
+| `answer {name, text}` | The reply to a child's question, kept; the answer is the `send_message` to make. |
+| `forget {name, why}` | The child ends `forgotten`; its card may be spawned again. Its session stays until the user agrees to archive it. |
+| `read {name}` | The receipt, read from the branch. |
+| `land {timeoutMin?}` | **The final route.** Refused while a child has not ended. Merges each accepted pull request in the plan's order (one already merged is taken as is). A pull request that does not merge stops it: the answer names it and its conflicted files (`git merge-tree`) and the two ways on: the parent resolves it on the child's branch (the files are the delegated plan's) and lands again, or sends the child back. Then each unit's tests run on its merged base. Green, with the parent's own files committed (or none), closes the delegated plan **delivered**. |
 
-**`accept`** (decided by the user on 2026-11-16). A handback, a green verify in the receipt, a green check this
-round; then the parent opens **one pull request** from the child's branch `orch/p<plan>/<name>` into its unit's
-`base`, and records it on the crew entry. Accept merges nothing.
+Not built: the base proof of spec 14.6 (a test already green on the base); deleting merged branches.
 
-**The final route** (`land`). When every child is accepted, the parent merges the pull requests one by one, in the
-plan's order, runs each unit's tests on the result, and **resolves the conflicts there itself**, or sends the child
-whose branch no longer merges back (`reject`). The delegated plan closes delivered when every pull request is merged
-and nothing planned is left uncovered (spec 16). Merged branches are listed for the user to delete.
-
-**`reject` / `answer`.** Round n of 3, then the user decides. The text goes out with `send_message`; the child acts
-on it because its brief said so.
-
-**`forget`, `release`, `read`, digest.** As spec 17 and 18, with "stop the session" read as "the parent's
-model archives it". The digest is built on request from the crew and the fetched receipts.
+## 8. Part 4, designed
 
 **Cleanup (part 4).** `remove` with no name returns one checklist of the children that no longer run; the user ticks;
 the parent's model archives exactly those. One scheduled check-in (hours, not minutes) is set at the first spawn and
-cancelled at the last accept. The `orchestrate` skill holds the parent's procedure of spec 20.
+cancelled at the last accept. The `orchestrate` skill holds the parent's procedure of spec 20. `release` gives a
+session back to the user (spec 17); the digest (one line per child, spec 13.3) is built on request from the crew and
+the fetched receipts.
 
-## 8. Limits
+## 9. Limits
 
 | Limit | Value | Why |
 |---|---|---|
@@ -203,7 +199,7 @@ cancelled at the last accept. The `orchestrate` skill holds the parent's procedu
 | Send-back rounds | 3, then the user decides | Spec 05 |
 | Card | as spec 21 | Spec 05 |
 
-## 9. Trust
+## 10. Trust
 
 - Only the user's "Approve" in the parent's form approves the delegated plan; nothing a child says approves or widens it.
 - A child trusts its brief because it is its first prompt; it trusts its parent's send-backs because the brief names

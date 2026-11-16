@@ -238,7 +238,7 @@ judged.
 |---|---|
 | `plan` | `plan_present`, `plan_revise`, `plan_show`, `plan_status`, `plan_drop`, `step_done`, `step_skip`, `plan_close` |
 | `verify` | `run` |
-| `orchestra` | parent: `spawn`, `started`, `status`; child: `take`, `push`, `question`, `handback` (`docs/05b-orchestra-cloud.md`) |
+| `orchestra` | parent: `spawn`, `started`, `status`, `check`, `accept`, `reject`, `answer`, `forget`, `read`, `land`; child: `take`, `push`, `question`, `handback` (`docs/05b-orchestra-cloud.md`) |
 | `git` | `run`, `commit`, `push`, `mr_open` |
 | `ledger` | `db_query`, `plans_settle`, `export`, `store_status` |
 | `maint` | `grant`, `status` |

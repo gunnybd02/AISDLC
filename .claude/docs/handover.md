@@ -51,8 +51,9 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #28 | Orchestra, part 2: a brief as a session's first prompt makes it a child; `take` opens its card plan by the parent's grant (no form) on `orch/p<plan>/<name>`; `push`, `question`, `handback` (the receipt `.harness/handback/<name>.json` committed and pushed); a child never asks the user, presents or closes a plan, asks for the maint grant, merges or pushes another branch (`child_guard`) |
 | #29 | A project's tests never see the harness in force: `verify` and the test package drop `HARNESS_HOME`, `HARNESS_CODE`, `HARNESS_SESSION` (and the tests `CLAUDE_PROJECT_DIR`); before, the harness's own suite failed 22 tests in a governed session and wrote test plans into the live ledger (found by orchestra's live run with one child) |
 | #31 | Units in `project.json` (`repo`, `path`, `verify`, `base`: any repository, or a folder of a shared one); orchestra gives a child its unit (clone, folder, test command, PR target); fixes from the live run: a child is never asked (the arbiter turns a question into a refusal with "go on", `child.no_keyboard`), its card plan waits for its handback, it keeps its role on a new ticket, the brief says to verify from the shell |
+| #32 | Orchestra, part 3, the parent: `check` (the receipt on the child's branch, the AC behaviours, the tests rerun by the parent), `accept` (one pull request into the unit's base, through `gh api`), `reject` (3 rounds), `answer`, `forget`, `read`, and `land`, the final route (merge every pull request, a conflict stops it for the parent to resolve or reject, each unit's tests on the merged base, the plan closes delivered) |
 
-431 tests pass (1 skipped, Windows only); doctor: 0 errors.
+438 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 ## The cloud, as it runs now
 
@@ -95,8 +96,7 @@ forwarders in `.claude/entry/`.
    verify on a plan without tests and wrote `docs/05b-orchestra-cloud.md`; what it left open is item 5.
 2. **Orchestra in the cloud** (`docs/05b-orchestra-cloud.md`, decided by the user on 2026-11-16: children are cloud
    sessions, the card rides in the brief and the receipt on the child's branch, at most 3 run). A live probe showed a
-   child acts on a parent's send-back only because its brief says so. Parts 1 and 2 are built (#26, #28). Next: part 3,
-   the parent (`check`, `accept`, `reject`, `answer`, `land`, `forget`, `release`, `read`, the close); part 4,
+   child acts on a parent's send-back only because its brief says so. Parts 1 to 3 are built (#26, #28, #31, #32). Next: part 4,
    `remove`, the scheduled check-in, the `orchestrate` skill and a full live run.
 3. **Spec 05 for the PC** (`docs/05-orchestra.md` to `05-orchestra-4.md`, worktrees and `claude --bg`): set aside for
    the cloud path the user chose; its card, crew, check and accept rules are the ones the cloud parts follow.

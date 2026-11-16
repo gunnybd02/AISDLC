@@ -76,7 +76,11 @@ one as superseded: to change work in hand, revise.
 `project.json` declares in `units` (`{repo, path, verify, base}`: any repository, or a folder of a shared one). One
 "Approve" approves them all; then, per child, `run("orchestra", "spawn", {"name"})` gives the brief and the `create_session` call, and
 `run("orchestra", "started", {"name", "sid"})` records it (3 run at most; `run("orchestra", "status", {})`). While it
-runs no other plan opens in the session; revise it instead.
+runs no other plan opens in the session; revise it instead. When a child says "handed back":
+`run("orchestra", "check", {"name"})` (its receipt and its tests, rerun here), then `accept` (one pull request into
+its unit's base) or `reject` with why (3 rounds; send the text it gives with `send_message`). A question:
+`answer`. When every child has ended: `run("orchestra", "land", {})` merges the pull requests; a conflict stops it with
+the two ways on (resolve it on the child's branch, or reject); green closes the plan delivered.
 
 **A child session** (its first prompt is a brief: `You are child session ...`): nobody is at its keyboard.
 `run("orchestra", "take", {})` first (its card plan opens, on its branch), then the loop of part 3, and

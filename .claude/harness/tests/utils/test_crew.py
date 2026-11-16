@@ -99,9 +99,10 @@ class CrewTest(unittest.TestCase):
         return plan_id, approvals(self.port, "s1", {q: YES})
 
     def test_approval_makes_a_delegated_ticket_with_a_pending_row_per_child(self):
-        self.approve()
+        _, note = self.approve()
         ticket = self.port.ticket("s1")
         self.assertEqual((ticket["grant"]["count"], ticket["crew"]), (2, {}))
+        self.assertIn("app/orders.py", note[0])  # the approval note names the card files too
         self.assertIn("app/orders.py", ticket["plan"]["files"])
         rows = self.port.rows("SELECT name, state FROM pl_children ORDER BY name")
         self.assertEqual([(r["name"], r["state"]) for r in rows], [("c1", "pending"), ("c2", "pending")])
@@ -122,8 +123,8 @@ class CrewTest(unittest.TestCase):
         text = Spawn().run(ctx, {"name": "c1"})
         call = json.loads(text[text.index("\n{") + 1:])
         self.assertEqual(call["source_url"], "https://github.com/me/shop")
-        self.assertIn("in the folder services/api of its repository; its pull request will target develop",
-                      call["prompt"])
+        self.assertIn("Work only in the unit api, in the folder services/api of its repository. Once the orchestrator "
+                      "accepts it, your branch becomes a pull request into develop.", call["prompt"])
         block = call["prompt"][call["prompt"].index(brief.CARD_OPEN) + len(brief.CARD_OPEN):
                                call["prompt"].index(brief.CARD_CLOSE)]
         self.assertEqual(json.loads(block)["unit"], units["api"])

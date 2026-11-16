@@ -78,13 +78,14 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
     """
     name, spec = card["name"], unit or dict(HOME_SPEC)
     where = f"the unit {card['unit']}" + (f", in the folder {spec['path']} of its repository" if spec["path"] != "."
-                                          else "") + f"; its pull request will target {spec['base']}"
+                                          else "")
     push = ("You may also open a merge request, asking as usual." if "push" in card.get("actions", [])
             else "Never push another branch, never merge; no merge request is approved for you.")
     acs = [f"AC{n}: {a}  (behaviour {behaviour_id(plan, name, n)})" for n, a in enumerate(card["ac"], 1)]
     parts = [
         f"You are {HEAD.format(name=name, plan=plan)}, approved by the user in the orchestrator session {parent_sid}.",
-        f"Your work: {card['goal'].rstrip('.')}. It is in {where}, and nowhere else.",
+        f"Your work: {card['goal'].rstrip('.')}. Work only in {where}. Once the orchestrator accepts it, your "
+        f"branch becomes a pull request into {spec['base']}.",
         "How you are approved: the user approved your card with the parent plan. First call "
         "run('orchestra', 'take'); it opens your card plan. Never present a plan of your own.",
         "Nobody is at this keyboard: never call AskUserQuestion and never wait for an approval form.",

@@ -4,7 +4,7 @@ of a form, read from its PostToolUse, reach here."""
 from __future__ import annotations
 
 from harness.utils.contracts import YES
-from harness.utils.orchestra import crew
+from harness.utils.orchestra import card, crew
 from harness.utils.shapes import PlanStore
 
 APPROVED = "GATE: the user approved plan {plan} rev {rev} in the form. You may edit its files: {files}."
@@ -36,7 +36,7 @@ def approvals(port: PlanStore, session: str, answers: dict[str, str]) -> list[st
         elif label.strip() == YES:
             port.approve(session, waiting)
             notes.append(APPROVED.format(plan=waiting["plan_id"], rev=waiting["rev"],
-                                         files=", ".join(waiting["items"]["files"])))
+                                         files=", ".join(card.with_card_files(waiting["items"])["files"])))
         else:
             port.feedback(waiting["plan_id"], waiting["rev"], session, label.strip()[:300])
             notes.append(REFINE.format(plan=waiting["plan_id"], rev=waiting["rev"], label=label.strip()[:300]))
