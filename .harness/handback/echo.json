@@ -1,0 +1,80 @@
+{
+ "at": 1794826983557,
+ "base": "a435fc69e04f25456969ac8db746cba66f9dbcf1",
+ "behaviours": {
+  "p1.echo.ac1": {
+   "status": "active",
+   "tests": [
+    "orch-play/test_echo.py"
+   ],
+   "what": "AC1: echo('ab', 3) returns 'ababab'"
+  },
+  "p1.echo.ac2": {
+   "status": "active",
+   "tests": [
+    "orch-play/test_echo.py"
+   ],
+   "what": "AC2: echo with times below one raises ValueError"
+  }
+ },
+ "branch": "orch/p1/echo",
+ "cardPlan": 1,
+ "commits": [
+  {
+   "files": [
+    "orch-play/echo.py",
+    "orch-play/test_echo.py"
+   ],
+   "sha": "3853a5e5758faf621d8d332e0ccb9c85aceafdc7"
+  }
+ ],
+ "draft": "pd-mwj5m112-38df73",
+ "name": "echo",
+ "parent": "session_01EXL6xY5uGx26YMuQyXbhjh",
+ "plan": 1,
+ "refused": [],
+ "report": {
+  "added": [],
+  "changed": [
+   "orch-play/echo.py: new echo(text, times) returning text repeated times times; raises ValueError when times < 1",
+   "orch-play/test_echo.py: new tests for AC1 and AC2"
+  ],
+  "checked": [
+   "AC1 (p1.echo.ac1): echo('ab', 3) == 'ababab', proven by test_ac1_repeats_text",
+   "AC2 (p1.echo.ac2): echo with times 0 and -1 raises ValueError, proven by test_ac2_times_below_one_raises",
+   "Verify green: 6 tests in orch-play pass"
+  ],
+  "faults": [],
+  "notChecked": [
+   "Non-integer times (e.g. floats or strings) not specified by the card and not tested",
+   "Non-string text not tested"
+  ],
+  "risks": [
+   "Low: a float times >= 1 would raise TypeError from str * float rather than ValueError; outside the card's criteria"
+  ],
+  "testsChanged": [
+   {
+    "test": "orch-play/test_echo.py",
+    "why": "New file covering AC1 and AC2; no existing tests changed"
+   }
+  ]
+ },
+ "uncommitted": [],
+ "unit": {
+  "base": "orch-sandbox",
+  "name": "sandbox",
+  "path": ".",
+  "repo": "https://github.com/gunnybd02/AISDLC",
+  "verify": [
+   "{python}",
+   "-m",
+   "unittest",
+   "discover",
+   "-s",
+   "orch-play",
+   "-t",
+   "orch-play"
+  ]
+ },
+ "verify": "ok"
+}
