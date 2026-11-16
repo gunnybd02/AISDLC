@@ -52,7 +52,7 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #29 | A project's tests never see the harness in force: `verify` and the test package drop `HARNESS_HOME`, `HARNESS_CODE`, `HARNESS_SESSION` (and the tests `CLAUDE_PROJECT_DIR`); before, the harness's own suite failed 22 tests in a governed session and wrote test plans into the live ledger (found by orchestra's live run with one child) |
 | #31 | Units in `project.json` (`repo`, `path`, `verify`, `base`: any repository, or a folder of a shared one); orchestra gives a child its unit (clone, folder, test command, PR target); fixes from the live run: a child is never asked (the arbiter turns a question into a refusal with "go on", `child.no_keyboard`), its card plan waits for its handback, it keeps its role on a new ticket, the brief says to verify from the shell |
 
-432 tests pass (1 skipped, Windows only); doctor: 0 errors.
+431 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 ## The cloud, as it runs now
 
