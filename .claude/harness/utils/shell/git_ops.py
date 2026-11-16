@@ -10,7 +10,7 @@ from harness.utils.shell.paths import Target, Unseen
 GIT_NO_FILES = frozenset((
     "status diff log show rev-parse ls-files ls-tree blame grep describe shortlog cat-file rev-list for-each-ref "
     "name-rev diff-tree diff-index diff-files count-objects check-ignore var whatchanged help version add commit "
-    "branch tag remote fetch reflog show-ref merge-base").split())
+    "branch tag remote fetch ls-remote reflog show-ref merge-base").split())
 GIT_GLOBAL = {"--no-pager", "--paginate", "-p", "--no-optional-locks"}
 GIT_RUNS = ("--upload-pack", "--receive-pack", "--exec")
 
@@ -44,6 +44,6 @@ def git(ws: Sequence[Word]) -> list[Target]:
     if sub not in GIT_NO_FILES:
         raise Unseen(f"git {sub or '(nothing)'} changes the work tree or reaches another place")
     if any(w.text.startswith(("--output", "--open-files-in-pager", "--ext-diff") + GIT_RUNS) or w.text == "-O"
-           or (w.text == "-u" and sub == "fetch") for w in rest):
+           or (w.text == "-u" and sub in ("fetch", "ls-remote")) for w in rest):
         raise Unseen(f"git {sub} writes a file or runs a program")
     return []

@@ -153,7 +153,8 @@ class ShellPlacesTest(unittest.TestCase):
                         "Get-ChildItem | Remove-Item -Recurse"):
             with self.subTest(command=command):
                 self.assert_unread(command, tool="PowerShell")
-        for command in ("python -c 'print(1)'", "rg -n x src", "sort a", "git fetch origin"):
+        for command in ("python -c 'print(1)'", "rg -n x src", "sort a", "git fetch origin",
+                        "git ls-remote --heads origin main"):
             with self.subTest(command=command):
                 self.assert_writes(command, [])
 
