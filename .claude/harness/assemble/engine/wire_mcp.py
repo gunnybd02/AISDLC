@@ -15,6 +15,7 @@ from harness.assemble.engine.config import Config
 from harness.assemble.engine.loader import Item, Loader
 from harness.assemble.engine.ports import SERVER_PORTS, LedgerPort
 from harness.utils.contracts import Event
+from harness.utils.git import github
 from harness.utils.ledger import store
 
 SERVER = ("harness", "0.1")
@@ -74,7 +75,7 @@ def ports_of(items: dict[str, Item], claude_dir: str | Path) -> dict[str, Any]:
     Returns:
         {port name: port}, in the order of SERVER_PORTS: the LedgerPort (plans, ledger), the items, and callables
         (verify_command, doctor, git_judge: GitJudge, session, commit_judge: CommitJudge, banned, store, units: the
-        declared units by name as {repo, path, verify, base}, judge).
+        declared units by name as {repo, path, verify, base}, github: call(method, path, fields) of GitHub REST, judge).
     """
     ledger = LedgerPort(claude_dir)
     ports = {"plans": ledger, "ledger": ledger, "verify_command": lambda: Config.load(claude_dir).verify,
@@ -86,6 +87,7 @@ def ports_of(items: dict[str, Item], claude_dir: str | Path) -> dict[str, Any]:
              "banned": lambda: Config.load(claude_dir).banned,
              "store": store.folder,
              "units": lambda: {name: unit.spec() for name, unit in Config.load(claude_dir).units},
+             "github": github.call,
              "judge": lambda event: build_runner(claude_dir, items).run(event).verdict}
     assert tuple(ports) == SERVER_PORTS, "ports_of builds exactly SERVER_PORTS"
     return ports

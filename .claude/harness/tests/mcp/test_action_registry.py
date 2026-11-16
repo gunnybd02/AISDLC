@@ -17,7 +17,9 @@ PINNED = {
     "verify.run": WRITE,
     "git.run": WRITE, "git.commit": WRITE, "git.push": WRITE, "git.mr_open": WRITE,
     "orchestra.spawn": READ, "orchestra.started": WRITE, "orchestra.status": READ, "orchestra.take": WRITE,
-    "orchestra.push": WRITE, "orchestra.question": WRITE, "orchestra.handback": WRITE,
+    "orchestra.push": WRITE, "orchestra.question": WRITE, "orchestra.handback": WRITE, "orchestra.check": WRITE,
+    "orchestra.accept": WRITE, "orchestra.reject": WRITE, "orchestra.answer": WRITE, "orchestra.forget": WRITE,
+    "orchestra.read": READ, "orchestra.land": WRITE,
 }
 
 

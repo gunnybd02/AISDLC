@@ -59,6 +59,10 @@ the ledger store on Drive only grows (`guide("store", "skills")`). Uploading and
 | `child.no_keyboard`: a step that would ask a person | this session is a child: nobody answers, so it is refused | do not retry it; go on, and name it under notChecked in `handback` |
 | `child.ask_user`, `child.merge`, `child.push_other`; `a child session never ...` | this session is a child: nobody answers it, only the orchestrator merges | `run("orchestra", "question", {"question"})`, or name it under notChecked in `handback` |
 | `this session is no child` | take, push, question and handback are a child's | a parent uses spawn and started |
+| `has not passed a check this round` | accept needs a green check after the last send-back | `run("orchestra", "check", {"name"})` |
+| `holds no receipt`, `not handed back since it was sent back`, `tip ... is not its receipt` | the branch does not hold a fresh receipt as its last commit | wait for the child's "handed back", or `reject` it |
+| `the user decides now` | 3 send-backs already | ask the user: forget it, or what to do |
+| `have not ended` (land) | a child still runs | check and accept it, or forget it |
 
 ## The end of a turn
 `store.unsaved`: commits, plan events or pushes of this session are in no copy of the store. Export and upload one

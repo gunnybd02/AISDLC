@@ -113,7 +113,9 @@ class CrewEntry(TypedDict, total=False):
     """A started child on its parent's delegated ticket (utils/orchestra/crew.py): unit; sid its cloud session;
     state (running, handed back, accepted, forgotten, released, removed); backs the rounds it was sent back;
     checkedAt the round of its last green check; adopted (an open session taken on); model; reportSid the parent's
-    session; at when it started and sentBackAt when it was last sent back (ms); sent the texts delivered to it."""
+    session; at when it started and sentBackAt when it was last sent back (ms); sent the texts delivered to it;
+    lastCheck {green, at, lines} of the parent's check; pr {number, url, repo, base} once accepted; merged {sha, at}
+    once land merged it; forgotWhy (utils/orchestra/review.py, land.py)."""
     unit: str
     sid: str
     state: str
@@ -125,6 +127,10 @@ class CrewEntry(TypedDict, total=False):
     at: int
     sentBackAt: Optional[int]
     sent: list[dict[str, Any]]
+    lastCheck: dict[str, Any]
+    pr: dict[str, Any]
+    merged: dict[str, Any]
+    forgotWhy: str
 
 
 class PlanItems(TypedDict, total=False):
