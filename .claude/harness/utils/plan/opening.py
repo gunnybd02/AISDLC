@@ -1,7 +1,9 @@
 """PlanOpening (docs 04, section 3): the user approved a waiting revision in the form. One transaction writes, in order:
 1. rec_plans: the plan number (a chained row); the same sid, sha and approval as the open ticket's plan is reused;
 2. pl_behaviors: one 'add' row per behaviour with a test (status active); one without a test lives in the plan only;
-3. pl_tickets: the ticket (utils/plan/tickets.py) in phase execute;
+3. pl_tickets: the ticket (utils/plan/tickets.py) in phase execute; a plan with children makes it delegated
+   (utils/orchestra/crew.open_delegated: the grant, the crew, a pending story row per child), and the change and
+   test paths of its cards join its files and tests;
 4. pl_approval: open, approved {sha, plan, at}, nothing pending;
 5. pl_plan_events: approved, then executing (each skipped when it is already the last event);
 6. pl_logs gate-open and form, and the user's word in pl_plan_feedback."""
@@ -15,6 +17,7 @@ import uuid
 from typing import TYPE_CHECKING, Any, Optional
 
 from harness.utils.contracts import YES
+from harness.utils.orchestra import card, crew
 from harness.utils.plan import tickets
 from harness.utils.shapes import Revision
 
@@ -91,7 +94,8 @@ def open_plan(con: sqlite3.Connection, rec: Recorder, sid: str, waiting: Revisio
     Returns:
         The plan number in rec_plans (the open ticket's, when it holds the same revision).
     """
-    plan_id, rev, items, sha = waiting["plan_id"], waiting["rev"], waiting["items"], waiting["sha"]
+    plan_id, rev, sha = waiting["plan_id"], waiting["rev"], waiting["sha"]
+    items = card.with_card_files(waiting["items"])
     scope = {"plan_id": plan_id, "rev": rev, "base": base, **items}
     held = tickets.approved_plan(tickets.latest(con, sid))
     if held and held.get("sha") == sha and held.get("plan_id") == plan_id:
@@ -110,6 +114,7 @@ def open_plan(con: sqlite3.Connection, rec: Recorder, sid: str, waiting: Revisio
                                              "entry": json.dumps(entry, ensure_ascii=False), "at": now()})
     plan = {"id": rid, "sha": sha, **scope, **({"commit": ""} if items.get("steps") else {})}
     tickets.open_plan(con, sid, plan)
+    crew.open_delegated(con, sid)
     approval(con, sid, {"open": True, "approved": {"sha": sha, "plan": rid, "at": now()}, "pending": None,
                         "tool": None})
     event(con, rec, plan_id, "approved", rev, rid, sid)

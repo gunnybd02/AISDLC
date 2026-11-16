@@ -7,6 +7,7 @@ import os
 from typing import Any
 
 from harness.utils.contracts import READ, WRITE, ActionContext, ActionError, McpAction
+from harness.utils.orchestra import crew
 from harness.utils.plan import desk
 from harness.utils.plan.render import block, form_call
 from harness.utils.shapes import PlanItems, Revision
@@ -85,8 +86,12 @@ class PlanPresent(McpAction):
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Keep a new desk plan from the plan's data (cleaned, normalized, checked; its root the server's folder); answer
-        its ## Plan block and the form call. ActionError for unknown keys or a plan that does not check."""
+        its ## Plan block and the form call. ActionError while a delegated plan runs in the session, for unknown keys
+        or a plan that does not check."""
         sid, raw = session_of(ctx), args["plan"]
+        busy = crew.blocks_other(ctx.ports["plans"].ticket(sid))
+        if busy:
+            raise ActionError(NOT_KEPT + busy)
         items = desk.normalize(desk.clean(raw))
         problems = desk.unknown(raw) + desk.check(items, need_title=True)
         if problems:

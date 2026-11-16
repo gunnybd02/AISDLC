@@ -18,6 +18,7 @@ types and their documentation only.
 | GitCommit, GitFacts | the facts git_commit and git_view of a hook call | gear/translate/git.py, assemble |
 | GitJudge, CommitJudge | the rules' verdict on a git command, on a commit | assemble/engine/wire_mcp.py |
 | PlanStore | the ledger port; its parts and their methods are in shapes_store.py | assemble/engine/ports.py |
+| Card, ChildGrant, CrewEntry | a child of a delegated plan, what the user grants them, a started child | utils/orchestra |
 """
 from __future__ import annotations
 
@@ -69,6 +70,48 @@ class Step(TypedDict, total=False):
     behaviors: list[PlanBehaviour]
 
 
+class Card(TypedDict, total=False):
+    """One child of a delegated plan (utils/orchestra/card.py; docs/05-orchestra.md section 5.1): name (a-z, 0-9, -),
+    unit (home or a declared unit), goal (one sentence), ac (1 to 6 criteria), the paths to read, change and test, the
+    name of an open session to adopt, and actions (only push)."""
+    name: str
+    unit: str
+    goal: str
+    ac: list[str]
+    read: list[str]
+    change: list[str]
+    tests: list[str]
+    session: str
+    actions: list[str]
+
+
+class ChildGrant(TypedDict):
+    """What the user approves for the children with a delegated plan (utils/orchestra/card.grant): the units they may
+    touch (home left out), how many children, a copy of every card, and the actions of each card by name."""
+    units: list[str]
+    count: int
+    cards: list[Card]
+    actions: dict[str, list[str]]
+
+
+class CrewEntry(TypedDict, total=False):
+    """A started child on its parent's delegated ticket (utils/orchestra/crew.py): unit; sid its cloud session;
+    state (running, handed back, accepted, forgotten, released, removed); backs the rounds it was sent back;
+    checkedAt the round of its last green check; adopted (an open session taken on); model; reportSid the parent's
+    session; at when it started and sentBackAt when it was last sent back (ms); sent the texts delivered to it."""
+    unit: str
+    sid: str
+    state: str
+    backs: int
+    checkedAt: Optional[int]
+    adopted: bool
+    model: str
+    reportSid: str
+    at: int
+    sentBackAt: Optional[int]
+    sent: list[dict[str, Any]]
+
+
 class PlanItems(TypedDict, total=False):
     """A plan as presented and kept (utils/plan/desk.py KEYS). A light plan holds title, what, files and tests; a full
     plan also steps, overview, code, services, checks, assumptions, notDoing and risks. root is the folder the plan's
@@ -88,7 +131,7 @@ class PlanItems(TypedDict, total=False):
     behaviors: list[PlanBehaviour]
     network: list[dict[str, Any]]
     commands: list[str]
-    children: list[dict[str, Any]]
+    children: list[Card]
     teamSkills: list[str]
     assumptions: list[str]
     notDoing: list[str]
@@ -134,7 +177,8 @@ class Ticket(TypedDict, total=False):
     execute or deliver; the plan in force; draft (the desk id) and rootId; step (from 0); the commits, skips and done
     steps; noted (commits git.commit made, waiting for step_done); stepCommits by step; closeReason (delivered,
     abandoned, superseded); what a superseded ticket carried over (priorCommits, spentPlan); backs how many times a
-    write sent it back from deliver to execute, and backTold, set False each time it goes back."""
+    write sent it back from deliver to execute, and backTold, set False each time it goes back. A delegated ticket
+    (a plan with children) also holds the grant and its crew, the started children by name (utils/orchestra)."""
     id: str
     sid: str
     seq: int
@@ -156,6 +200,8 @@ class Ticket(TypedDict, total=False):
     units: list[str]
     backs: int
     backTold: bool
+    grant: ChildGrant
+    crew: dict[str, CrewEntry]
 
 
 class Behaviour(TypedDict, total=False):

@@ -30,7 +30,7 @@ from harness.utils.shell.words import program, read as read_shell
 
 GIT = re.compile(r"(?<![\w.-])git(?:\.exe)?(?![\w.-])", re.I)
 NO_COMMIT = {"add", "status", "diff", "log", "show", "branch", "checkout", "switch", "restore", "reset", "fetch",
-             "push", "remote", "stash", "tag", "rev-parse", "ls-files", "ls-tree", "blame", "grep", "init", "clone",
+             "push", "remote", "ls-remote", "stash", "tag", "rev-parse", "ls-files", "ls-tree", "blame", "grep", "init", "clone",
              "mv", "rm", "describe", "shortlog", "reflog", "cat-file", "hash-object", "help", "version", "clean",
              "rev-list", "for-each-ref", "symbolic-ref", "name-rev", "diff-tree", "diff-index", "diff-files",
              "count-objects", "check-ignore", "var", "whatchanged", "format-patch", "apply", "fsck", "gc"}
