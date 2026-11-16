@@ -26,6 +26,8 @@ python3 <core>/anchor.py cli tool run <block> <action> '<args as JSON>'
 - Only the user answers a form: call AskUserQuestion with the questions alone, exactly as the harness gave them.
 - Never `git commit` in the shell: `step_done` commits.
 - Never open `.claude/state/`: read the ledger with `run("ledger", "db_query", {"sql": "SELECT ..."})`.
+  The harness records every call, shell line, file write, skill load and the tokens of each turn by itself;
+  you record nothing. `run("ledger", "chain_check")` says whether the evidence is whole.
 - Say in a shell call's description, in plain words, what the command does and what it changes.
 - A call was refused: read the reason, then `guide("refused", "skills")`. Never look for a way around a gate.
 - The work is on the harness itself: `guide("harness-dev", "skills")`.

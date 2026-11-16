@@ -20,7 +20,7 @@ from collections.abc import Collection, Iterable, Sequence
 from typing import TYPE_CHECKING, Any, Optional
 
 from harness.utils.contracts import CLAUDE_DECISION, Event, Finding
-from harness.utils.ledger.mask import stored
+from harness.utils.ledger.mask import REDACTED, mask, stored
 from harness.utils.shapes import ApprovedPlan
 
 if TYPE_CHECKING:
@@ -31,6 +31,8 @@ PEER = "<cross-session-message"  # how the host wraps a message another session 
 RUN_TOOL = "mcp__harness__run"
 SKILL_FILE = re.compile(r"[\\/](?:skill_docs|skills)[\\/]([A-Za-z0-9_.-]+)[\\/]SKILL\.md$")
 SLASH = re.compile(r"^/([A-Za-z0-9_.:-]+)(?:\s|$)")
+ANNOTATED = ("span", "turn", "session", "plan")  # what a judgment is about
+MODEL = "LLM"  # the annotator of every row the model writes: evidence for a pattern, never authority
 NEW_EPOCH = ("compact", "clear")  # the sources of a session start after which earlier loads no longer count
 
 
@@ -266,3 +268,33 @@ def skill_seen(event: Event, known: Collection[str]) -> Optional[tuple[str, str]
         m = SLASH.match(str(given.get("prompt") or "").lstrip())
         found = (m.group(1).split(":")[-1], "slash") if m else None
     return found if found and found[0] in known else None
+
+
+def annotate(con: sqlite3.Connection, sid: str, given: dict[str, Any]) -> str:
+    """Keep one judgment of the model about a span, a turn, a session or a plan (pl_annotations). The annotator is
+    always the model's: no gate reads such a row.
+
+    Args:
+        con: the connection of the transaction.
+        sid: the calling session ("" when none is known).
+        given: {unit, ref, name, identifier, label?, score?, explanation?} as the model sent it.
+
+    Returns:
+        "" when the row was kept; else why it was not (a missing field, an unknown unit, a score that is no number):
+        nothing is written then.
+    """
+    for key in ("unit", "ref", "name", "identifier"):
+        if not isinstance(given.get(key), str) or not given[key].strip():
+            return f"annotate needs {key}"
+    if given["unit"] not in ANNOTATED:
+        return f"annotate needs unit to be one of {', '.join(ANNOTATED)}"
+    score = given.get("score")
+    if score is not None and (isinstance(score, bool) or not isinstance(score, (int, float))):
+        return "annotate needs score to be a number"
+    why = " ".join(str(given.get("explanation") or "").split())
+    con.execute("INSERT INTO pl_annotations (uid, sid, unit, ref, name, label, score, explanation, annotator, identifier, "
+                "at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (uuid.uuid4().hex, sid, given["unit"], given["ref"].strip()[:120], given["name"].strip()[:80],
+                 str(given.get("label") or "").strip()[:80], score, REDACTED if mask(why) != why else why[:300], MODEL,
+                 given["identifier"].strip()[:80], now()))
+    return ""

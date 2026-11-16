@@ -133,6 +133,63 @@ class CommitFlowTest(unittest.TestCase):
         self.assertEqual(row["commit_sha"], git(repo, "rev-parse", "HEAD").strip())
 
 
+class ClosureTest(unittest.TestCase):
+    """Closing a plan keeps one closure row (pl_plan_closures): the choice, the facts, what does not match."""
+
+    def setUp(self):
+        from harness.utils.plan import desk
+        from harness.utils.plan.approval import approvals
+        from harness.utils.contracts import YES
+        self.claude_dir = copy_tree(self, {"project.json": json.dumps(
+            {"name": "t", "verify": ["{python}", "-m", "unittest", "discover", "-s", "."]})})
+        self.repo = git_repo(self, {"a.py": "X = 1\n", "test_a.py": "import unittest\n\nclass T(unittest.TestCase):\n"
+                                                                   "    def test_x(self):\n        pass\n"})
+        self.port = LedgerPort(self.claude_dir)
+        items = {**desk.normalize(desk.clean({"title": "Set the value", "what": ["w"], "files": ["a.py"],
+                                              "tests": ["test_a.py"]})), "root": str(self.repo)}
+        self.plan_id, _, q = self.port.present(items, sid="s1")
+        approvals(self.port, "s1", {q: YES})
+
+    def closures(self):
+        return [dict(r) for r in self.port.rows("SELECT sid, plan_id, ticket, plan_no, choice, summary, facts, mismatches "
+                                                "FROM pl_plan_closures ORDER BY at, rowid")]
+
+    def answer(self, label, summary=None):
+        from harness.utils.plan.closing import close_answers, close_question
+        text = close_question(self.port, "s1", summary)
+        question = text.split("exactly:\n", 1)[1].rsplit("\nOptions:", 1)[0]
+        return close_answers(self.port, "s1", {question: label})
+
+    def test_an_answer_that_closes_nothing_keeps_no_row_and_a_drop_keeps_one(self):
+        from harness.utils.plan.closing import ABANDON_LABEL, KEEP_LABEL
+        self.assertIn("keeps plan", self.answer(KEEP_LABEL)[0])
+        self.assertEqual(self.closures(), [])
+        ticket = self.port.ticket("s1")
+        self.assertIn("closed abandoned", self.answer(ABANDON_LABEL, "not needed any more")[0])
+        row = self.closures()[0]
+        self.assertEqual((row["sid"], row["plan_id"], row["ticket"], row["plan_no"], row["choice"], row["summary"]),
+                         ("s1", self.plan_id, ticket["id"], ticket["plan"]["id"], "abandoned", "not needed any more"))
+        self.assertIn("Verify: none", json.loads(row["facts"])["lines"])  # the facts the user saw at the close
+        self.assertEqual(row["mismatches"], "[]")
+        self.assertEqual(len(self.closures()), 1)
+
+    def test_the_last_step_of_a_home_plan_keeps_its_closure_and_a_commit_the_ledger_lacks_is_a_mismatch(self):
+        from harness.assemble.engine.ticket_port import closure
+        from harness.utils.plan.steps import step_done
+        (self.repo / "a.py").write_text("X = 2\n", encoding="utf-8")
+        verify(self.port, Config.load(self.claude_dir).verify, self.plan_id)
+        self.assertIn("plan is delivered", step_done(self.port, "s1", "Set X"))
+        row = self.closures()[0]
+        self.assertEqual((row["choice"], row["mismatches"]), ("delivered", "[]"))  # its commit is in the ledger
+        facts = json.loads(row["facts"])
+        self.assertEqual(facts["lines"], ["Closed by its last step, with no form."])
+        self.assertEqual(len(facts["commits"]), 1)
+        ticket = {**self.port.ticket("s1"), "commits": ["f" * 40]}  # a commit the ticket declares and the ledger lacks
+        self.port.write(lambda con, rec: closure(con, "s1", ticket, "delivered", []))
+        self.assertEqual(json.loads(self.closures()[1]["mismatches"]),
+                         ["commit ffffffffffff: declared by the ticket, not in the ledger"])
+
+
 class NoTestsPlanTest(unittest.TestCase):
     def test_the_close_form_counts_a_plan_without_tests(self):
         claude_dir = copy_tree(self, {"project.json": json.dumps({"name": "t", "verify": ["{python}", "-c", "pass"]})})

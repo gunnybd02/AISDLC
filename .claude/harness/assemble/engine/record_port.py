@@ -13,6 +13,7 @@ from harness.utils.gateway.release import current
 from harness.utils.git.run import GitError, git
 from harness.utils.contracts import CLAUDE_DECISION, Event, Verdict
 from harness.utils.ledger import activity, upkeep, usage, writes
+from harness.utils.ledger.recorder import chain_report
 from harness.utils.shapes import Change, Facts
 
 NOT_RECORDED = "harness: not recorded in the ledger ({what}): {error}\n"
@@ -168,6 +169,26 @@ class RecordPort(LedgerCore):
         transcript = event.input.get("transcript_path") if isinstance(event.input, dict) else None
         if event.kind == "Stop" and event.session and transcript:  # the tokens of the turn, from the transcript
             self.recorded("usage", lambda con, rec: usage.read_new(con, event.session, transcript))
+
+    def annotate(self, session: Optional[Callable[[], str]], given: dict[str, Any]) -> str:
+        """Keep one judgment of the model (activity.annotate).
+
+        Args:
+            session: session() -> the calling session's id, or None.
+            given: the action's arguments.
+
+        Returns:
+            "" when kept, else why not.
+        """
+        return self.write(lambda con, rec: activity.annotate(con, session() if session else "", given))
+
+    def chains(self) -> list[tuple[str, int, Optional[int]]]:
+        """The state of every hash chain of the ledger (utils/ledger/recorder.chain_report).
+
+        Returns:
+            (table, its rows, the rowid where its chain breaks or None) per chained table; [] with no ledger yet.
+        """
+        return self.read(chain_report) or []
 
     def upkeep(self) -> str:
         """Run the ledger's upkeep (utils/ledger/upkeep.py): roll up finished days, then prune old rows only when the

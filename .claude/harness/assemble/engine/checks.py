@@ -14,7 +14,7 @@ from harness.utils.ledger.db import compare_real
 
 def doctor(claude_dir: str | Path = CLAUDE_DIR) -> list[str]:
     """Every problem of the tree: the indexes, each item's ref, the build (config, pipeline, rules), the skills, the real
-    ledger's schema, the nets. The nets are dev-time code, imported here only, so they never weigh on a hook call.
+    ledger's schema, the hash chains of the home's ledger, the nets. The nets are dev-time code, imported here only, so they never weigh on a hook call.
 
     Args:
         claude_dir: the home, the .claude folder; the nets read the code that runs (code_of).
@@ -29,6 +29,7 @@ def doctor(claude_dir: str | Path = CLAUDE_DIR) -> list[str]:
     if not problems:
         problems += built(claude_dir)
     problems += real_ledger(claude_dir)
+    problems += chains(claude_dir)
     for net in (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net, entry_net, hints_net):
         problems += net.check(code_of(claude_dir))
     return problems
@@ -66,6 +67,33 @@ def built(claude_dir: Path) -> list[str]:
     except Exception as e:
         out.append(f"build: {type(e).__name__}: {e}")
     return out
+
+
+def chains(claude_dir: str | Path) -> list[str]:
+    """The broken hash chains of the home's own ledger, read only; a home with no ledger, or one that cannot be read
+    now, has none to report.
+
+    Args:
+        claude_dir: the home, the .claude folder.
+
+    Returns:
+        "ledger: <table> row <n> breaks its hash chain ..." per chained table whose chain is not whole.
+    """
+    import sqlite3
+    from harness.utils.ledger.recorder import chain_report
+    path = Path(claude_dir) / "state" / "harness.db"
+    if not path.is_file():
+        return []
+    try:
+        con = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        try:
+            report = chain_report(con)
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return []
+    return [f"ledger: {table} row {row} breaks its hash chain (a row was changed after it was written)"
+            for table, _, row in report if row is not None]
 
 
 def real_ledger(claude_dir: str | Path) -> list[str]:

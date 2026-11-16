@@ -120,5 +120,62 @@ class ExportActionTest(unittest.TestCase):
         self.assertIn("run('ledger', 'export', {reason: 'push'})", STORE_NOTE)
 
 
+class ChainAndAnnotateTest(unittest.TestCase):
+    def setUp(self):
+        import uuid
+        self.root = copy_tree(self)  # a write action meets the real judge of this tree
+        self.port = LedgerPort(self.root)
+        self.port.touch_session("s1")
+
+        def fill(con, rec):
+            for n in (1, 2, 3):
+                rec.insert(con, "rec_commits", {"plan_id": 1, "service": "r", "commit_sha": f"sha{n}", "at": n, "uid": uuid.uuid4().hex})
+                rec.insert(con, "pl_file_grants", {"uid": uuid.uuid4().hex, "sid": "s1", "plan_id": 1, "op": "add",
+                                                   "file": f"/r/f{n}.py", "why": "w", "at": n})
+        self.port.write(fill)
+        self.run = caller(self.root)
+
+    def test_chain_check_passes_on_a_whole_ledger_and_names_the_table_and_row_of_an_edited_row(self):
+        from harness.assemble.engine.checks import chains
+        said = self.run("ledger", "chain_check").text
+        self.assertIn("rec_commits: 3 row(s), whole", said)
+        self.assertIn("pl_verify: 0 row(s), whole", said)
+        self.assertTrue(said.endswith("Every chain is whole."))
+        self.assertEqual(chains(self.root), [])
+        self.port.write(lambda con, rec: con.execute("UPDATE rec_commits SET commit_sha = 'other' WHERE commit_sha = 'sha2'"))
+        self.port.write(lambda con, rec: con.execute("UPDATE pl_file_grants SET why = 'changed' WHERE file = '/r/f3.py'"))
+        said = self.run("ledger", "chain_check").text
+        self.assertIn("rec_commits: 3 row(s), BROKEN at row 2", said)
+        self.assertIn("pl_file_grants: 3 row(s), BROKEN at row 3", said)
+        self.assertIn("rec_plans: 0 row(s), whole", said)
+        self.assertIn("2 chain(s) broken: a row was changed after it was written.", said)
+        self.assertEqual(chains(self.root), [
+            "ledger: rec_commits row 2 breaks its hash chain (a row was changed after it was written)",
+            "ledger: pl_file_grants row 3 breaks its hash chain (a row was changed after it was written)"])
+        self.assertEqual(chains(tree(self, {})), [])  # a home with no ledger has no chain to report
+
+    def test_annotate_keeps_a_row_marked_as_the_models_and_a_missing_field_keeps_nothing(self):
+        key = "ghp_" + "a1B2c3D4" * 5  # the shape of a token, not one
+        kept = self.run("ledger", "annotate", unit="plan", ref="pd-x" + "y" * 200, name="open:retry-after-deny",
+                        identifier="pr-2026-11-16", label="seen", score=3, explanation="tried  the same\ntool again")
+        self.assertEqual(kept.text[:5], "Kept:")
+        self.assertFalse(self.run("ledger", "annotate", unit="turn", ref="7", name="n", identifier="i",
+                                  explanation=f"the key {key}").is_error)
+        rows = [dict(r) for r in self.port.rows("SELECT sid, unit, length(ref) AS ref, name, label, score, explanation, "
+                                                "annotator, identifier FROM pl_annotations ORDER BY at, rowid")]
+        self.assertEqual(rows[0], {"sid": "s1", "unit": "plan", "ref": 120, "name": "open:retry-after-deny", "label": "seen",
+                                   "score": 3.0, "explanation": "tried the same tool again", "annotator": "LLM",
+                                   "identifier": "pr-2026-11-16"})
+        self.assertEqual((rows[1]["explanation"], rows[1]["score"], rows[1]["annotator"]), ("[redacted]", None, "LLM"))
+        for bad, why in (({"unit": "plan", "ref": "x", "name": "n"}, "identifier"),
+                         ({"unit": "plan", "ref": " ", "name": "n", "identifier": "i"}, "annotate needs ref"),
+                         ({"unit": "repo", "ref": "x", "name": "n", "identifier": "i"}, "span, turn, session, plan")):
+            result = self.run("ledger", "annotate", **bad)
+            self.assertTrue(result.is_error)
+            self.assertIn(why, result.text)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(self.port.rows("SELECT COUNT(*) AS n FROM pl_annotations")[0]["n"], 2)  # nothing more was kept
+
+
 if __name__ == "__main__":
     unittest.main()
