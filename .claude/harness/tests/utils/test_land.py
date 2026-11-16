@@ -30,6 +30,7 @@ class LandTest(Scenario):
         self.assertIn("is delivered", text)
         self.assertEqual(self.port.ticket("s1")["state"], "closed")
         self.assertEqual(len([c for c in github.calls if c[0] == "PUT"]), 1)  # merged once
+        self.assertIn("Delete the check-in", text)
 
     def test_a_conflict_stops_land_with_the_two_ways_on(self):
         github = FakeGitHub(self.repo, conflict=True)

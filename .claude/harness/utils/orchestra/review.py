@@ -169,7 +169,8 @@ def check(port: PlanStore, sid: str, name: str, units: dict[str, Any], verify: l
     if not ok:
         lines.append(tail[-TAIL:])
     set_entry(port, sid, name, card, {"state": crew.HANDED_BACK, "checkedAt": entry.get("backs", 0) if green else None,
-                                      "lastCheck": {"green": green, "at": now(), "lines": lines[:12]}}, CHECKED)
+                                      "lastCheck": {"green": green, "at": now(), "lines": lines[:12]},
+                                      "receipt": receipt}, CHECKED)
     head = "Green: accept it with run('orchestra', 'accept', {name})." if green else \
         "Not green: send it back with run('orchestra', 'reject', {name, why})."
     return "\n".join([f"Check of {name}: {head}"] + lines)
@@ -212,9 +213,33 @@ def accept(port: PlanStore, sid: str, name: str, units: dict[str, Any], github: 
         raise ReviewError(f"the pull request was not opened: {e}") from e
     set_entry(port, sid, name, card, {"state": crew.ACCEPTED, "pr": {"number": pr.get("number"),
               "url": pr.get("html_url"), "repo": repo_of(url), "base": unit.get("base", "main")}}, crew.ACCEPTED)
+    kept = drop_receipt(github, repo_of(url), ref, name)
     return (f"{name} accepted: pull request #{pr.get('number')} ({pr.get('html_url')}) from {ref} into "
-            f"{unit.get('base', 'main')}. Nothing is merged yet: when every child is accepted, run('orchestra', "
+            f"{unit.get('base', 'main')}. {kept} Nothing is merged yet: when every child is accepted, run('orchestra', "
             "'land', {}) merges the pull requests.")
+
+
+def drop_receipt(github: Callable[..., Any], repo: str, ref: str, name: str) -> str:
+    """Take the receipt off the child's branch through GitHub, so the merge does not carry it into the base; the
+    parent's ledger keeps it (the crew entry's receipt, from check).
+
+    Args:
+        github: call(method, path, fields) -> the JSON answer.
+        repo: owner/name of the unit's repository.
+        ref: the child's branch.
+        name: the child's name.
+
+    Returns:
+        A sentence for the answer: taken off, or why not (then it lands with the merge).
+    """
+    path = f"repos/{repo}/contents/{RECEIPTS}/{name}.json"
+    try:
+        sha = github("GET", f"{path}?ref={ref}").get("sha")
+        github("DELETE", path, {"message": f"Keep the receipt of {name} out of the base", "sha": str(sha),
+                                "branch": ref})
+    except (GitHubError, AttributeError) as e:
+        return f"The receipt stays on the branch ({e}); it lands with the merge."
+    return "Its receipt is kept in the ledger and taken off the branch."
 
 
 def reject(port: PlanStore, sid: str, name: str, why: str) -> str:

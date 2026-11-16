@@ -144,14 +144,19 @@ class Started(McpAction):
         child_sid = str(args["sid"]).strip()
         if not SESSION_ID.match(child_sid):
             raise ActionError(f"{child_sid!r} is no session id: give the id create_session answered (session_...)")
+        first = not ((ctx.ports["plans"].ticket(sid) or {}).get("crew"))  # no child started before this one
         try:
             entry = ctx.ports["plans"].write(lambda con, rec: crew.start(con, sid, args["name"], child_sid,
                                                                          str(args.get("model") or "")))
         except ValueError as e:
             raise ActionError(str(e)) from e
         ticket = ctx.ports["plans"].ticket(sid)
+        checkin = (" This is the first child: set ONE check-in now, for a child that dies silently: "
+                   "mcp__claude-code-remote__send_later {\"delay_minutes\": 180, \"message\": \"Orchestra check-in: "
+                   "run('orchestra', 'digest', {}) and look at any child that has not handed back.\"}. "
+                   "Delete it when the plan is delivered.") if first else ""
         return (f"Child {args['name']} runs in session {entry['sid']} ({len(crew.running(ticket))} of {crew.CAP} "
-                "running). It hands back by itself and tells you with send_message; do not poll it.")
+                f"running). It hands back by itself and tells you with send_message; do not poll it.{checkin}")
 
 
 class Status(McpAction):

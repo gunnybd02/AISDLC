@@ -22,6 +22,8 @@
     {"finding": "action.orchestra.answer", "verdict": "allow", "why": "An answer is recorded on the crew entry; the model sends it with send_message.", "test": "harness/tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"},
     {"finding": "action.orchestra.forget", "verdict": "allow", "why": "Forgetting a child only records it; its session stays until the user agrees to archive it.", "test": "harness/tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"},
     {"finding": "action.orchestra.land", "verdict": "allow", "why": "Land merges only the pull requests of children the parent accepted under the user's delegated plan, stops at a conflict, and closes the plan only on green tests.", "test": "harness/tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"},
+    {"finding": "action.orchestra.release", "verdict": "allow", "why": "Releasing a child only records that its session is the user's again; nothing is deleted.", "test": "harness/tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"},
+    {"finding": "action.orchestra.remove", "verdict": "allow", "why": "Remove archives nothing itself: it marks only the children the user ticked in its checklist, one pass each, and names the archive calls.", "test": "harness/tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"},
     {"finding": "action.ledger.export", "verdict": "allow", "why": "An export only copies the ledger to a temp folder for the store; it changes no row and uploads nothing itself.", "test": "harness/tests/gear/test_action.py#test_each_write_action_of_the_server_has_its_rule"}
   ]
 }
