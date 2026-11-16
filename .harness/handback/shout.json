@@ -1,0 +1,78 @@
+{
+ "at": 1794823091494,
+ "base": "cd1653f27f372db7b06d29009cee29532d2ff782",
+ "behaviours": {
+  "p1.shout.ac1": {
+   "status": "active",
+   "tests": [
+    "orch-play/test_shout.py"
+   ],
+   "what": "AC1: shout('hi') returns 'HI!'"
+  },
+  "p1.shout.ac2": {
+   "status": "active",
+   "tests": [
+    "orch-play/test_shout.py"
+   ],
+   "what": "AC2: shout of an empty text returns '!'"
+  }
+ },
+ "branch": "orch/p1/shout",
+ "cardPlan": 1,
+ "commits": [
+  {
+   "files": [
+    "orch-play/shout.py",
+    "orch-play/test_shout.py"
+   ],
+   "sha": "202fcfdeee3cdea02a0ffbf44c5bd336d944f5f2"
+  }
+ ],
+ "draft": "pd-mwj3adri-4c8d09",
+ "name": "shout",
+ "parent": "session_01EXL6xY5uGx26YMuQyXbhjh",
+ "plan": 1,
+ "refused": [],
+ "report": {
+  "added": [],
+  "changed": [
+   "orch-play/shout.py: new shout(text) returning text.upper() + '!'",
+   "orch-play/test_shout.py: new tests for AC1 and AC2"
+  ],
+  "checked": [
+   "AC1: shout('hi') == 'HI!' (p1.shout.ac1), verify green",
+   "AC2: shout('') == '!' (p1.shout.ac2), verify green"
+  ],
+  "faults": [],
+  "notChecked": [
+   "Non-str input (e.g. None) is not handled; not in the card"
+  ],
+  "risks": [
+   "None beyond the card scope; str.upper() follows Unicode casing rules (e.g. 'ß' -> 'SS')"
+  ],
+  "testsChanged": [
+   {
+    "test": "orch-play/test_shout.py",
+    "why": "new file: one test per acceptance criterion (AC1, AC2)"
+   }
+  ]
+ },
+ "uncommitted": [],
+ "unit": {
+  "base": "orch-sandbox",
+  "name": "sandbox",
+  "path": ".",
+  "repo": "https://github.com/gunnybd02/AISDLC",
+  "verify": [
+   "{python}",
+   "-m",
+   "unittest",
+   "discover",
+   "-s",
+   "orch-play",
+   "-t",
+   "orch-play"
+  ]
+ },
+ "verify": "ok"
+}
