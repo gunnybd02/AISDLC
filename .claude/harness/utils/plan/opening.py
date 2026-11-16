@@ -6,7 +6,8 @@
    test paths of its cards join its files and tests;
 4. pl_approval: open, approved {sha, plan, at}, nothing pending;
 5. pl_plan_events: approved, then executing (each skipped when it is already the last event);
-6. pl_logs gate-open and form, and the user's word in pl_plan_feedback."""
+6. pl_logs gate-open and form, and the user's word in pl_plan_feedback. A child's card plan is opened by the grant of
+   its parent plan instead (by): no form was asked, and the rows say grant."""
 from __future__ import annotations
 
 import hashlib
@@ -81,7 +82,8 @@ def approval(con: sqlite3.Connection, sid: str, body: dict[str, Any]) -> None:
                 (sid, json.dumps(body, ensure_ascii=False), now()))
 
 
-def open_plan(con: sqlite3.Connection, rec: Recorder, sid: str, waiting: Revision, base: Optional[str]) -> int:
+def open_plan(con: sqlite3.Connection, rec: Recorder, sid: str, waiting: Revision, base: Optional[str],
+              by: str = "") -> int:
     """Open the approved revision waiting {plan_id, rev, items, sha} in session sid; its plan number.
 
     Args:
@@ -90,6 +92,8 @@ def open_plan(con: sqlite3.Connection, rec: Recorder, sid: str, waiting: Revisio
         sid: the Claude Code session id the user approved it in.
         waiting: the approved revision.
         base: the commit the plan's repository stands on now, or None.
+        by: "" for the user's answer in the form; else what approved it instead, for a child's card plan "grant of
+            plan <n> (<parent session>)": rec_plans says reason grant, the logs and feedback say grant, not form.
 
     Returns:
         The plan number in rec_plans (the open ticket's, when it holds the same revision).
@@ -103,7 +107,7 @@ def open_plan(con: sqlite3.Connection, rec: Recorder, sid: str, waiting: Revisio
     else:
         rid = rec.insert(con, "rec_plans", {
             "sid": sid, "sha": hashlib.sha256(json.dumps(scope, sort_keys=True).encode()).hexdigest()[:8],
-            "reason": "form", "scope": json.dumps(scope, ensure_ascii=False), "services": json.dumps(items.get("services", [])),
+            "reason": "grant" if by else "form", "scope": json.dumps(scope, ensure_ascii=False), "services": json.dumps(items.get("services", [])),
             "status": "approved", "at": now(), "uid": uuid.uuid4().hex})
     for b in items.get("behaviors", []):
         if b.get("test"):
@@ -120,7 +124,10 @@ def open_plan(con: sqlite3.Connection, rec: Recorder, sid: str, waiting: Revisio
     event(con, rec, plan_id, "approved", rev, rid, sid)
     event(con, rec, plan_id, "executing", rev, rid, sid)
     log(con, sid, "gate-open", plan=rid, draft=plan_id, rev=rev)
-    log(con, sid, "form", plan=rid, answer=YES)
-    con.execute("INSERT INTO pl_plan_feedback (uid, plan_id, rev, item, text, sid, at) VALUES (?, ?, ?, 'form', ?, ?, ?)",
-                (uuid.uuid4().hex, plan_id, rev, YES, sid, now()))
+    if by:
+        log(con, sid, "grant", plan=rid, by=by)
+    else:
+        log(con, sid, "form", plan=rid, answer=YES)
+    con.execute("INSERT INTO pl_plan_feedback (uid, plan_id, rev, item, text, sid, at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (uuid.uuid4().hex, plan_id, rev, "grant" if by else "form", by or YES, sid, now()))
     return rid

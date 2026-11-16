@@ -16,8 +16,12 @@ from harness.utils.plan.closing import close_answers, delivery
 from harness.utils.plan.life import accepts as drop_accepts
 from harness.utils.plan.ship import mr_accepts
 from harness.utils.gateway.release import accepts as release_accepts
+from harness.utils.orchestra import child
 from harness.utils.plan.request import FORM_ONLY
 from harness.utils.shapes import Facts
+
+BOUND = ("GATE: this session is the child {name} of the delegated plan {plan}: call run('orchestra', 'take') first; "
+         "never AskUserQuestion, never a plan of your own.")
 
 if TYPE_CHECKING:
     from harness.assemble.engine.ports import LedgerPort
@@ -115,9 +119,14 @@ class Act:
                 event.tool.startswith(HARNESS_TOOLS) or facts.get("harness_cli"))):
             self.port.touch_session(event.session)
         if event.kind == "UserPromptSubmit" and event.session:
-            waiting = self.port.prompt(event.session, event.input.get("prompt", ""))
+            text = str(event.input.get("prompt") or "")
+            waiting = self.port.prompt(event.session, text)
             if waiting:
                 notes.append(FORM_ONLY.format(plan=waiting["plan_id"], rev=waiting["rev"]))
+            if text.lstrip().startswith(child.START):  # a brief as the first prompt makes the session a child
+                role = self.port.write(lambda con, rec: child.bind(con, event.session, text))
+                if role:
+                    notes.append(BOUND.format(name=role["name"], plan=role["plan"]))
         if event.kind == "PostToolUse":
             notes += approvals(self.port, event.session, facts.get("answers") or {})
             notes += accepts(self.port, facts.get("answers") or {})
