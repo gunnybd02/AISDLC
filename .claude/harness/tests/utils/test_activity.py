@@ -93,5 +93,61 @@ class ActivityTest(unittest.TestCase):
         self.assertEqual((len(rows[1][0]), rows[1][1], rows[1][2]), (activity.PROMPT_MOST, len(long), 1))
 
 
+class SessionTest(unittest.TestCase):
+    def setUp(self):
+        self.claude_dir = copy_tree(self)
+        self.repo = git_repo(self, {"a.py": "X = 1\n"})
+        self.port = LedgerPort(self.claude_dir)
+
+    def run_event(self, kind, tool="", tool_input=None, sid="s1"):
+        return build_runner(self.claude_dir).run(Event(kind, tool, tool_input or {}, sid, str(self.repo)))
+
+    def loads(self):
+        return [tuple(r[k] for k in r.keys()) for r in self.port.rows("SELECT skill, via, epoch FROM act_skill_loads ORDER BY rowid")]
+
+    def test_a_skill_load_is_recorded_with_its_route_and_epoch_and_a_compact_starts_a_new_epoch(self):
+        from harness.assemble.engine.wire_mcp import build_server
+        from harness.assemble.engine.cli_live import session_began
+        import json
+        skill = sorted(self.port.skill_names())[0]
+        self.run_event("UserPromptSubmit", tool_input={"prompt": "hello"})  # the session the server answers
+        guide = build_server(self.claude_dir).tools["guide"]
+        self.assertFalse(guide.call({"name": skill, "mode": "skills"}).is_error)
+        self.assertTrue(guide.call({"name": "no-such-skill", "mode": "skills"}).is_error)  # a failed call loads nothing
+        guide.call({"name": "plan", "mode": "mcp"})  # a block is no skill
+        path = str(self.claude_dir / "harness" / "mcp" / "skill_docs" / skill / "SKILL.md")
+        self.run_event("PostToolUse", "Read", {"file_path": path})
+        self.run_event("PreToolUse", "Read", {"file_path": path})  # before it ran: nothing loaded yet
+        self.run_event("PostToolUse", "Skill", {"skill": skill})
+        self.run_event("PostToolUse", "Skill", {"skill": "some-other-skill"})  # no skill of the library
+        self.run_event("UserPromptSubmit", tool_input={"prompt": f"/{skill} now"})
+        self.run_event("UserPromptSubmit", tool_input={"prompt": "/compact"})  # a command, no skill
+        self.assertEqual(self.loads(), [(skill, "guide", 0), (skill, "read", 0), (skill, "tool", 0), (skill, "slash", 0)])
+        self.assertEqual(self.port.loaded("s1"), {skill})
+        session_began(self.claude_dir, json.dumps({"session_id": "s1", "source": "compact"}))
+        self.assertEqual(self.port.loaded("s1"), set())  # after a compact the session knows it no more
+        guide.call({"name": skill, "mode": "skills"})
+        self.assertEqual(self.loads()[-1], (skill, "guide", 1))
+        self.assertEqual(self.port.loaded("s1"), {skill})
+        session_began(self.claude_dir, json.dumps({"session_id": "s1", "source": "resume"}))  # no new epoch
+        session_began(self.claude_dir, "not json")  # never raises
+        self.assertEqual(self.port.rows("SELECT epoch FROM sessions WHERE sid = 's1'")[0]["epoch"], 1)
+
+    def test_the_session_row_holds_the_project_and_the_release_it_runs(self):
+        from harness.assemble.engine.record_port import project_of
+        self.run_event("PreToolUse", "Read", {"file_path": "x"}, sid="s2")  # the first call of a session makes its row
+        row = dict(self.port.rows("SELECT project, harness_ver, epoch, last_at FROM sessions WHERE sid = 's2'")[0])
+        self.assertEqual(row, {"project": project_of(self.claude_dir), "harness_ver": "work", "epoch": 0, "last_at": 0})
+        self.assertEqual(self.port.session(), "")  # a call of another tool says nothing about who calls the server
+        self.assertTrue(row["project"].startswith("path:") and len(row["project"]) == 17)  # this home is no repository
+        self.assertEqual(len(project_of(self.repo)), 16)  # the root commit of a repository
+        self.port.write(lambda con, rec: con.execute("UPDATE sessions SET project = '', last_at = 5 WHERE sid = 's2'"))
+        self.run_event("PreToolUse", "Read", {"file_path": "x"}, sid="s3")
+        rows = {r["sid"]: (r["project"], r["last_at"]) for r in self.port.rows("SELECT sid, project, last_at FROM sessions")}
+        self.assertEqual(rows["s2"], (project_of(self.claude_dir), 5))  # an older row gets the project; its time stays
+        self.run_event("UserPromptSubmit", tool_input={"prompt": "hi"}, sid="s3")
+        self.assertEqual(self.port.session(), "s3")  # a prompt moves its last time
+
+
 if __name__ == "__main__":
     unittest.main()

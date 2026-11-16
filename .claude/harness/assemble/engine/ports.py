@@ -49,25 +49,15 @@ class LedgerPort(DeskPort, TicketPort, RecordPort):
     (RecordPort), and here the sessions, the plan in force
     with its grants, registry and receipts, and the rows of the CLI doors and of the rules' decisions."""
 
-    def touch_session(self, sid: str) -> None:
-        """The session is at work now: the hook saw its prompt, or its call of the harness's MCP tools.
-
-        Args:
-            sid: the session id ("" changes nothing).
-        """
-        if sid:
-            self.write(lambda con, rec: con.execute(
-                "INSERT INTO sessions (sid, started_at, last_at) VALUES (?, ?, ?) ON CONFLICT(sid) DO UPDATE SET "
-                "last_at = excluded.last_at", (sid, now(), now())))
-
     def session(self) -> str:
         """The session calling the MCP server: the one whose call of the harness's tools the hook saw last ("" if none).
         Claude Code tells an MCP server no session; the hook sees each tool call just before the server runs it.
+        A session met only through other calls has its row with last time 0 and is never the one.
 
         Returns:
             The session id, or "".
         """
-        rows = self.rows("SELECT sid FROM sessions ORDER BY last_at DESC, rowid DESC LIMIT 1")
+        rows = self.rows("SELECT sid FROM sessions WHERE last_at > 0 ORDER BY last_at DESC, rowid DESC LIMIT 1")
         return rows[0]["sid"] if rows else ""
 
     def ticket(self, sid: str) -> Optional[Ticket]:

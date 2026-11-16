@@ -4,14 +4,19 @@ transaction, so a call is recorded whole or not at all.
 - a prompt (pl_prompts): under its turn's number, secrets masked, cut at 64 KB, marked when another session sent it;
 - a judged tool or shell event: one act_tool_calls row, one gate span (pl_spans), and one act_rule_decisions row per
   finding with the word Claude Code was given;
-- a run of a harness action: one tool span with the names of its arguments, never their values."""
+- a run of a harness action: one tool span with the names of its arguments, never their values;
+- a session (sessions): its row when first met, with the project and the release it runs; its epoch rises by one
+  when its context is compacted or cleared;
+- a skill load (act_skill_loads): the skill, the route (guide, tool, read, slash) and the session's epoch then, so
+  what a session knows now is what it loaded in its current epoch."""
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import time
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from typing import TYPE_CHECKING, Any, Optional
 
 from harness.utils.contracts import CLAUDE_DECISION, Event, Finding
@@ -24,6 +29,9 @@ if TYPE_CHECKING:
 PROMPT_MOST = 65536
 PEER = "<cross-session-message"  # how the host wraps a message another session sent
 RUN_TOOL = "mcp__harness__run"
+SKILL_FILE = re.compile(r"[\\/](?:skill_docs|skills)[\\/]([A-Za-z0-9_.-]+)[\\/]SKILL\.md$")
+SLASH = re.compile(r"^/([A-Za-z0-9_.:-]+)(?:\s|$)")
+NEW_EPOCH = ("compact", "clear")  # the sources of a session start after which earlier loads no longer count
 
 
 def now() -> int:
@@ -161,3 +169,100 @@ def record_call(con: sqlite3.Connection, rec: Recorder, event: Event, plan: Opti
             "uid": uuid.uuid4().hex, "sid": sid, "agent": "", "plan_id": plan["id"] if plan else None,
             "rule": finding.kind, "kind": "finding", "tool": event.tool, "service": "", "verdict": word,
             "detail": finding.detail, "at": now()})
+
+
+def session_seen(con: sqlite3.Connection, sid: str, project: str, release: str) -> None:
+    """Make sure the session has its row, with the project and the release it runs; a row that is there keeps its
+    times, and any row that still has no project gets this one. A new row's last time is 0: last_at moves only at a
+    prompt or a call of the harness's tools (touch_session), which is how the MCP server knows who calls it.
+
+    Args:
+        con: the connection of the transaction.
+        sid: the session id ("" changes nothing).
+        project: the project's key (the root commit of the home, else a hash of its path).
+        release: the release the code runs from (its first 12 characters), or "work" for the work tree.
+    """
+    if not sid:
+        return
+    at = now()
+    con.execute("INSERT OR IGNORE INTO sessions (sid, started_at, last_at, project, harness_ver) VALUES (?, ?, 0, ?, ?)",
+                (sid, at, project, release))
+    con.execute("UPDATE sessions SET harness_ver = ? WHERE sid = ? AND harness_ver != ?", (release, sid, release))
+    if project:
+        con.execute("UPDATE sessions SET project = ? WHERE project = ''", (project,))
+
+
+def epoch_of(con: sqlite3.Connection, sid: str) -> int:
+    """The session's epoch now.
+
+    Args:
+        con: an open connection to the ledger.
+        sid: the session id.
+
+    Returns:
+        Its epoch; 0 for a session with no row.
+    """
+    row = con.execute("SELECT epoch FROM sessions WHERE sid = ?", (sid,)).fetchone()
+    return row[0] if row else 0
+
+
+def epoch_up(con: sqlite3.Connection, sid: str) -> None:
+    """The session's context was compacted or cleared: its epoch rises by one, so earlier loads no longer count.
+
+    Args:
+        con: the connection of the transaction.
+        sid: the session id.
+    """
+    con.execute("UPDATE sessions SET epoch = epoch + 1, last_at = ? WHERE sid = ?", (now(), sid))
+
+
+def skill_load(con: sqlite3.Connection, sid: str, skill: str, via: str) -> None:
+    """Keep that the session loaded a skill, with the route and its epoch then.
+
+    Args:
+        con: the connection of the transaction.
+        sid: the session id.
+        skill: the skill's name.
+        via: the route: guide, tool (the Skill tool), read (a Read of its file) or slash (a prompt that starts with
+            /<name>).
+    """
+    con.execute("INSERT INTO act_skill_loads (sid, agent, skill, via, epoch, at, uid) VALUES (?, '', ?, ?, ?, ?, ?)",
+                (sid, skill, via, epoch_of(con, sid), now(), uuid.uuid4().hex))
+
+
+def loaded(con: sqlite3.Connection, sid: str) -> set[str]:
+    """The skills the session loaded in its current epoch: what it knows now.
+
+    Args:
+        con: an open connection to the ledger.
+        sid: the session id.
+
+    Returns:
+        The distinct skill names.
+    """
+    return {r[0] for r in con.execute("SELECT DISTINCT skill FROM act_skill_loads WHERE sid = ? AND epoch = ?",
+                                      (sid, epoch_of(con, sid)))}
+
+
+def skill_seen(event: Event, known: Collection[str]) -> Optional[tuple[str, str]]:
+    """The skill a hook call loaded outside the guide tool, and its route.
+
+    Args:
+        event: the hook call.
+        known: the names of the library's skills; only these count.
+
+    Returns:
+        (skill, "tool") after the Skill tool ran, (skill, "read") after a Read of its SKILL.md, (skill, "slash") for a
+        prompt that starts with /<skill>; None for any other call or a name that is no skill of the library.
+    """
+    given = event.input if isinstance(event.input, dict) else {}
+    found: Optional[tuple[str, str]] = None
+    if event.kind == "PostToolUse" and event.tool == "Skill":
+        found = (str(given.get("skill") or "").lstrip("/").split(":")[-1], "tool")
+    elif event.kind == "PostToolUse" and event.tool == "Read":
+        m = SKILL_FILE.search(str(given.get("file_path") or ""))
+        found = (m.group(1), "read") if m else None
+    elif event.kind == "UserPromptSubmit":
+        m = SLASH.match(str(given.get("prompt") or "").lstrip())
+        found = (m.group(1).split(":")[-1], "slash") if m else None
+    return found if found and found[0] in known else None

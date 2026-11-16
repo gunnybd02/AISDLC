@@ -123,8 +123,9 @@ def build_server(claude_dir: str | Path) -> McpServer:
     items = items_of(claude_dir)
     table = action_table(items, code_of(claude_dir))
     skills = Loader.resolve(items["skills"])(skill_docs(claude_dir))
-    tools = [Loader.resolve(items[n])(skills, table) for n in ("find", "guide")]
-    tools.append(Loader.resolve(items["run"])(table, ports_of(items, claude_dir)))
+    ports = ports_of(items, claude_dir)
+    tools = [Loader.resolve(items["find"])(skills, table), Loader.resolve(items["guide"])(skills, table, ports)]
+    tools.append(Loader.resolve(items["run"])(table, ports))
     return Loader.resolve(items["stdio"])(*SERVER, tools)
 
 
