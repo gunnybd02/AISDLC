@@ -128,10 +128,17 @@ class VerdictNetTest(unittest.TestCase):
     def test_a_verdict_made_outside_decide_is_reported(self):
         for text in ("from harness.utils.contracts import REFUSE\n",
                      "from harness.utils import contracts\nV = contracts.Verdict(contracts.REFUSE)\n",
-                     "from harness.utils.contracts import Verdict\n",
+                     "from harness.utils.contracts import Verdict\nV = Verdict('x')\n",
+                     "from harness.utils.contracts import Verdict\ndef f(v: Verdict = Verdict('x')) -> int:\n    return 1\n",
                      "import harness.utils.contracts as c\nX = c.ASK\n"):
             with self.subTest(text=text):
                 self.assertIn("harness/gear/a.py", joined(verdict_net, self, {"harness/gear/a.py": text}))
+
+    def test_a_type_hint_may_name_verdict(self):
+        text = ("from harness.utils.contracts import Verdict\nfrom harness.utils import contracts\n\n"
+                "def f(v: Verdict, w: 'contracts.Verdict' = None) -> list[contracts.Verdict]:\n    x: Verdict = v\n"
+                "    return [x]\n")
+        self.assertEqual(verdict_net.check(tree(self, {"harness/gear/a.py": text})), [])
 
     def test_decide_contracts_and_longer_text_pass(self):
         files = {"harness/gear/decide/arbiter.py": "X = 'ask'\n", "harness/utils/contracts.py": "Y = 'deny'\n",
