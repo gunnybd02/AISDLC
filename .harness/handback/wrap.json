@@ -1,0 +1,79 @@
+{
+ "at": 1794827625542,
+ "base": "1aa80b50bae2468477ea32da8704d60afd6482a1",
+ "behaviours": {
+  "p1.wrap.ac1": {
+   "status": "active",
+   "tests": [
+    "orch-play/test_wrap.py"
+   ],
+   "what": "AC1: wrap('hi', '*') returns '*hi*'"
+  },
+  "p1.wrap.ac2": {
+   "status": "active",
+   "tests": [
+    "orch-play/test_wrap.py"
+   ],
+   "what": "AC2: wrap with an empty mark raises ValueError"
+  }
+ },
+ "branch": "orch/p1/wrap",
+ "cardPlan": 1,
+ "commits": [
+  {
+   "files": [
+    "orch-play/test_wrap.py",
+    "orch-play/wrap.py"
+   ],
+   "sha": "e9507ee2a2ea7b8d561b2332b839fc279279a119"
+  }
+ ],
+ "draft": "pd-mwj5zvc9-e29e65",
+ "name": "wrap",
+ "parent": "session_01EXL6xY5uGx26YMuQyXbhjh",
+ "plan": 1,
+ "refused": [],
+ "report": {
+  "added": [],
+  "changed": [
+   "orch-play/wrap.py",
+   "orch-play/test_wrap.py"
+  ],
+  "checked": [
+   "AC1: wrap('hi', '*') returns '*hi*' (p1.wrap.ac1) - verify green",
+   "AC2: wrap with an empty mark raises ValueError (p1.wrap.ac2) - verify green"
+  ],
+  "faults": [],
+  "notChecked": [
+   "Non-string text or mark inputs"
+  ],
+  "risks": [
+   "None known; a None mark also raises ValueError since it is falsy"
+  ],
+  "testsChanged": [
+   {
+    "test": "orch-play/test_wrap.py",
+    "why": "New tests for AC1 and AC2 of wrap"
+   }
+  ]
+ },
+ "session": "f8309d87-56a6-5d91-b8f0-d5537c744703",
+ "uncommitted": [],
+ "unit": {
+  "base": "orch-sandbox",
+  "name": "sandbox",
+  "path": ".",
+  "repo": "https://github.com/gunnybd02/AISDLC",
+  "verify": [
+   "{python}",
+   "-m",
+   "unittest",
+   "discover",
+   "-s",
+   "orch-play",
+   "-t",
+   "orch-play"
+  ]
+ },
+ "verify": "ok"
+}
