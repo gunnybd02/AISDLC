@@ -19,7 +19,8 @@ PINNED = {
     "orchestra.spawn": READ, "orchestra.started": WRITE, "orchestra.status": READ, "orchestra.take": WRITE,
     "orchestra.push": WRITE, "orchestra.question": WRITE, "orchestra.handback": WRITE, "orchestra.check": WRITE,
     "orchestra.accept": WRITE, "orchestra.reject": WRITE, "orchestra.answer": WRITE, "orchestra.forget": WRITE,
-    "orchestra.read": READ, "orchestra.land": WRITE,
+    "orchestra.read": READ, "orchestra.land": WRITE, "orchestra.release": WRITE, "orchestra.remove": WRITE,
+    "orchestra.digest": READ,
 }
 
 

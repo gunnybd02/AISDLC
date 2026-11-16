@@ -189,5 +189,6 @@ def land(port: PlanStore, sid: str, units: dict[str, Any], verify: list[str], gi
         return "\n".join(lines + [f"Every pull request is merged. The plan waits for your own files ({', '.join(own)}): "
                                   "commit them with step_done, then run('orchestra', 'land', {}) again."])
     port.close_plan(sid, port.ticket(sid), "delivered", lines)
-    return "\n".join(lines + [f"Plan {plan['id']} ({ticket['draft']}) is delivered. Report to the user; the merged "
-                              "branches are left for the user to delete."])
+    return "\n".join(lines + [f"Plan {plan['id']} ({ticket['draft']}) is delivered. Delete the check-in if you set one "
+                              "(delete_trigger). Then run('orchestra', 'remove', {}) for the child sessions, and report "
+                              "to the user; the merged branches are left for the user to delete."])

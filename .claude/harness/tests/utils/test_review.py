@@ -45,6 +45,10 @@ class FakeGitHub:
         if method == "POST":
             self.head, self.base = fields["head"], fields["base"]
             return {"number": 5, "html_url": f"{URL}/pull/5"}
+        if method == "GET" and "/contents/" in path:
+            return {"sha": "blob1"}
+        if method == "DELETE":
+            return {}
         if method == "GET":
             return {"merged": self.merged}
         if self.conflict:
@@ -112,7 +116,13 @@ class ReviewTest(Scenario):
         self.assertIn("Green", text)
         self.assertIn("AC 2 of 2 covered", text)
         github = FakeGitHub(self.repo)
-        self.assertIn("pull request #5", review.accept(self.port, "s1", "hello", UNITS, github))
+        accepted = review.accept(self.port, "s1", "hello", UNITS, github)
+        self.assertIn("pull request #5", accepted)
+        self.assertIn("receipt is kept in the ledger and taken off the branch", accepted)
+        delete = [c for c in github.calls if c[0] == "DELETE"][0]
+        self.assertEqual((delete[1], delete[2]["branch"], delete[2]["sha"]),
+                         ("repos/o/r/contents/.harness/handback/hello.json", f"orch/p{self.plan}/hello", "blob1"))
+        self.assertEqual(self.port.ticket("s1")["crew"]["hello"]["receipt"]["name"], "hello")
         method, path, fields = github.calls[0]
         self.assertEqual((method, path, fields["head"], fields["base"]),
                          ("POST", "repos/o/r/pulls", f"orch/p{self.plan}/hello", "work"))

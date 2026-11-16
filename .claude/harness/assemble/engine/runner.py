@@ -17,6 +17,7 @@ from harness.utils.plan.life import accepts as drop_accepts
 from harness.utils.plan.ship import mr_accepts
 from harness.utils.gateway.release import accepts as release_accepts
 from harness.utils.orchestra import child
+from harness.utils.orchestra.cleanup import removal_accepts
 from harness.utils.plan.request import FORM_ONLY
 from harness.utils.shapes import Facts
 
@@ -135,6 +136,7 @@ class Act:
             notes += drop_accepts(self.port, facts.get("answers") or {})
             notes += mr_accepts(self.port, facts.get("answers") or {})
             notes += release_accepts(self.port, facts.get("answers") or {})
+            notes += removal_accepts(self.port, facts.get("answers") or {})  # a remove checklist the user ticked
             notes += delivery(self.port, event.session, facts.get("git_commit"), facts.get("plan"))
             notes += store.uploaded(self.port, event)  # a Drive tool answered with a copy of the ledger
             plan = facts.get("plan")

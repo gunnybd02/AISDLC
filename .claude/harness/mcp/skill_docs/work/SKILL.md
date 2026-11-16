@@ -71,7 +71,8 @@ behaviour.
 `run("plan", "plan_drop", {})` stops one that still waits. A new plan approved while another is open closes the old
 one as superseded: to change work in hand, revise.
 
-**Parts for child sessions** (orchestra, `docs/05b-orchestra-cloud.md`): a full plan with `children`, each card
+**Parts for child sessions**: the whole procedure is the skill `orchestrate` (`guide("orchestrate", "skills")`). In
+short (`docs/05b-orchestra-cloud.md`): a full plan with `children`, each card
 `{name, unit, goal, ac, read?, change, tests?, actions?}`; each AC names a visible case; a unit is `home` or one
 `project.json` declares in `units` (`{repo, path, verify, base}`: any repository, or a folder of a shared one). One
 "Approve" approves them all; then, per child, `run("orchestra", "spawn", {"name"})` gives the brief and the `create_session` call, and

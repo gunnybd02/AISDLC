@@ -3,7 +3,7 @@
 > How this harness builds the user's spec 05 (`05-orchestra.md` to `05-orchestra-4.md`), which assumes one PC.
 > Decided by the user on 2026-11-16: a child is a **cloud session**; the card travels **in the brief** and the
 > handback receipt **on the child's branch** (no refs of the harness on the remote); at most **3** children run; a
-> live probe first, then one plan per part. Parts 1 to 3 are built; part 4 is designed here.
+> live probe first, then one plan per part. All four parts are built.
 
 ## 1. Why spec 05 changes here
 
@@ -83,7 +83,7 @@ sequenceDiagram
 | 1 | Card rules, delegated opening, one delegated plan at a time, `spawn`, `started`, `status`, the brief, the `ls-remote` fix | built |
 | 2 | The child: binding on its first prompt, `take`, `push`, `question`, `handback` and its receipt, the child refusals | built |
 | 3 | The parent: `check`, `accept` (one pull request), `reject`, `answer`, `forget`, `read`, `land` (the final route: merge, conflicts, close) | built |
-| 4 | `release`, `remove` (checklist, then archive), the digest, the scheduled check-in, the `orchestrate` skill, a full live run | next |
+| 4 | `release`, `remove` (checklist, then archive), `digest`, the check-in, receipts kept out of the base, the `orchestrate` skill | built |
 
 ## 5. Part 1, as built
 
@@ -182,13 +182,23 @@ The parent reads no code; every fact comes from the child's branch (`utils/orche
 
 Not built: the base proof of spec 14.6 (a test already green on the base); deleting merged branches.
 
-## 8. Part 4, designed
+## 8. Part 4, as built
 
-**Cleanup (part 4).** `remove` with no name returns one checklist of the children that no longer run; the user ticks;
-the parent's model archives exactly those. One scheduled check-in (hours, not minutes) is set at the first spawn and
-cancelled at the last accept. The `orchestrate` skill holds the parent's procedure of spec 20. `release` gives a
-session back to the user (spec 17); the digest (one line per child, spec 13.3) is built on request from the crew and
-the fetched receipts.
+`utils/orchestra/cleanup.py`; actions in `mcp/actions/orchestra_parent.py`; the parent's procedure is the skill
+`orchestrate` (`guide("orchestrate", "skills")`).
+
+| Action | What it does |
+|---|---|
+| `release {name, why}` | The child's session is the user's again, with its branch and plan; it leaves the crew (`released`). |
+| `remove` | Which child sessions are archived is the user's word, each time. With no pass it answers ONE checklist form (one multi-select question per 4 children that ended: accepted, forgotten, released); the hook's Act keeps a one-use pass in `pl_asks` for each child the user ticks; the next `remove` marks exactly those `removed` and gives each `archive_session` call, which the parent's model makes (harness code cannot archive). |
+| `digest` | One line per child: state, rounds, session, branch, last check, pull request, merged. |
+
+**The check-in.** The answer of the first `started` tells the parent to set one scheduled check-in (`send_later`,
+180 minutes) for a child that dies silently; the delivered answer of `land` tells it to delete it.
+
+**Receipts stay out of the base** (decided by the user on 2026-11-16). `check` keeps the receipt on the crew entry;
+`accept` opens the pull request, then deletes the receipt file from the child's branch through GitHub's contents API,
+so the merge does not carry it. When that fails, the answer says so and the receipt lands with the merge.
 
 ## 9. Limits
 

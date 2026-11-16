@@ -9,7 +9,10 @@ requests at the end, the parent resolving conflicts there, and closes the plan a
 - answer {name, text}: the reply to a child's question; the answer is the send_message to make.
 - forget {name, why}: drop a child that will not come back.
 - read {name}: its receipt.
-- land {timeoutMin?}: merge every accepted pull request, run each unit's tests, close the plan delivered."""
+- land {timeoutMin?}: merge every accepted pull request, run each unit's tests, close the plan delivered.
+- release {name, why}: give a child's session back to the user (utils/orchestra/cleanup.py).
+- remove: one checklist the user ticks, then the archive_session call of each ticked child.
+- digest: one line per child."""
 from __future__ import annotations
 
 from typing import Any, Callable
@@ -17,12 +20,13 @@ from typing import Any, Callable
 from harness.utils.contracts import READ, WRITE, ActionContext, ActionError, McpAction
 from harness.utils.git.github import GitHubError
 from harness.utils.git.run import GitError
-from harness.utils.orchestra import land, review
+from harness.utils.orchestra import cleanup, land, review
 from harness.utils.orchestra.fetch import FetchError
 
 ACTIONS = [("orchestra.check", "Check"), ("orchestra.accept", "Accept"), ("orchestra.reject", "Reject"),
            ("orchestra.answer", "Answer"), ("orchestra.forget", "Forget"), ("orchestra.read", "Read"),
-           ("orchestra.land", "Land")]
+           ("orchestra.land", "Land"), ("orchestra.release", "Release"), ("orchestra.remove", "Remove"),
+           ("orchestra.digest", "Digest")]
 NAME = {"type": "string", "description": "the child's name, as its card names it"}
 MINUTES = {"type": "integer", "description": "minutes each test run may take, 1 to 30 (default 10)"}
 
@@ -172,3 +176,43 @@ class Land(McpAction):
         sid = session_of(ctx)
         return parent_run(lambda: land.land(ctx.ports["plans"], sid, units(ctx), list(ctx.ports["verify_command"]()),
                                             ctx.ports["github"], args.get("timeoutMin", 10)))
+
+
+class Release(McpAction):
+    """orchestra.release: a child's session given back to the user."""
+    block, name, effect = "orchestra", "release", WRITE
+    summary = "Give a child's session back to the user, with why; it leaves the crew and keeps its own work"
+    args_schema = {"type": "object", "properties": {"name": NAME, "why": {"type": "string"}},
+                   "required": ["name", "why"]}
+    needs = ("plans", "session")
+
+    def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
+        """Release the child (utils/orchestra/cleanup.release)."""
+        sid = session_of(ctx)
+        return parent_run(lambda: cleanup.release(ctx.ports["plans"], sid, args["name"], args["why"]))
+
+
+class Remove(McpAction):
+    """orchestra.remove: the user's checklist of child sessions to archive, then the archive calls."""
+    block, name, effect = "orchestra", "remove", WRITE
+    summary = ("Archive finished child sessions: the first call gives one checklist to ask the user; after the "
+               "user ticks, the next call removes exactly those and gives each archive_session call")
+    args_schema = {"type": "object", "properties": {}}
+    needs = ("plans", "session")
+
+    def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
+        """The checklist, or the removal of the ticked children (utils/orchestra/cleanup.remove)."""
+        sid = session_of(ctx)
+        return parent_run(lambda: cleanup.remove(ctx.ports["plans"], sid))
+
+
+class Digest(McpAction):
+    """orchestra.digest: one line per child."""
+    block, name, effect = "orchestra", "digest", READ
+    summary = "One line per child: state, rounds, session, branch, last check, pull request, merged"
+    args_schema = {"type": "object", "properties": {}}
+    needs = ("plans", "session")
+
+    def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
+        """The digest of the session's delegated plan (utils/orchestra/cleanup.digest)."""
+        return cleanup.digest(ctx.ports["plans"], session_of(ctx))

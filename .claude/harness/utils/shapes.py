@@ -115,7 +115,8 @@ class CrewEntry(TypedDict, total=False):
     checkedAt the round of its last green check; adopted (an open session taken on); model; reportSid the parent's
     session; at when it started and sentBackAt when it was last sent back (ms); sent the texts delivered to it;
     lastCheck {green, at, lines} of the parent's check; pr {number, url, repo, base} once accepted; merged {sha, at}
-    once land merged it; forgotWhy (utils/orchestra/review.py, land.py)."""
+    once land merged it; forgotWhy, releasedWhy; receipt, the child's receipt as check read it
+    (utils/orchestra/review.py, land.py, cleanup.py)."""
     unit: str
     sid: str
     state: str
@@ -131,6 +132,8 @@ class CrewEntry(TypedDict, total=False):
     pr: dict[str, Any]
     merged: dict[str, Any]
     forgotWhy: str
+    releasedWhy: str
+    receipt: dict[str, Any]
 
 
 class PlanItems(TypedDict, total=False):
