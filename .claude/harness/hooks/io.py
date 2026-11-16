@@ -27,7 +27,8 @@ class HookIO:
                 tool_response.
 
         Returns:
-            The Event: its input is tool_input, {"prompt"} for UserPromptSubmit, {"stop_hook_active"} for Stop.
+            The Event: its input is tool_input, {"prompt"} for UserPromptSubmit, {"stop_hook_active"} for Stop (with transcript_path
+            when Claude Code names the session's transcript).
 
         Raises:
             HookError: the payload is not JSON, has no hook_event_name, or its tool_input is not an object.
@@ -43,6 +44,8 @@ class HookIO:
             tool_input = {"prompt": str(data.get("prompt") or "")}
         if data["hook_event_name"] == "Stop":  # true when Claude Code goes on because a Stop hook blocked once
             tool_input = {"stop_hook_active": bool(data.get("stop_hook_active"))}
+            if isinstance(data.get("transcript_path"), str) and data["transcript_path"]:
+                tool_input["transcript_path"] = data["transcript_path"]  # where the session's tokens are read from
         if not isinstance(tool_input, dict):
             raise HookError("tool_input of the hook payload is not an object")
         return Event(data["hook_event_name"], str(data.get("tool_name") or ""), tool_input,

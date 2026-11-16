@@ -18,7 +18,7 @@ from harness.utils.plan.life import settle
 from harness.utils.ledger.db import LedgerError, query
 
 ACTIONS = [("ledger.db_query", "DbQuery"), ("ledger.plans_settle", "PlansSettle"), ("ledger.export", "Export"),
-           ("ledger.store_status", "StoreStatus")]
+           ("ledger.store_status", "StoreStatus"), ("ledger.usage_backfill", "UsageBackfill")]
 STORE_NOTE = ("\nStore: run('ledger', 'export', {reason: 'push'}) and upload the copy as its answer says "
               "(guide('store', 'skills')).")
 
@@ -83,6 +83,20 @@ class PlansSettle(McpAction):
         """List the open desk plans and their proof, and end the proven ones (write) or drop unproven ones of dead
         sessions (drop) (utils/plan/life.settle); answer the list and what was done."""
         return settle(ctx.ports["plans"], bool(args.get("write")), args.get("drop"))
+
+
+class UsageBackfill(McpAction):
+    """ledger.usage_backfill: the token usage the transcripts hold and the ledger lacks."""
+    block, name, effect = "ledger", "usage_backfill", WRITE
+    summary = ("Report the token usage the transcripts on this machine hold and the ledger lacks; write: true records it "
+               "once and seeds the list prices when there are none (the harness records usage by itself at each end "
+               "of a turn; this is for sessions from before)")
+    args_schema = {"type": "object", "properties": {"write": {"type": "boolean"}}, "required": []}
+    needs = ("plans",)
+
+    def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
+        """Answer what the transcripts hold that the ledger lacks, and record it when write is true."""
+        return ctx.ports["plans"].usage_backfill(bool(args.get("write")))
 
 
 class Export(McpAction):

@@ -12,7 +12,7 @@ from harness.assemble.engine.ledger_core import LedgerCore
 from harness.utils.gateway.release import current
 from harness.utils.git.run import GitError, git
 from harness.utils.contracts import CLAUDE_DECISION, Event, Verdict
-from harness.utils.ledger import activity, writes
+from harness.utils.ledger import activity, usage, writes
 from harness.utils.shapes import Change, Facts
 
 NOT_RECORDED = "harness: not recorded in the ledger ({what}): {error}\n"
@@ -165,6 +165,44 @@ class RecordPort(LedgerCore):
             if event.kind == "Stop" and event.session and verdict.decision not in CLAUDE_DECISION:
                 activity.turn_close(con, event.session)
         self.recorded(f"{event.kind} {event.tool or ''}".strip(), change)
+        transcript = event.input.get("transcript_path") if isinstance(event.input, dict) else None
+        if event.kind == "Stop" and event.session and transcript:  # the tokens of the turn, from the transcript
+            self.recorded("usage", lambda con, rec: usage.read_new(con, event.session, transcript))
+
+    def usage_backfill(self, write: bool) -> str:
+        """Report the token usage the transcripts on this machine hold and the ledger lacks; write records it and
+        seeds the list prices when there are none.
+
+        Args:
+            write: True to record the usage; False only reports it.
+
+        Returns:
+            One line per session with something new, the total, what was written, and what is not backfilled.
+        """
+        found = usage.transcripts()
+
+        def look(con: Any, rec: Any) -> str:
+            lines, total, seeded = [], 0, 0
+            for sid, path in found:
+                try:
+                    count, tokens = usage.pending(con, sid, path)
+                    if write and count:
+                        self.seen(con, sid)
+                        usage.read_new(con, sid, path)
+                except OSError as e:
+                    lines.append(f"{sid}: not read ({type(e).__name__})")
+                    continue
+                if count:
+                    lines.append(f"{sid}: {count} message(s), {tokens} tokens")
+                    total += count
+            if write:
+                seeded = usage.seed_prices(con)
+            head = (f"{total} message(s) of {len(found)} transcript(s) " + ("recorded" if write else "are not in the "
+                    "ledger yet; run it with write: true to record them") + ".")
+            prices = [f"{seeded} list price(s) seeded (USD per million tokens, a conversion and not a bill)."] if seeded else []
+            return "\n".join([head] + lines + prices + ["Turns, prompts and tool spans of older sessions are not "
+                                                        "backfilled: only token usage is."])
+        return self.write(look)
 
     def written(self, sid: str) -> dict[str, set[str]]:
         """Every content a session wrote, by file (utils/ledger/writes.py).
