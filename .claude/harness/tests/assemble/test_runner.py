@@ -3,6 +3,8 @@ and the config are read only by assemble."""
 import json
 import unittest
 
+from harness.assemble.engine.ports import LedgerPort
+
 from harness.assemble.engine.build import build_runner
 from harness.assemble.engine.config import Config, ConfigError
 from harness.assemble.engine.pipeline import PipelineBook, PipelineError
@@ -53,10 +55,12 @@ class RunnerTest(unittest.TestCase):
         with self.assertRaises(RunnerError):
             Runner([Kind(), Kind()], [], Decide({})).run(Event("PreToolUse", "Bash"))
 
-    def test_the_real_tree_builds_and_allows_a_plain_call(self):
+    def test_the_real_tree_builds_allows_a_plain_call_and_records_it(self):
         claude_dir = copy_tree(self)
         self.assertEqual(build_runner(claude_dir).run(Event("PreToolUse", "Read")).verdict.decision, ALLOW)
-        self.assertFalse((claude_dir / "state").exists())
+        port = LedgerPort(claude_dir)  # every call is recorded: its tool-call row and its gate span
+        self.assertEqual([r["tool"] for r in port.rows("SELECT tool FROM act_tool_calls")], ["Read"])
+        self.assertEqual([(r["kind"], r["status"]) for r in port.rows("SELECT kind, status FROM pl_spans")], [("gate", "ok")])
 
 
 if __name__ == "__main__":

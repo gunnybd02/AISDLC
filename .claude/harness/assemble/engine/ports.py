@@ -23,6 +23,7 @@ from typing import Optional
 from harness.assemble.engine.config import Config, ConfigError
 from harness.assemble.engine.desk_port import DeskPort
 from harness.assemble.engine.ledger_core import now
+from harness.assemble.engine.record_port import RecordPort
 from harness.assemble.engine.ticket_port import TicketPort
 from harness.utils.contracts import Event, Finding, Port
 from harness.utils.git.branches import DEFAULT_PROTECTED, current, is_protected
@@ -43,8 +44,9 @@ ACTION_PORTS = ("plans", "ledger", "verify_command", "items", "doctor", "git_jud
 SERVER_PORTS = ACTION_PORTS + ("judge",)
 
 
-class LedgerPort(DeskPort, TicketPort):
-    """The ledger port: the desk plans (DeskPort), the tickets (TicketPort), and here the sessions, the plan in force
+class LedgerPort(DeskPort, TicketPort, RecordPort):
+    """The ledger port: the desk plans (DeskPort), the tickets (TicketPort), the recording of each action
+    (RecordPort), and here the sessions, the plan in force
     with its grants, registry and receipts, and the rows of the CLI doors and of the rules' decisions."""
 
     def touch_session(self, sid: str) -> None:
@@ -190,20 +192,6 @@ class LedgerPort(DeskPort, TicketPort):
         """
         home, here = top(self.path.parent.parent), top(repo) if Path(repo).is_dir() else None
         return bool(home and here) and key(home) == key(here)
-
-    def decision(self, event: Event, plan: Optional[ApprovedPlan], finding: Finding, verdict: str) -> None:
-        """Keep one finding of a hook call with the word Claude Code was given (act_rule_decisions).
-
-        Args:
-            event: the hook call.
-            plan: the plan in force in its session, or None.
-            finding: the finding kept.
-            verdict: the word Claude Code was given for the call (contracts.CLAUDE_DECISION, or the decision itself).
-        """
-        self.write(lambda con, rec: rec.insert(con, "act_rule_decisions", {
-            "uid": uuid.uuid4().hex, "sid": event.session, "agent": "", "plan_id": plan["id"] if plan else None,
-            "rule": finding.kind, "kind": "finding", "tool": event.tool, "service": "", "verdict": verdict,
-            "detail": finding.detail, "at": now()}))
 
     def keep_verify(self, plan: ApprovedPlan, receipt: Receipt) -> None:
         """A verify receipt of an approved plan: {files: {path: blob id}, tests, commands, code, ok, why, ms}.

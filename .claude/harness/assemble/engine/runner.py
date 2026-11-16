@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional, Protocol
 
-from harness.utils.contracts import CLAUDE_DECISION, Detector, Event, Finding, Port, Translator, Verdict
+from harness.utils.contracts import Detector, Event, Finding, Port, Translator, Verdict
 from harness.utils.git.asks import accepts
 from harness.utils.ledger import store
 from harness.utils.plan.files import allows, relative
@@ -147,6 +147,5 @@ class Act:
                 self.port.back(event.session)  # a write to a plan file in deliver goes back to execute
         if event.kind == "Stop" and any(f.kind == "store.unsaved" for f in verdict.findings):
             store.asked(self.port, event.session)  # a turn is held once for the same unsaved work
-        for finding in verdict.findings:
-            self.port.decision(event, facts.get("plan"), finding, CLAUDE_DECISION.get(verdict.decision, verdict.decision))
+        self.port.record(event, facts.get("plan"), verdict)  # the call itself, with each finding and its word
         return notes

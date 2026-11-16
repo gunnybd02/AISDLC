@@ -1,16 +1,15 @@
-"""The user's own prompts: each is kept in pl_prompts (at most 2000 characters), and a bare agreement word typed while
-a plan waits approves nothing: only the form does (FORM_ONLY)."""
+"""The user's own prompts: each opens a turn and is kept in pl_prompts (masked, at most 64 KB), and a bare agreement
+word typed while a plan waits approves nothing: only the form does (FORM_ONLY)."""
 from __future__ import annotations
 
 import re
 import sqlite3
-import time
 from typing import Optional
 
 from harness.utils.contracts import YES
+from harness.utils.ledger import activity
 from harness.utils.plan.render import REFINE_LABEL
 
-LONGEST = 2000
 # Words a user may type to agree, in English and Vietnamese: recognised in a prompt, never shown.
 AGREE = {"ok", "okay", "oke", "yes", "y", "go", "go ahead", "approve", "approved", "lgtm", "ship it",
          "duy\u1ec7t", "\u0111\u1ed3ng \u00fd", "l\u00e0m \u0111i", "ch\u1ed1t", "\u1eeb", "\u0111\u01b0\u1ee3c", "\u0111i"}
@@ -33,7 +32,8 @@ def bare_agreement(text: str) -> bool:
 
 
 def record_prompt(con: sqlite3.Connection, sid: str, text: Optional[str]) -> None:
-    """Keep one prompt of the user in pl_prompts, cut to LONGEST characters, numbered from 1 in its session.
+    """A prompt opens a turn (pl_turns) and is kept under the turn's number in pl_prompts: secrets masked, cut at 64 KB,
+    marked when another session sent it (utils/ledger/activity.py). An empty prompt opens its turn and keeps no text.
 
     Args:
         con: the connection of the transaction.
@@ -41,7 +41,6 @@ def record_prompt(con: sqlite3.Connection, sid: str, text: Optional[str]) -> Non
         text: the prompt; None is kept as "".
     """
     text = str(text or "")
-    n = 1 + (con.execute("SELECT MAX(n) FROM pl_prompts WHERE sid = ?", (sid,)).fetchone()[0] or 0)
-    con.execute("INSERT INTO pl_prompts (sid, n, text, chars, cut, from_peer, source, uuid, at) VALUES "
-                "(?, ?, ?, ?, ?, 0, 'user', '', ?)", (sid, n, text[:LONGEST], len(text), int(len(text) > LONGEST),
-                                                     int(time.time() * 1000)))
+    n = activity.turn_open(con, sid, len(text))
+    if text:
+        activity.prompt(con, sid, n, text)
