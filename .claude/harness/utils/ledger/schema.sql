@@ -2,6 +2,7 @@
 -- 19 indexes, 4 views, in the order the real ledger made them. Tables and indexes are read from its sqlite_master,
 -- view bodies from pipeline/adapters/sqlite/ledger_catalog.py. A tool that moves in finds its table here, unchanged.
 -- One statement per line, each ending with a semicolon: db.py runs them one by one inside one transaction.
+-- version 1: the structure copied from the real ledger; a ledger made before versions were kept has this one.
 CREATE TABLE sessions (sid TEXT PRIMARY KEY, started_at INTEGER, last_at INTEGER, epoch INTEGER NOT NULL DEFAULT 0, project TEXT NOT NULL DEFAULT '', harness_ver TEXT NOT NULL DEFAULT '');
 CREATE TABLE act_skill_loads (sid TEXT, agent TEXT, skill TEXT, via TEXT, epoch INTEGER, at INTEGER, uid TEXT);
 CREATE INDEX act_skill_loads_sid ON act_skill_loads (sid);
@@ -65,3 +66,11 @@ CREATE TABLE pl_git_runs (uid TEXT PRIMARY KEY, sid TEXT, source TEXT, tool TEXT
 CREATE INDEX pl_git_runs_sid ON pl_git_runs (sid, at);
 CREATE TABLE pl_children (uid TEXT PRIMARY KEY, plan_id INTEGER, name TEXT, unit TEXT, state TEXT, round INTEGER, sid TEXT, model TEXT, goal TEXT, ac TEXT, at INTEGER);
 CREATE INDEX pl_children_plan ON pl_children (plan_id, name, at);
+-- version 2: what recording every action needs (docs/12-ledger.md). A block is never changed once a release held it: a
+-- later need is a new block, added to an existing ledger by utils/ledger/upgrade.py.
+CREATE TABLE pl_maint_runs (uid TEXT PRIMARY KEY, door TEXT NOT NULL DEFAULT 'shell', fault TEXT NOT NULL DEFAULT '', approver TEXT NOT NULL DEFAULT '', command TEXT NOT NULL DEFAULT '', cwd TEXT NOT NULL DEFAULT '', exit INTEGER NOT NULL DEFAULT -1, output TEXT NOT NULL DEFAULT '', sid TEXT NOT NULL DEFAULT '', at INTEGER NOT NULL);
+CREATE INDEX pl_maint_runs_fault ON pl_maint_runs (fault, at);
+CREATE TABLE usage_daily (day TEXT NOT NULL, project TEXT NOT NULL DEFAULT '', harness_ver TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL, name TEXT NOT NULL, service TEXT NOT NULL DEFAULT '', calls INTEGER NOT NULL DEFAULT 0, sessions INTEGER NOT NULL DEFAULT 0, blocks INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (day, project, harness_ver, kind, name, service));
+CREATE TABLE rolled_days (day TEXT PRIMARY KEY, at INTEGER NOT NULL);
+CREATE TABLE pl_plan_closures (uid TEXT PRIMARY KEY, sid TEXT NOT NULL, plan_id TEXT NOT NULL, ticket TEXT NOT NULL DEFAULT '', plan_no INTEGER NOT NULL DEFAULT 0, choice TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '', facts TEXT NOT NULL DEFAULT '{}', mismatches TEXT NOT NULL DEFAULT '[]', at INTEGER NOT NULL);
+CREATE INDEX pl_plan_closures_plan ON pl_plan_closures (plan_id, at);

@@ -78,8 +78,9 @@ def step_behaviors(plan: ApprovedPlan, n: int) -> list[PlanBehaviour]:
 
 def owed(port: PlanStore, plan: ApprovedPlan, n: int, files: Sequence[str]) -> list[str]:
     """What the step n still owes before its commit of files (paths from the root): each behaviour of the step active
-    with tests that exist (the registry's, else the plan's), every pending or gone behaviour of the plan, and a green
-    verify that saw the current content of every file to commit.
+    with tests that exist (the registry's, else the plan's), every pending or gone behaviour of the plan but those of
+    later steps (their tests come with their step), and a green verify that saw the current content of every file to
+    commit.
 
     Args:
         port: the harness ledger (plans, tickets, audit rows).
@@ -97,6 +98,8 @@ def owed(port: PlanStore, plan: ApprovedPlan, n: int, files: Sequence[str]) -> l
         if b.get("status") in ("skipped", "retired"):
             continue
         plan_b = next((x for x in plan.get("behaviors", []) if x["id"] == bid), {})
+        if bid not in mine and int(b.get("step") or plan_b.get("step") or 0) > n + 1:
+            continue  # a behaviour of a later step: its test is written when that step comes
         tests = b.get("tests") or ([plan_b["test"]] if plan_b.get("test") else [])
         if bid in mine and not tests:
             out.append(f"behaviour {bid} has no test: add one with add test")

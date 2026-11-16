@@ -22,10 +22,28 @@ class LedgerTest(unittest.TestCase):
         self.assertLessEqual(set(TABLES) | {"pl_retro_plan", "pl_plan_facts"}, names)
 
     def test_the_schema_copy_is_whole(self):
-        text = SCHEMA.read_text(encoding="utf-8")
-        self.assertEqual(text.count("CREATE TABLE"), 40)
-        self.assertEqual(text.count("CREATE INDEX"), 19)
-        self.assertEqual(text.count("CREATE VIEW"), 4)
+        first = "\n".join(db.blocks()[1])  # version 1: the copy of the real ledger's structure, never changed
+        self.assertEqual((first.count("CREATE TABLE"), first.count("CREATE INDEX"), first.count("CREATE VIEW")), (40, 19, 4))
+        second = "\n".join(db.blocks()[2])  # version 2: what recording every action needs
+        self.assertEqual((second.count("CREATE TABLE"), second.count("CREATE INDEX")), (4, 2))
+        self.assertEqual(db.statements(1) + db.blocks()[2], db.statements(2))  # a version is the one before and more
+        self.assertEqual(db.latest(), max(db.blocks()))
+        self.assertNotEqual(db.pinned(1), db.pinned())
+
+    def test_a_writer_refuses_a_ledger_of_another_version_and_a_reader_still_reads_it(self):
+        path = tree(self, {}) / "harness.db"
+        con = sqlite3.connect(path, isolation_level=None)
+        for sql in db.statements(1):  # exactly the structure of version 1, as a ledger made before versions were kept
+            con.execute(sql)
+        con.execute("INSERT INTO sessions (sid, started_at, last_at) VALUES ('s1', 1, 2)")
+        con.close()
+        before = path.read_bytes()
+        with self.assertRaises(LedgerError) as caught:
+            Ledger.open(path)
+        self.assertIn("schema mismatch: the ledger is version 1", str(caught.exception))
+        self.assertIn("code that is not in force never upgrades a ledger", str(caught.exception))
+        self.assertEqual(path.read_bytes(), before)  # nothing was written
+        self.assertEqual(db.query(path, "SELECT sid FROM sessions")[1], [("s1",)])  # read only: no structure check
 
     def test_a_db_whose_schema_drifted_does_not_open(self):
         root = tree(self, {})
