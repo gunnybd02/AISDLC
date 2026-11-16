@@ -54,7 +54,7 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #32 | Orchestra, part 3, the parent: `check` (the receipt on the child's branch, the AC behaviours, the tests rerun by the parent), `accept` (one pull request into the unit's base, through `gh api`), `reject` (3 rounds), `answer`, `forget`, `read`, and `land`, the final route (merge every pull request, a conflict stops it for the parent to resolve or reject, each unit's tests on the merged base, the plan closes delivered) |
 | #34 | Orchestra, part 4: `release`, `remove` (one checklist the user ticks, then the `archive_session` calls), `digest`; the check-in for a child that dies silently; receipts kept out of the base (accept takes the file off the branch, the ledger keeps it); the skill `orchestrate`; the test leftovers `orch-probe/` and `.harness/handback/` removed from main |
 
-444 tests pass (1 skipped, Windows only); doctor: 0 errors.
+442 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 ## The cloud, as it runs now
 
