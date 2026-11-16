@@ -1,4 +1,4 @@
-"""h7.approval: only the user's "Duyệt" in the form, to the question of the waiting revision, approves a plan; the
+"""h7.approval: only the user's "Approve" in the form, to the question of the waiting revision, approves a plan; the
 ledger keeps the revision, the approval and its events."""
 import json
 import unittest
@@ -17,7 +17,7 @@ PLAN = {"title": "Add a greeting", "files": ["hello.py"], "tests": ["test_hello.
 
 def answered(q, label, how="input"):
     """A PostToolUse of AskUserQuestion as Claude Code sends it, the answer in one of the places it may be."""
-    tool_input = {"questions": [{"question": q, "options": [{"label": "Duyệt"}, {"label": "Sửa plan"}]}]}
+    tool_input = {"questions": [{"question": q, "options": [{"label": "Approve"}, {"label": "Change plan"}]}]}
     response = None
     if how == "input":
         tool_input["answers"] = {q: label}
@@ -39,16 +39,16 @@ class ApprovalTest(unittest.TestCase):
 
     def test_present_keeps_the_revision_and_gives_the_form_question(self):
         self.assertEqual(self.q, question(PLAN, self.plan_id, 1))
-        self.assertEqual(self.q, f'Duy\u1ec7t plan "{PLAN["title"]}" ({self.plan_id} rev 1)?')  # the block shows the rest
+        self.assertEqual(self.q, f'Approve plan "{PLAN["title"]}" ({self.plan_id} rev 1)?')  # the block shows the rest
         self.assertEqual([w["question"] for w in self.port.waiting()], [self.q])
         self.assertIsNone(self.port.approved("s1"))
 
-    def test_duyet_in_the_form_approves_the_plan_for_the_session(self):
+    def test_approve_in_the_form_approves_the_plan_for_the_session(self):
         for how in ("input", "json", "text"):
             with self.subTest(how=how):
                 port = LedgerPort(tree(self, {}))
                 plan_id, _, q = port.present(PLAN)
-                notes = Act(port).run(answered(q, "Duyệt", how), Answers().translate(answered(q, "Duyệt", how)),
+                notes = Act(port).run(answered(q, "Approve", how), Answers().translate(answered(q, "Approve", how)),
                                       Verdict("allow"))
                 plan = port.approved("s1")
                 self.assertEqual((plan["plan_id"], plan["root"], plan["files"]), (plan_id, "C:/repo", ["hello.py"]))
@@ -56,29 +56,29 @@ class ApprovalTest(unittest.TestCase):
                 self.assertEqual(port.waiting(), [])
 
     def test_another_answer_or_another_question_approves_nothing(self):
-        notes = self.act(answered(self.q, "Sửa plan"))
+        notes = self.act(answered(self.q, "Change plan"))
         self.assertIsNone(self.port.approved("s1"))
         self.assertIn("did not approve", " ".join(notes))
-        self.act(answered(question(PLAN, self.plan_id, 2), "Duyệt"))
-        self.act(answered(question({**PLAN, "title": "Other"}, self.plan_id, 1), "Duyệt"))
+        self.act(answered(question(PLAN, self.plan_id, 2), "Approve"))
+        self.act(answered(question({**PLAN, "title": "Other"}, self.plan_id, 1), "Approve"))
         self.assertIsNone(self.port.approved("s1"))
 
     def test_only_the_newest_revision_can_be_approved(self):
         _, rev2, q2 = self.port.present(PLAN, self.plan_id)
         self.assertEqual(rev2, 2)
-        self.act(answered(self.q, "Duyệt"))
+        self.act(answered(self.q, "Approve"))
         self.assertIsNone(self.port.approved("s1"))
-        self.act(answered(q2, "Duyệt"))
+        self.act(answered(q2, "Approve"))
         self.assertEqual(self.port.approved("s1")["rev"], 2)
 
     def test_a_new_approval_takes_the_place_of_the_old_one(self):
-        self.act(answered(self.q, "Duyệt"))
+        self.act(answered(self.q, "Approve"))
         plan_id2, _, q2 = self.port.present({**PLAN, "title": "Second"})
-        self.act(answered(q2, "Duyệt"))
+        self.act(answered(q2, "Approve"))
         self.assertEqual(self.port.approved("s1")["plan_id"], plan_id2)
 
     def test_the_ledger_keeps_revisions_events_and_a_chained_plan_row(self):
-        self.act(answered(self.q, "Duyệt"))
+        self.act(answered(self.q, "Approve"))
         ledger = self.port.ledger
         events = [e["event"] for e in ledger.all("SELECT event FROM pl_plan_events WHERE plan_id = ? ORDER BY n",
                                                  (self.plan_id,))]

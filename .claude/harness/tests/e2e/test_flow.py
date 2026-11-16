@@ -55,13 +55,13 @@ class OneFlowTest(unittest.TestCase):
         flow.hook("UserPromptSubmit", "", {})  # the session the MCP server works for
         out = flow.mcp("plan", "plan_present", {"plan": {"title": "Set X", "what": ["X becomes 2"], "files": ["a.py"],
                                                          "tests": ["test_a.py"]}})
-        q = re.search(r'Duyệt plan "Set X" \((pd-[0-9a-z]+-[0-9a-f]{6}) rev 1\)\?(?= Header)', out)
+        q = re.search(r'Approve plan "Set X" \((pd-[0-9a-z]+-[0-9a-f]{6}) rev 1\)\?(?= Header)', out)
         plan_id = q.group(1)
         self.assertIn("- a.py\n**Tests**\n- test_a.py", out)
-        form = {"questions": [{"question": q.group(0), "options": [{"label": "Duyệt"}, {"label": "Sửa plan"}]}]}
-        self.assertEqual(flow.decision("AskUserQuestion", {**form, "answers": {q.group(0): "Duyệt"}}), "deny")
+        form = {"questions": [{"question": q.group(0), "options": [{"label": "Approve"}, {"label": "Change plan"}]}]}
+        self.assertEqual(flow.decision("AskUserQuestion", {**form, "answers": {q.group(0): "Approve"}}), "deny")
         self.assertEqual(flow.decision("AskUserQuestion", form), "allow")
-        note = flow.hook("PostToolUse", "AskUserQuestion", form, {"answers": {q.group(0): "Duyệt"}})
+        note = flow.hook("PostToolUse", "AskUserQuestion", form, {"answers": {q.group(0): "Approve"}})
         self.assertIn("approved", note["additionalContext"])
 
         # edits: the plan's files only

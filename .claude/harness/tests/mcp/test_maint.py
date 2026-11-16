@@ -7,7 +7,7 @@ from harness.assemble.engine.ports import LedgerPort
 from harness.tests import tree
 from harness.tests.mcp import caller
 
-Q = "T\u1eaft guard 15 ph\u00fat: s\u1eeda harness?"
+Q = "Turn guards off for 15 min: fix harness?"
 
 
 class MaintBlockTest(unittest.TestCase):
@@ -16,7 +16,7 @@ class MaintBlockTest(unittest.TestCase):
         self.run = caller(self.root)
 
     def test_grant_gives_the_question_to_ask(self):
-        self.assertIn(Q, self.run("maint", "grant", minutes=15, why="s\u1eeda harness").text)
+        self.assertIn(Q, self.run("maint", "grant", minutes=15, why="fix harness").text)
         for minutes in (0, 121, True, 1.5):
             with self.subTest(minutes=minutes):
                 self.assertTrue(self.run("maint", "grant", minutes=minutes, why="x").is_error)

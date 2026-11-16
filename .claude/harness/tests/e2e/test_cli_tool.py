@@ -41,11 +41,11 @@ class CliToolTest(unittest.TestCase):
 
         decision, code, out = self.shell("run", "plan", "plan_present", json.dumps(PLAN))
         self.assertEqual((decision, code), ("allow", 0), out)
-        q = re.search(r'Duy\u1ec7t plan "Set X" \((pd-[0-9a-z]+-[0-9a-f]{6}) rev 1\)\?', out)
+        q = re.search(r'Approve plan "Set X" \((pd-[0-9a-z]+-[0-9a-f]{6}) rev 1\)\?', out)
         self.assertIsNotNone(q, out)
-        options = [{"label": "Duy\u1ec7t"}, {"label": "S\u1eeda plan"}]
+        options = [{"label": "Approve"}, {"label": "Change plan"}]
         form = {"questions": [{"question": q.group(0), "options": options}]}
-        note = self.flow.hook("PostToolUse", "AskUserQuestion", form, {"answers": {q.group(0): "Duy\u1ec7t"}})
+        note = self.flow.hook("PostToolUse", "AskUserQuestion", form, {"answers": {q.group(0): "Approve"}})
         self.assertIn("approved", note["additionalContext"])  # the plan was kept for this session: "flow"
         self.assertEqual(self.flow.decision("Write", {"file_path": str(self.repo / "a.py"), "content": "X = 2\n"}),
                          "allow")

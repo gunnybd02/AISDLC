@@ -17,9 +17,9 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 
 - Explain simply and briefly; when asked "simpler", shorten again. English, with the form labels in Vietnamese.
 - Before building: present the plan in a form (AskUserQuestion) with the question
-  `Duyệt plan "<title>" (<pd-id> rev N)?` and the options "Duyệt", "Sửa plan", "Bỏ plan". Build only after "Duyệt".
-- After building: tests and doctor, a pull request, then ask in a form "Merge PR #N?" ("Cho phép" / "Không") and
-  merge it yourself on "Cho phép" (merging through the GitHub API works from a cloud session).
+  `Approve plan "<title>" (<pd-id> rev N)?` and the options "Approve", "Change plan", "Drop plan". Build only after "Approve".
+- After building: tests and doctor, a pull request, then ask in a form "Merge PR #N?" ("Allow" / "Deny") and
+  merge it yourself on "Allow" (merging through the GitHub API works from a cloud session).
 - Test live in a real cloud session when a change touches how sessions start; say plainly what was not tested.
 - Never ask for a token or a secret in chat. No force push. All `.py` files are ASCII (Vietnamese as `\u` escapes).
 
@@ -27,16 +27,16 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 
 | PR | What it gave |
 |---|---|
-| #1, #2 | The block folders (`gear`, `hooks`, `mcp`, `assemble`, `utils`), one store, the plan lifecycle of spec 04 (ticket, desk, form, steps, files gate, verify, `step_done`, closing), commit guards, git rules P1-P8 (protected branches only, ask, kept in SQL), shipping (`git.commit`, `git.push`, MR form), releases (`boot.py` runs `state/live/<sha>`, `live publish` with "Cho phép") |
+| #1, #2 | The block folders (`gear`, `hooks`, `mcp`, `assemble`, `utils`), one store, the plan lifecycle of spec 04 (ticket, desk, form, steps, files gate, verify, `step_done`, closing), commit guards, git rules P1-P8 (protected branches only, ask, kept in SQL), shipping (`git.commit`, `git.push`, MR form), releases (`boot.py` runs `state/live/<sha>`, `live publish` with "Allow") |
 | #5 | `entry/install.py`: hooks and MCP server in the user's settings, so every session of a machine is governed |
 | #6 | `boot.py cli tool find\|guide\|run`: the MCP tools from the shell, for a session that has none |
-| #7 | `cli live update`: a running session takes the newest main after "Cho phép", no restart |
+| #7 | `cli live update`: a running session takes the newest main after "Allow", no restart |
 | #8 | The install allows the harness's own CLI in the user's permissions (auto mode blocked it) |
 | #9 | SessionStart hook: a session starts on the newest main when its doctor is clean |
 | #10 | The session-start message says how to reach the tools without the MCP server |
 | #11 | One core: the repository's own wiring is back and gives way to an installed core |
 | #15 | `anchor.py` at the repository root is the one file Claude Code runs; the doors are in `harness/entry/`; `.claude/entry/` keeps three forwarders (`boot.py`, `doctor.py`, `install.py`) for machines set up before it |
-| #16 | The skill texts are in `harness/mcp/skill_docs/<name>/SKILL.md`, part of a release (a changed skill needs "Cho phép") |
+| #16 | The skill texts are in `harness/mcp/skill_docs/<name>/SKILL.md`, part of a release (a changed skill needs "Allow") |
 | #17 | `nets/` and `tests/` are inside `harness/` |
 | #18 | The first real skills: `start`, `plan`, `step`, `ship`, `close`, `refused` (working under the harness) and `harness-map`, `harness-rule`, `harness-action`, `harness-skill`, `harness-release` (developing it); the session-start message points to `start`; the doctor refuses a skill that names an action, block or skill that is not there |
 | #19 | The skills are whole workflows, three files: `work` (any repository: gather context, plan, build, ship, close), `harness-dev` (the harness itself: gather context, plan, build, check, pull request, release) and `refused` (the lookup of every refusal); the session-start message points to `work` |
@@ -62,7 +62,7 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 - The MCP tools load reliably only from a repository's `.mcp.json` (the cloud's supported way). A session on this
   repository has them; a session on another repository may not, and then uses `anchor.py cli tool ...`.
 - Checked live: install, refusal before a plan, update at start, MCP and shell tools, presenting a plan, one core with
-  this repository cloned. **Not checked live:** the flow after a real "Duyệt" click (edit, verify, `step_done`,
+  this repository cloned. **Not checked live:** the flow after a real "Approve" click (edit, verify, `step_done`,
   delivered); test sessions run alone and cannot answer a form. The first governed session with the user does it.
 
 ## Facts found, worth keeping
@@ -90,7 +90,7 @@ forwarders in `.claude/entry/`.
 
 ## What comes next, in this order
 
-1. **A real governed run with the user**: done on 2026-11-15 (the "Duyệt" click, edit, gate refusals). It fixed
+1. **A real governed run with the user**: done on 2026-11-15 (the "Approve" click, edit, gate refusals). It fixed
    verify on a plan without tests and wrote `docs/05b-orchestra-cloud.md`; what it left open is item 5.
 2. **Orchestra in the cloud** (`docs/05b-orchestra-cloud.md`, decided by the user on 2026-11-16: children are cloud
    sessions, the card rides in the brief and the receipt on the child's branch, at most 3 run). A live probe showed a

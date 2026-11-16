@@ -52,7 +52,7 @@ mode; pre-allow only the tools of the test, the hooks stay the gate):
 claude -p "Create hello.py that prints hello" --output-format stream-json --verbose --max-turns 12 --mcp-config .mcp.json --allowedTools "Write,Edit,Read,Bash,AskUserQuestion,mcp__harness__find,mcp__harness__guide,mcp__harness__run"
 ```
 
-A headless session cannot answer a form: the user's click on "Duyệt" is the hook event a form answer gives
+A headless session cannot answer a form: the user's click on "Approve" is the hook event a form answer gives
 (PostToolUse of AskUserQuestion with `tool_response.answers`), sent to `harness/entry/hook.py` with the session's id.
 
 ## What the live run showed
@@ -61,7 +61,7 @@ A headless session cannot answer a form: the user's click on "Duyệt" is the ho
 |---|---|
 | Write before any plan | refused: no plan approved |
 | `plan_present` with a sentence as a test | refused by the desk; a light plan was then kept (root: the project) |
-| The form answered "Duyệt" | ticket opened in execute |
+| The form answered "Approve" | ticket opened in execute |
 | Write `hello.py`, `verify.run` | allowed; verify passed |
 | `step_done` with an AI co-author line | refused by the commit guard; the model wrote the message again |
 | `step_done` | committed; the plan delivered, its ticket closed |
@@ -82,7 +82,7 @@ at user scope (`claude mcp add-json --scope user`, else `~/.claude.json`). The c
 config, releases); the repositories a session works on are its plan roots. Its own CLI is allowed in the user's
 permissions (`Bash(python3 "<core>/anchor.py" cli:*)` and the same with the installer's python, unquoted, or from
 `~`), so a session in auto mode may run `cli tool ...` and `cli live update`: the hooks still judge each call, and a
-new release still needs the user's "Cho phép". It is safe to run again;
+new release still needs the user's "Allow". It is safe to run again;
 `--uninstall` takes out only what it put in.
 
 A cloud environment gets the latest harness in every new session with a setup script, run before Claude starts:
@@ -125,5 +125,5 @@ python3 ~/.harness/anchor.py cli live update
 
 It pins the code that runs now as a release (when none is), fast-forwards the clone to `origin/main` (refused over
 local changes or off `main`), builds the new code and runs its doctor, then asks the user the form
-`Cho phép phát hành harness <sha>?`. After "Cho phép", `cli live publish` puts it in force: the hooks run it at their
+`Allow publishing harness release <sha>?`. After "Allow", `cli live publish` puts it in force: the hooks run it at their
 next call, the MCP server at its next request. Nothing new runs before the user's word.

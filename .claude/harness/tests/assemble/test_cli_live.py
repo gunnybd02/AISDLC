@@ -1,5 +1,5 @@
 """h22.live-update: live update brings the newest main of the harness's own clone into a running session: it pins the
-code that runs now, fast-forwards the clone, and the new code goes in force only with the user's Cho phép of
+code that runs now, fast-forwards the clone, and the new code goes in force only with the user's Allow of
 exactly its sha; an update over local changes, or off main, is refused."""
 import json
 import re
@@ -65,7 +65,7 @@ class LiveUpdateTest(unittest.TestCase):
     def allow(self, text):
         q = re.search(r"exactly: (.+?\?) Options", text).group(1)
         event = Event("PostToolUse", "AskUserQuestion", {"questions": [{"question": q}]}, "s1", "/tmp")
-        Act(self.port).run(event, {"answers": {q: "Cho phép"}}, Verdict("allow"))
+        Act(self.port).run(event, {"answers": {q: "Allow"}}, Verdict("allow"))
 
     def test_an_update_pins_what_runs_and_goes_in_force_only_with_the_users_word(self):
         running = stamp(self.home)

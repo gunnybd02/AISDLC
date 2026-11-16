@@ -1,7 +1,7 @@
 """live status | live publish | live update | live hint (docs: blue/green release). publish builds a release of the work tree's
 code, runs its own doctor (every check of a start: loader, names, argument types, ports, effects, rules, nets) and puts
-it in force only with the user's word: a one-use pass of exactly that sha, given by the answer Cho ph\u00e9p to the
-form question 'Cho ph\u00e9p ph\u00e1t h\u00e0nh harness <sha>?' (a session cannot answer a form; utils/git/asks.py
+it in force only with the user's word: a one-use pass of exactly that sha, given by the answer Allow to the
+form question 'Allow publishing harness release <sha>?' (a session cannot answer a form; utils/git/asks.py
 keeps the pass).
 update brings the newest main of the harness's own clone into a running session: it pins the code that runs now when
 no release is in force (so the new code is not run before the user's word), fast-forwards the clone (utils/git/pull.py)
@@ -54,7 +54,7 @@ def publish_door(port: PlanStore, home: str | Path) -> tuple[int, str]:
     if not healthy(home, release_dir(home, sha)):
         return 1, f"refused: the doctor of release {sha} finds problems; run its harness/entry/doctor.py and fix them"
     if not take(port, f"live-publish:{sha}"):
-        q, boot = f"{ALLOW_LABEL} ph\u00e1t h\u00e0nh harness {sha}?", anchor(home).as_posix()
+        q, boot = f"{ALLOW_LABEL} publishing harness release {sha}?", anchor(home).as_posix()
         return 0, (f"Release {sha} is built and its doctor is clean. Publishing needs the user's word: ask with "
                    f"AskUserQuestion, one question, exactly: {q} Options: \"{ALLOW_LABEL}\", \"{NO_LABEL}\". Never "
                    f"fill in the answer. Then run: python3 \"{boot}\" cli live publish")

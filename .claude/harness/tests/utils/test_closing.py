@@ -39,7 +39,7 @@ class CommitFlowTest(unittest.TestCase):
         self.plan_id, _, q = self.port.present({"title": "t", "files": ["a.py"], "tests": ["test_a.py"],
                                                 "root": str(self.repo)})
         self.runner.run(Event("PostToolUse", "AskUserQuestion", {"questions": [{"question": q}],
-                                                                 "answers": {q: "Duyệt"}}, "s1", str(self.repo)))
+                                                                 "answers": {q: "Approve"}}, "s1", str(self.repo)))
 
     def test_a_commit_that_did_not_come_from_the_approval_point_delivers_nothing(self):
         verify(self.port, Config.load(self.claude_dir).verify, self.plan_id)
@@ -89,7 +89,7 @@ class CommitFlowTest(unittest.TestCase):
         git(empty, "config", "user.email", "t@t")
         plan_id, _, q = self.port.present({"title": "first", "files": ["a.py"], "tests": [], "root": str(empty)})
         self.runner.run(Event("PostToolUse", "AskUserQuestion", {"questions": [{"question": q}],
-                                                                 "answers": {q: "Duyệt"}}, "s2", str(empty)))
+                                                                 "answers": {q: "Approve"}}, "s2", str(empty)))
         git(empty, "add", "a.py")
         git(empty, "commit", "-q", "-m", "root")
         event = Event("PostToolUse", "Bash", {"command": "git commit -m root"}, "s2", str(empty))

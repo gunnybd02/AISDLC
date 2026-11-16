@@ -44,8 +44,8 @@ def entry_of(code: str | Path, name: str) -> Path:
     moved = Path(code) / "harness" / "entry" / f"{name}.py"
     return moved if moved.is_file() else Path(code) / "entry" / f"{name}.py"
 SKIP = ("__pycache__",)
-ALLOW_LABEL, NO_LABEL = "Cho ph\u00e9p", "Kh\u00f4ng"
-QUESTION = re.compile("^Cho ph\u00e9p ph\u00e1t h\u00e0nh harness (?P<sha>[0-9a-f]{12})\\?$")
+ALLOW_LABEL, NO_LABEL = "Allow", "Deny"
+QUESTION = re.compile("^Allow publishing harness release (?P<sha>[0-9a-f]{12})\\?$")
 
 
 def code_files(code_dir: str | Path) -> Iterator[tuple[str, Path]]:
@@ -156,14 +156,14 @@ def publish(home: str | Path, sha: str) -> None:
 
 
 def accepts(port: PlanStore, answers: dict[str, str]) -> list[str]:
-    """Keep the user's Cho ph\u00e9p to a publish form as a one-use pass of exactly that sha (cli_live.py spends it).
+    """Keep the user's Allow to a publish form as a one-use pass of exactly that sha (cli_live.py spends it).
 
     Args:
         port: the harness ledger (plans, tickets, audit rows).
         answers: {form question: the label the user chose} of an AskUserQuestion call.
 
     Returns:
-        One GATE note per publish question answered Cho ph\u00e9p; [] when none was.
+        One GATE note per publish question answered Allow; [] when none was.
     """
     notes = []
     for q, label in (answers or {}).items():

@@ -7,15 +7,20 @@ import sqlite3
 import time
 from typing import Optional
 
+from harness.utils.contracts import YES
+from harness.utils.plan.render import REFINE_LABEL
+
 LONGEST = 2000
+# Words a user may type to agree, in English and Vietnamese: recognised in a prompt, never shown.
 AGREE = {"ok", "okay", "oke", "yes", "y", "go", "go ahead", "approve", "approved", "lgtm", "ship it",
          "duy\u1ec7t", "\u0111\u1ed3ng \u00fd", "l\u00e0m \u0111i", "ch\u1ed1t", "\u1eeb", "\u0111\u01b0\u1ee3c", "\u0111i"}
-FORM_ONLY = ("GATE: a word in the chat approves no plan. Plan {plan} rev {rev} waits: ask the user its form question "
-             "with AskUserQuestion; only the answer in the form approves it.")
+FORM_ONLY = ("GATE: a word typed in the chat approves no plan. Plan {plan} rev {rev} waits for its approval form: ask "
+             "the user with AskUserQuestion, one question, exactly: {question} Options: \"" + YES + "\", \""
+             + REFINE_LABEL + "\". Never fill in the answer; only the user's \"" + YES + "\" in the form approves it.")
 
 
 def bare_agreement(text: str) -> bool:
-    """Whether a prompt is only an agreement word (ok, yes, duy\u1ec7t...), punctuation and case ignored.
+    """Whether a prompt is only an agreement word (ok, yes, lgtm...), punctuation and case ignored.
 
     Args:
         text: the user's prompt.

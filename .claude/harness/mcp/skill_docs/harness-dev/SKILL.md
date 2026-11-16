@@ -33,7 +33,7 @@ Read `.claude/docs/architecture.md` for the part to change, and `.claude/docs/ha
 `run("health", "items", {})` lists what each block declares.
 
 ## 2. Plan
-As in the `work` skill: present, ask the form, wait for "Duyệt". Work on a branch, never on `main`. Name the test
+As in the `work` skill: present, ask the form, wait for "Approve". Work on a branch, never on `main`. Name the test
 file of each change in the plan. `anchor.py`, `.claude/settings.json` and `.mcp.json` are never written in a
 session: a change there is the user's.
 
@@ -117,8 +117,8 @@ From `.claude/`: `python3 -m unittest discover -s . -t .` passes and `python3 ha
 ## 6. Release
 A session never runs the files it edits. It runs a release: a copy of `harness/` under `state/live/<sha>/`.
 - A new session takes the newest main at its start, when the doctor is clean.
-- A running session: `python3 <core>/anchor.py cli live update`. It asks `Cho phép phát hành harness <sha>?`; after
-  the user's "Cho phép", run it again. No restart.
+- A running session: `python3 <core>/anchor.py cli live update`. It asks `Allow publishing harness release <sha>?`; after
+  the user's "Allow", run it again. No restart.
 - The work tree's own code before a merge (a PC): `python3 <core>/anchor.py cli live publish`, the same form.
 - `python3 <core>/anchor.py cli live status` says which release is in force.
 
