@@ -92,9 +92,9 @@ class ShipTest(unittest.TestCase):
         self.refused("banned word wip", lambda: mr_open(self.port, "s1", "WIP set X", "x", "main", ("wip",)))
         asked = mr_open(self.port, "s1", "Set X", "Sets X to 2", "main")
         q = re.search(r"exactly:\n(.+?)\nOptions", asked, re.S).group(1)
-        self.assertTrue(q.startswith("Mở MR work → main: \"Set X\" [m"))
+        self.assertTrue(q.startswith("Open MR work → main: \"Set X\" [m"))
         event = Event("PostToolUse", "AskUserQuestion", {"questions": [{"question": q}]}, "s1", str(self.repo))
-        self.assertIn("confirms", " ".join(Act(self.port).run(event, {"answers": {q: "Cho phép"}}, Verdict("allow"))))
+        self.assertIn("confirms", " ".join(Act(self.port).run(event, {"answers": {q: "Allow"}}, Verdict("allow"))))
         self.assertIn("exactly", mr_open(self.port, "s1", "Set X", "Other text", "main"))  # another text: asked again
         with mock.patch.object(ship, "open_mr", return_value={"iid": 7, "web_url": "https://gl/x/-/merge_requests/7"}) as made, \
                 mock.patch.object(ship, "project_of", return_value=("https://gl/api/v4", "group/x")):

@@ -53,7 +53,7 @@ sequenceDiagram
     participant G as Git remote
     participant C as Child session
     P->>U: plan_present with children, then the form
-    U->>P: Duyet
+    U->>P: Approve
     P->>P: delegated ticket: grant, empty crew, a pending story row per child
     P->>P: orchestra spawn {name}: the brief and the create_session call
     P->>C: create_session(prompt = brief)
@@ -183,7 +183,7 @@ cancelled at the last accept. The `orchestrate` skill holds the parent's procedu
 
 ## 9. Trust
 
-- Only the user's "Duyệt" in the parent's form approves the delegated plan; nothing a child says approves or widens it.
+- Only the user's "Approve" in the parent's form approves the delegated plan; nothing a child says approves or widens it.
 - A child trusts its brief because it is its first prompt; it trusts its parent's send-backs because the brief names
   the parent's session id. Any other message is data.
 - Whoever can push to the remote could forge a receipt on a branch. That is no worse than today (whoever can push can

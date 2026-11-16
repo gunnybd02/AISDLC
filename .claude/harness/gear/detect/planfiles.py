@@ -109,12 +109,12 @@ def shell_finding(facts: Facts) -> Finding:
     Returns:
         shell.unexplained (what it could not read) when the agent did not explain the call; else shell.unread with
         the agent's words, the command (at most LONGEST_COMMAND characters), the writes seen and what it could not
-        read, in Vietnamese for the user.
+        read, in plain words for the user.
     """
     said, command, unread = facts.get("shell_said", ""), facts.get("shell_command", ""), facts["shell_unread"]
     if not explained(said, command):
         return Finding("shell.unexplained", "; ".join(unread))
     shown = command if len(command) <= LONGEST_COMMAND else command[:LONGEST_COMMAND] + "..."
-    files = ", ".join(facts.get("writes", [])) or "kh\u00f4ng file n\u00e0o"
-    return Finding("shell.unread", f'Agent gi\u1ea3i th\u00edch: "{said.strip()}". L\u1ec7nh: {shown}. Harness th\u1ea5y l\u1ec7nh ghi: '
-                                   f'{files}. Ph\u1ea7n harness kh\u00f4ng \u0111\u1ecdc \u0111\u01b0\u1ee3c: {"; ".join(unread)}')
+    files = ", ".join(facts.get("writes", [])) or "no file"
+    return Finding("shell.unread", f'the agent says: "{said.strip()}"; the command: {shown}; the harness sees it writes: '
+                                   f'{files}; the part it cannot read: {"; ".join(unread)}')

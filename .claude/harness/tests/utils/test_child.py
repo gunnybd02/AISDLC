@@ -63,7 +63,7 @@ class ChildTest(unittest.TestCase):
         with self.assertRaisesRegex(ActionError, "never asks to turn the guards off"):
             Grant().run(ctx, {"minutes": 5, "why": "w"})
         other = ActionContext({"plans": self.port, "session": lambda: "s9"})
-        self.assertIn("T\u1eaft guard", Grant().run(other, {"minutes": 5, "why": "w"}))
+        self.assertIn("Turn guards off", Grant().run(other, {"minutes": 5, "why": "w"}))
 
 
 if __name__ == "__main__":

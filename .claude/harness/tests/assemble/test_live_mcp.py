@@ -1,6 +1,6 @@
 """h21.release: boot runs the release in force, never the work tree a session edits; the MCP server follows a newly
 published release without a restart, after its doctor; a release whose doctor fails is never swapped in; publishing
-needs the user's Cho phép of exactly that sha."""
+needs the user's Allow of exactly that sha."""
 import json
 import re
 import subprocess
@@ -93,7 +93,7 @@ class LiveTest(unittest.TestCase):
         self.assertEqual(current(self.home), self.first)  # asked, not published
         self.assertIn("not published", status(self.home))
         event = Event("PostToolUse", "AskUserQuestion", {"questions": [{"question": q}]}, "s1", "/tmp")
-        self.assertIn("allows publishing", " ".join(Act(port).run(event, {"answers": {q: "Cho phép"}},
+        self.assertIn("allows publishing", " ".join(Act(port).run(event, {"answers": {q: "Allow"}},
                                                                     Verdict("allow"))))
         self.assertIn("is in force", publish_door(port, self.home)[1])
         self.assertNotEqual(current(self.home), self.first)

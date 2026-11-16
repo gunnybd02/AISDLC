@@ -235,11 +235,11 @@ Done in 7d:
 
 - Shipping (`utils/plan/ship.py`, `mcp/actions/git.py`, `gitlab.py`): `git.commit` (step_done adopts its commit),
   `git.push` (unit plans in deliver; a home plan, services none or agent-code, closes itself), `git.mr_open` (the
-  user's Cho phép on the full text, GitLab REST with GITLAB_TOKEN or the proxy's credential). Not yet: `mr_update`,
+  user's Allow on the full text, GitLab REST with GITLAB_TOKEN or the proxy's credential). Not yet: `mr_update`,
   the gitlab read actions, CI waits. Code text is ASCII: Vietnamese words are \u escapes in every .py file.
 
 - Releases (blue/green): `entry/boot.py`, `utils/gateway/release.py`, `engine/live_mcp.py`, `engine/cli_live.py`;
-  sessions run `state/live/<sha>/`, `live publish` needs a clean doctor and the user's Cho phép, the MCP server swaps
+  sessions run `state/live/<sha>/`, `live publish` needs a clean doctor and the user's Allow, the MCP server swaps
   without a restart; boot.py, settings.json and .mcp.json are anchors no session writes.
 
 Left for 7d, each waits for the feature it stores:

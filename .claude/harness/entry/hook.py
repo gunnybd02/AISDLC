@@ -3,7 +3,7 @@ SystemExit too, so a harness that quits quietly cannot let a call through.
 
 Before the harness is even imported, this file (standard library only, entry_net) holds the maint grant
 (harness/utils/maint/grant.py), reading and writing the ledger with plain sqlite3 so it works when the harness is broken:
-- the user's approval word to the form 'T\u1eaft guard N ph\u00fat: <why>?' (read from the PostToolUse of
+- the user's approval word to the form 'Turn guards off for N min: <why>?' (read from the PostToolUse of
   AskUserQuestion, which the model cannot write) turns every guard off for N minutes, at most 120: a pl_notes row of
   kind maint.grant, written in one transaction with its trace in pl_logs;
 - while a grant lasts, each call passes without the harness and is traced in pl_logs;
@@ -32,8 +32,8 @@ STATE = CLAUDE_DIR / "state"
 LEDGER = STATE / "harness.db"
 SCHEMA = CODE_DIR / "harness" / "utils" / "ledger" / "schema.sql"
 FORM = "AskUserQuestion"
-YES = "Duy\u1ec7t"
-PAUSE = re.compile("^T\u1eaft guard (\\d+) ph\u00fat: (.+)\\?$")
+YES = "Approve"
+PAUSE = re.compile("^Turn guards off for (\\d+) min: (.+)\\?$")
 GRANT = "maint.grant"
 LATEST = "SELECT text, why, at FROM pl_notes WHERE kind = ? ORDER BY at DESC, rowid DESC LIMIT 1"
 MAX_MINUTES = 120

@@ -82,7 +82,9 @@ class PromptTest(unittest.TestCase):
         _, _, q = self.port.present(ITEMS, sid="s1")
         for word in ("ok", "Duyệt!", "đồng ý", "LGTM", "làm đi"):
             with self.subTest(word=word):
-                self.assertIn("only the answer in the form approves it", " ".join(self.prompt(word)))
+                note = " ".join(self.prompt(word))
+                self.assertIn(f'exactly: {q} Options: "Approve", "Change plan".', note)  # the form, named in English
+                self.assertIn('only the user\'s "Approve" in the form approves it', note)
         self.assertIsNone(self.port.approved("s1"))
         self.assertEqual(self.prompt("ok, but rename the file first"), [])
 

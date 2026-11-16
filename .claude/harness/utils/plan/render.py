@@ -9,7 +9,7 @@ from typing import Any
 from harness.utils.contracts import YES
 from harness.utils.shapes import PlanItems
 
-REFINE_LABEL = "S\u1eeda plan"
+REFINE_LABEL = "Change plan"
 HEADER = f"{YES} plan"
 
 
@@ -22,7 +22,7 @@ def question(items: PlanItems, plan_id: str, rev: int) -> str:
         rev: the revision number.
 
     Returns:
-        'Duy\u1ec7t plan "<title>" (<plan_id> rev <rev>)?'.
+        'Approve plan "<title>" (<plan_id> rev <rev>)?'.
     """
     return f'{YES} plan "{items.get("title", "")}" ({plan_id} rev {rev})?'
 

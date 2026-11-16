@@ -54,7 +54,7 @@ class GitBlockTest(unittest.TestCase):
         q = re.search(r"exactly: (.+?\?) Options", asked.text).group(1)
         self.assertIn("reset --hard HEAD", q)
         self.assertEqual(self.runs(), [])
-        self.assertEqual(self.answer(q, "Không"), [])  # another answer accepts nothing
+        self.assertEqual(self.answer(q, "Deny"), [])  # another answer accepts nothing
         self.assertIn("exactly:", self.git("reset", "--hard", "HEAD").text)
         self.assertIn("accepted", " ".join(self.answer(q)))
         done = self.git("reset", "--hard", "HEAD")

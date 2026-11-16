@@ -1,7 +1,7 @@
 """The desk plans of LedgerPort (ports.py), before a plan is in force:
 - present: a revision of a desk plan (its items, utils/plan/desk.py, and its root), waiting (pl_plan_revs,
   utils/plan/revisions.py, a 'waiting' event); drop: a waiting plan no longer waits ('dropped');
-- approve: the user's "Duy\u1ec7t" in the form to that revision's question (a chained rec_plans row, an 'approved' event);
+- approve: the user's "Approve" in the form to that revision's question (a chained rec_plans row, an 'approved' event);
 - feedback, unread: the user's words on a revision; prompt: the user's prompt, and the plan a bare agreement word
   would wrongly approve."""
 from __future__ import annotations
@@ -27,7 +27,7 @@ def question(items: PlanItems, plan_id: str, rev: int) -> str:
         rev: the revision number.
 
     Returns:
-        The question whose answer "Duy\u1ec7t" approves exactly that revision.
+        The question whose answer "Approve" approves exactly that revision.
     """
     return render.question(items, plan_id, rev)
 
@@ -147,7 +147,7 @@ class DeskPort(LedgerCore):
 
         Returns:
             The newest waiting Revision of the session (or of no session) when the prompt is a bare agreement word
-            (ok, duy\u1ec7t...), which approves nothing; None otherwise.
+            (ok, yes, lgtm...), which approves nothing; None otherwise.
         """
         self.write(lambda con, rec: request.record_prompt(con, sid, text))
         if request.bare_agreement(text):

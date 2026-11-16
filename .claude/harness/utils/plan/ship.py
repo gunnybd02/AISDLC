@@ -26,9 +26,9 @@ from harness.utils.plan.stop import is_code
 from harness.utils.plan.tickets import DELIVER, approved_plan
 from harness.utils.shapes import ApprovedPlan, CommitJudge, GitJudge, PlanStore, Ticket
 
-ALLOW_LABEL, NO_LABEL = "Cho ph\u00e9p", "Kh\u00f4ng"
-MR_HEAD = "M\u1edf MR"
-MR_RE = re.compile("^M\u1edf MR .+ \\[(?P<code>m[0-9a-f]{12})\\]\\?")
+ALLOW_LABEL, NO_LABEL = "Allow", "Deny"
+MR_HEAD = "Open MR"
+MR_RE = re.compile("^Open MR .+ \\[(?P<code>m[0-9a-f]{12})\\]\\?")
 
 
 class ShipError(ValueError):
@@ -215,7 +215,7 @@ def mr_accepts(port: PlanStore, answers: dict[str, str]) -> list[str]:
         answers: {form question: the label the user chose} of an AskUserQuestion call.
 
     Returns:
-        One GATE note per merge request question answered Cho ph\u00e9p; [] when none was.
+        One GATE note per merge request question answered Allow; [] when none was.
     """
     notes = []
     for q, label in (answers or {}).items():

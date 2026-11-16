@@ -25,11 +25,11 @@ anchor.py       the one file Claude Code runs; it routes to an entry of the rele
 run("plan", "plan_present", {plan})      the plan is data (utils/plan/desk.py: clean, normalize, check; tier light
                                          or full); the revision waits in the ledger with the session that presented
                                          it; the answer is the ## Plan block (render.py) and the form call
-                                         Duyệt plan "<title>" (<pd-id> rev N)?; plan_revise keeps rev+1 with only
+                                         Approve plan "<title>" (<pd-id> rev N)?; plan_revise keeps rev+1 with only
                                          the given items, plan_drop stops a waiting plan, plan_show and plan_status
                                          read one
-AskUserQuestion                          the user answers; only "Duyệt" to that exact question approves it
-                                         (a bare ok / duyệt / đồng ý typed in the chat approves nothing: FORM_ONLY);
+AskUserQuestion                          the user answers; only "Approve" to that exact question approves it
+                                         (a bare ok / yes / lgtm typed in the chat approves nothing: FORM_ONLY);
                                          the approval opens the plan in one transaction (utils/plan/opening.py):
                                          rec_plans, pl_behaviors with tests, the ticket, pl_approval, the events
                                          approved and executing, pl_logs gate-open and form
@@ -55,17 +55,17 @@ run("git", "commit", {files, message})   named files of the plan (never ., a fol
                                          adopts the commit once proven
 run("git", "push")                       a unit plan's branch in deliver only (a home plan closes itself after its
                                          last step): never the home, never a protected branch; judged like git push
-run("git", "mr_open", {title, ...})      after the user's Cho phép on its full text (a one-use pass of exactly that
+run("git", "mr_open", {title, ...})      after the user's Allow on its full text (a one-use pass of exactly that
                                          text): the merge request through GitLab REST (utils/git/gitlab.py); push
                                          and merge request kept in pl_git_audit
 Stop                                     the turn does not end while a code file of the plan changed since the last
                                          green verify (stop.unverified, gear/detect/stop.py; a repeated Stop ends it;
                                          a failure to look keeps it)
-run("plan", "plan_close", {summary?})    the close form with the facts of the ledger (Đóng plan "<title>" (<pd-id>)
+run("plan", "plan_close", {summary?})    the close form with the facts of the ledger (Close plan "<title>" (<pd-id>)
                                          [<ticket>]?: commits, files vs plan, verify, skipped); only the answer closes:
-                                         Đã giao (delivered), Bỏ plan (abandoned); Giữ mở keeps it open
+                                         Delivered, Drop plan (abandoned); Keep open keeps it open
 run("ledger", "plans_settle", {...})     the open desk plans and their proof; write ends the proven ones, drop ends
-                                         unproven plans of dead sessions after the user's Cho phép
+                                         unproven plans of dead sessions after the user's Allow
 delivery (utils/plan/closing.py)         the commit is judged by what it holds: HEAD's parent is the commit of the
                                          approval, and it changes only plan files (paths as git names them, case
                                          kept), each as the passing verify saw it, a plain file whose mode does not
@@ -105,7 +105,7 @@ What the gates refuse, so they always see what they judge:
   with `-c`/`--git-dir`/`--work-tree` (P8). Elsewhere git is free.
 - The git block, `run("git", "run", {repo, args})`, runs git through the harness. It judges the command as the hook
   does (`HarnessGit`, so the shell reader asks nothing of it): nothing to ask, it runs; asked, it gives the form
-  question `Duyệt git <args> trong <repo> [<code>]?`, the user's approval word is kept in `pl_asks` (`utils/git/asks.py`,
+  question `Approve git <args> in <repo> [<code>]?`, the user's approval word is kept in `pl_asks` (`utils/git/asks.py`,
   through `Act`), and the next run of exactly that command uses it up; refused (`git commit`: step_done), it never runs.
   Every run is kept in `pl_git_runs` with the rules that asked and the code of the user's word.
 - The commit guards: before step_done commits, the harness judges the commit with the rules (the event
@@ -189,7 +189,7 @@ Claude Code -> anchor.py -> harness/entry/hook.py   (standard library: the maint
 - A broken harness exits 2, which blocks the call.
 
 ## The maint grant
-Only the user's "Duyệt" to `Tắt guard N phút: <why>?` turns every guard off, for at most 120 minutes. The model gets
+Only the user's "Approve" to `Turn guards off for N min: <why>?` turns every guard off, for at most 120 minutes. The model gets
 the question from `run("maint", "grant", {minutes, why})` and `run("maint", "status")` says whether the guards are
 off. The grant is a row of the ledger (`pl_notes`, kind `maint.grant`, `{"until": seconds}`), written in one
 transaction with its trace in `pl_logs`: no trace, no grant. While it lasts, each call is traced in `pl_logs`.
@@ -209,7 +209,7 @@ Claude Code runs `anchor.py <entry>`: that entry (`harness/entry/`) of the relea
 `state/live/current`), never the work tree a session edits; with no release, the work tree's own. The entry gets the
 home (`HARNESS_HOME`) and the code (`HARNESS_CODE`, read by `build.code_of`). A file a session writes into the
 harness runs nowhere until `python3 anchor.py cli live publish` builds the release (`utils/gateway/release.py`), its own
-doctor is clean, and the user answers Cho phép to `Cho phép phát hành harness <sha>?`. The MCP server
+doctor is clean, and the user answers Allow to `Allow publishing harness release <sha>?`. The MCP server
 (`engine/live_mcp.py`) checks each new release with its doctor and swaps it in without a restart; one that fails is
 never taken. `anchor.py`, `.claude/settings.json` and `.mcp.json` are never written in a session (agent.anchor).
 `.claude/entry/` holds only forwarders (`boot.py`, `doctor.py`, `install.py`) for machines set up before the anchor.

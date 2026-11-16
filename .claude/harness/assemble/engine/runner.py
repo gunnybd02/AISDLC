@@ -122,7 +122,8 @@ class Act:
             text = str(event.input.get("prompt") or "")
             waiting = self.port.prompt(event.session, text)
             if waiting:
-                notes.append(FORM_ONLY.format(plan=waiting["plan_id"], rev=waiting["rev"]))
+                notes.append(FORM_ONLY.format(plan=waiting["plan_id"], rev=waiting["rev"],
+                                              question=waiting.get("question", "")))
             if text.lstrip().startswith(child.START):  # a brief as the first prompt makes the session a child
                 role = self.port.write(lambda con, rec: child.bind(con, event.session, text))
                 if role:

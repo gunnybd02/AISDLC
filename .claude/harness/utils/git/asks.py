@@ -15,7 +15,7 @@ from pathlib import Path
 from harness.utils.contracts import YES
 from harness.utils.shapes import PlanStore
 
-QUESTION = re.compile("^Duy\u1ec7t git (?P<command>.+) trong (?P<repo>.+) \\[(?P<code>g[0-9a-f]{12})\\]\\?$")
+QUESTION = re.compile("^Approve git (?P<command>.+) in (?P<repo>.+) \\[(?P<code>g[0-9a-f]{12})\\]\\?$")
 ACCEPTED = "GATE: the user accepted git {command} [{code}]; run it now with run('git', 'run', ...), once."
 
 
@@ -41,11 +41,11 @@ def question(repo: str | Path, words: Sequence[str], why: str) -> str:
         why: what the rules ask about (the verdict's reason).
 
     Returns:
-        The text for the model: the exact form question "Duy\u1ec7t git <words> trong <repo> [<code>]?" to ask.
+        The text for the model: the exact form question "Approve git <words> in <repo> [<code>]?" to ask.
     """
-    q = f"Duy\u1ec7t git {' '.join(words)} trong {repo} [{code_of(repo, words)}]?"
+    q = f"Approve git {' '.join(words)} in {repo} [{code_of(repo, words)}]?"
     return (f"The git rules ask the user first: {why}. Ask now with AskUserQuestion, one question, exactly: {q} "
-            f"Options: \"{YES}\", \"Kh\u00f4ng\". Never fill in the answer. When the user accepts, run the same "
+            f"Options: \"{YES}\", \"Deny\". Never fill in the answer. When the user accepts, run the same "
             f"command again.")
 
 

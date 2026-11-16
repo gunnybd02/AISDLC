@@ -22,7 +22,7 @@ python3 <core>/anchor.py cli tool run <block> <action> '<args as JSON>'
 ```
 
 ## Always
-- No edit before the user's "Duyệt" in the form. A typed "ok" approves nothing.
+- No edit before the user's "Approve" in the form. A typed "ok" approves nothing.
 - Only the user answers a form: call AskUserQuestion with the questions alone, exactly as the harness gave them.
 - Never `git commit` in the shell: `step_done` commits.
 - Never open `.claude/state/`: read the ledger with `run("ledger", "db_query", {"sql": "SELECT ..."})`.
@@ -64,7 +64,7 @@ behaviour.
 3. `run("plan", "plan_present", {"plan": {...}})`. Problems come back as a list: fix all of them, present again.
 4. The answer ends with the form call. Write one line (the title and the revision), then call AskUserQuestion with
    exactly that question, header and options. Nothing after it.
-5. "Duyệt" opens the plan. "Sửa plan": take the user's words,
+5. "Approve" opens the plan. "Change plan": take the user's words,
    `run("plan", "plan_revise", {"plan": "<pd-id>", "changes": {...}})` with only the items that change, ask the new form.
 
 `run("plan", "plan_show", {})` shows the plan as the user reads it; `run("plan", "plan_status", {})` its state;
@@ -72,7 +72,7 @@ behaviour.
 one as superseded: to change work in hand, revise.
 
 **Parts for child sessions** (orchestra, `docs/05b-orchestra-cloud.md`): a full plan with `children`, each card
-`{name, unit, goal, ac, read?, change?, tests?, actions?}`; each AC names a visible case. One "Duyệt" approves them
+`{name, unit, goal, ac, read?, change?, tests?, actions?}`; each AC names a visible case. One "Approve" approves them
 all; then, per child, `run("orchestra", "spawn", {"name"})` gives the brief and the `create_session` call, and
 `run("orchestra", "started", {"name", "sid"})` records it (3 run at most; `run("orchestra", "status", {})`). While it
 runs no other plan opens in the session; revise it instead.
@@ -122,7 +122,7 @@ the plan changed since the last green verify.
 - Push: `run("git", "push", {})` pushes the plan's branch to origin, after the last step, from a unit's repository,
   on a branch that is not protected. The repository that holds the harness never pushes this way.
 - Merge request: push first, then `run("git", "mr_open", {"title": "...", "description": "...", "target": "main"})`.
-  The answer is a form with the full text; ask it exactly as given, and after the user's "Cho phép" call `mr_open`
+  The answer is a form with the full text; ask it exactly as given, and after the user's "Allow" call `mr_open`
   again with exactly the same text. No AI mark and no banned word in it. It goes through GitLab REST.
 
 Git is free except where a protected branch is touched (`main`, `master`, or `protected` in `project.json`). There
@@ -137,8 +137,8 @@ the plan and a merge request.
 1. A plan in the harness's own repository closes itself as delivered after its last `step_done`.
 2. Any other plan: `run("plan", "plan_close", {"summary": "<what was done>"})`. The harness builds the account from
    the ledger and answers with the close form. Ask it exactly as given; only the user's answer closes the plan:
-   "Đã giao" (delivered), "Bỏ plan" (abandoned), "Giữ mở" (it stays open).
+   "Delivered", "Drop plan" (abandoned), "Keep open" (it stays open).
 3. Tell the user in one or two lines what was delivered and what was not.
 4. Old plans still open: `run("ledger", "plans_settle", {})` lists them and what proves their end; with
    `{"write": true}` it ends the proven ones; `{"drop": ["<pd-id>"]}` ends unproven plans of sessions that no longer
-   run, after the user's "Cho phép" in the form it gives.
+   run, after the user's "Allow" in the form it gives.

@@ -1,4 +1,4 @@
-"""h10.maint-grant: only the user's approval word in the form 'T\u1eaft guard N ph\u00fat: why?' turns the guards off, for
+"""h10.maint-grant: only the user's approval word in the form 'Turn guards off for N min: why?' turns the guards off, for
 N minutes at most 120, as a row of the ledger written with its trace; it works when the harness itself is broken, and
 the model can neither answer the form nor ask for the grant around a broken harness."""
 import json
@@ -11,8 +11,8 @@ from harness.tests import CLAUDE_DIR, entry_of
 from harness.tests.e2e import WINDOWS_CONSOLE, copy_tree, run
 
 BROKEN = {"harness/assemble/engine/build.py": "raise RuntimeError('broken')\n"}
-Q = "T\u1eaft guard 15 ph\u00fat: s\u1eeda harness?"
-NO = "Kh\u00f4ng"
+Q = "Turn guards off for 15 min: fix harness?"
+NO = "Deny"
 
 
 def hook(root, payload):
@@ -79,7 +79,7 @@ class GrantTest(unittest.TestCase):
         self.assertIn("guards off", json.loads(out)["hookSpecificOutput"]["additionalContext"])
         ((text, why),) = grants(self.root)
         self.assertAlmostEqual(json.loads(text)["until"], time.time() + 15 * 60, delta=60)
-        self.assertEqual(why, "s\u1eeda harness")
+        self.assertEqual(why, "fix harness")
         self.assertEqual(hook(self.root, write_call())[0], 0)
         trace = [json.loads(body)["what"] for (body,) in rows(self.root, "SELECT body FROM pl_logs ORDER BY at")]
         self.assertEqual(trace, ["granted", "passed"])
@@ -140,7 +140,7 @@ class GrantTest(unittest.TestCase):
         self.assertEqual(hook(self.root, write_call())[0], 2)
 
     def test_a_grant_lasts_at_most_two_hours(self):
-        hook(self.root, form("T\u1eaft guard 999 ph\u00fat: x?", answer=YES))
+        hook(self.root, form("Turn guards off for 999 min: x?", answer=YES))
         ((text, _),) = grants(self.root)
         self.assertLessEqual(json.loads(text)["until"], time.time() + 120 * 60 + 5)
 
