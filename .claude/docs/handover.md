@@ -35,7 +35,7 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #9 | SessionStart hook: a session starts on the newest main when its doctor is clean |
 | #10 | The session-start message says how to reach the tools without the MCP server |
 | #11 | One core: the repository's own wiring is back and gives way to an installed core |
-| #15 | `anchor.py` at the repository root is the one file Claude Code runs; the doors are in `harness/entry/`; `.claude/entry/` keeps three forwarders (`boot.py`, `doctor.py`, `install.py`) for machines set up before it |
+| #15 | `anchor.py` at the repository root is the one file Claude Code runs; the doors are in `harness/entry/` (the three forwarders it kept in `.claude/entry/` were removed in #43) |
 | #16 | The skill texts are in `harness/mcp/skill_docs/<name>/SKILL.md`, part of a release (a changed skill needs "Allow") |
 | #17 | `nets/` and `tests/` are inside `harness/` |
 | #18 | The first real skills: `start`, `plan`, `step`, `ship`, `close`, `refused` (working under the harness) and `harness-map`, `harness-rule`, `harness-action`, `harness-skill`, `harness-release` (developing it); the session-start message points to `start`; the doctor refuses a skill that names an action, block or skill that is not there |
@@ -57,6 +57,7 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #38 | A delegated plan is done only when every child's database is in the Drive store: copies carry the plan marker `orch.<plan id>.<child or parent>`; a child uploads at handback; the hook reads Drive's own search answer to verify each child's copy; `land` delivers and `remove` archives only verified children (a dead child only with the user's Allow) |
 | #40 | From the live run of #38: a child's copy in Drive is recognised by its own harness id, which its receipt names (it differs from its cloud session id); `land` waits for GitHub's mergeability and does not call a refusal with a clean local merge a conflict; the Drive search is given in Drive's own query syntax |
 | #42 | The remove checklist always has two choices: a question of one child also offers "Keep all", which archives nothing and wins over ticks (the form tool refuses a question with one option: found live) |
+| #43 | The `## Plan` block follows the plan spec (04, sections 7.3, 8, 10): a bare heading, one line per item, overview and code first for a plan with code, the whole card on a child's line (so its criteria are shown and hashed), no Root line; `plan_present` answers the spec's head line, `plan_revise` only the changed lines. One entry folder: the forwarders of `.claude/entry/` are gone; a machine whose hooks still name `.claude/entry/boot.py` runs `python3 .claude/harness/entry/install.py` once |
 
 451 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
@@ -90,10 +91,9 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 `anchor.py` at the root, and everything that runs in one folder, `.claude/harness/`: `entry/`, `gear/`, `hooks/`,
 `mcp/` (code in `skills/`, texts in `skill_docs/`), `assemble/`, `utils/`. Done: the anchor and `entry/` (#15), the
 skill texts (#16), `nets/` and `tests/` (now `harness/nets/`, `harness/tests/`; a rule row names its test as
-`harness/tests/<block>/test_x.py#test_y`). A release is the `harness/` folder plus the forwarders of `.claude/entry/`.
+`harness/tests/<block>/test_x.py#test_y`). A release is the `harness/` folder.
 `docs/` stays outside (a doc fix must not be a new release). Run the tests from `.claude/`:
-`python3 -m unittest discover -s . -t .`, and the doctor: `python3 harness/entry/doctor.py`. Later: remove the
-forwarders in `.claude/entry/`.
+`python3 -m unittest discover -s . -t .`, and the doctor: `python3 harness/entry/doctor.py`.
 
 ## What comes next, in this order
 

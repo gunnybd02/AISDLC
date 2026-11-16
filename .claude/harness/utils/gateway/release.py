@@ -1,6 +1,6 @@
 """Releases (blue/green): sessions run a published copy of the harness code, state/live/<sha>/, never the work tree a
-session edits; state/live/current names the one in force. A release is the code folders (harness: its blocks, entries, nets and tests; entry: forwarders of the old paths)
-as they stand, named by the sha of their content. Building writes the copy; publishing switches current, which only
+session edits; state/live/current names the one in force. A release is the harness folder (its blocks, entries, nets and
+tests) as it stands, named by the sha of its content. Building writes the copy; publishing switches current, which only
 the user's word allows (cli_live.py). Writing state/ is never a session's: the gates refuse it."""
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from typing import Optional
 
 from harness.utils.shapes import PlanStore
 
-CODE = ("harness", "entry")
+CODE = ("harness",)
 
 
 def anchor(home: str | Path) -> Path:

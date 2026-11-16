@@ -1,5 +1,7 @@
 """h7.approval: the plan block keeps a plan as data, checked by the desk; revisions change only the given items; a
-waiting plan can be shown, read and dropped; a plan without a session, or with problems, is not kept."""
+waiting plan can be shown, read and dropped; a plan without a session, or with problems, is not kept. The answers
+follow docs 04 sections 8 and 10: the head line, the form, the overview of a plan with no code, the block in a fence;
+a revision shows only its changed lines."""
 import os
 import re
 import unittest
@@ -10,6 +12,7 @@ from harness.utils.plan.approval import approvals
 from harness.tests.e2e import copy_tree
 from harness.tests.mcp import caller
 
+OVERVIEW = {"problem": ["no greeting"], "need": ["greet the user"], "how": ["a function"], "accept": ["hello shows"]}
 PLAN = {"title": "Add a greeting", "what": ["say hello"], "files": ["hello.py"], "tests": ["test_hello.py"]}
 
 
@@ -26,16 +29,22 @@ class PlanBlockTest(unittest.TestCase):
             raise ValueError(result.text)
         return result.text
 
-    def present(self, plan=PLAN):
-        out = self.call("plan_present", plan=plan)
-        return re.search(r"Plan (pd-[0-9a-z]+-[0-9a-f]{6}) rev", out).group(1), out
+    def present(self, plan=None):
+        out = self.call("plan_present", plan=plan or {**PLAN, "overview": OVERVIEW})
+        return re.search(r"plan (pd-[0-9a-z]+-[0-9a-f]{6}) rev", out).group(1), out
 
     def test_plan_present_keeps_the_plan_and_gives_the_block_and_the_form(self):
         plan_id, out = self.present()
-        self.assertIn("(light) waits", out)
-        self.assertIn(f"## Plan: Add a greeting ({plan_id} rev 1)", out)
-        self.assertIn("- hello.py", out)
-        self.assertIn(os.getcwd().replace("\\", "/"), out)  # the root is the MCP server's folder, the project
+        head, ask, overview, block = out.split("\n\n")
+        sha = self.port.revision(plan_id)["sha"]
+        self.assertTrue(head.startswith(f'"Add a greeting": plan {plan_id} rev 1 is waiting for the user\'s approval '
+                                        f"(sha {sha[:8]}): 2 files, 0 steps, 0 behaviours. Only the user's \"{YES}\""))
+        self.assertIn("do not repeat it", ask)
+        self.assertEqual(overview, "Problem: no greeting\nNeed: greet the user\nHow: a function\nAccept: hello shows")  # a plan with no code: its overview above the block
+        self.assertEqual(block, "```text\n## Plan\nServices: agent-code\nWhat: say hello\nFiles: hello.py\n"
+                                "Tests: test_hello.py\n```")
+        root = self.port.revision(plan_id)["items"]["root"]
+        self.assertEqual(root, os.getcwd().replace("\\", "/"))  # the root is the MCP server's folder, kept, not shown
         self.assertIn(f'exactly: {YES} plan "Add a greeting" ({plan_id} rev 1)? Header', out)
         waiting = self.port.waiting()
         self.assertEqual([(w["plan_id"], w["sid"], w["items"]["services"]) for w in waiting], [(plan_id, "s1", ["agent-code"])])
@@ -69,14 +78,19 @@ class PlanBlockTest(unittest.TestCase):
                 "overview": {"problem": ["p"], "need": ["n"], "how": ["h"], "accept": ["a"]},
                 "code": [{"file": "parse.py", "code": "def parse(line): ...", "reason": "the parser"}]}
         plan_id, out = self.present(full)
-        self.assertIn("(full) waits", out)
-        self.assertIn("s1.reads: reads a line", out)
+        self.assertIn("4 files, 1 steps, 1 behaviours", out)
+        self.assertNotIn("Problem: p\n\n", out)  # a plan with code: its overview is in the block
+        self.assertIn("## Plan\nProblem: p\nNeed: n\nHow: h\nAccept: a\nCode:\n- parse.py: def parse(line): ... | "
+                      "why: the parser\nServices: agent-code\nWhat: Add a greeting\n", out)
+        self.assertIn("- s1.reads: reads a line | how: unit test | why: the gate needs it", out)
         self.assertIn("1. Add the parser | parse.py | test_parse.py | parse the line", out)
 
     def test_a_revision_changes_only_the_given_items(self):
         plan_id, _ = self.present()
         out = self.call("plan_revise", plan=plan_id, changes={"files": ["hello.py", "README.md"]}, why={"files": "docs"})
-        self.assertIn(f"({plan_id} rev 2)", out)
+        self.assertIn(f"plan {plan_id} rev 2 is waiting", out)
+        self.assertIn("A chat word approves nothing. Changed: files.", out)
+        self.assertTrue(out.endswith("```text\nFiles: hello.py, README.md\n```"))  # only the changed lines
         newest = self.port.revision(plan_id)
         self.assertEqual((newest["rev"], newest["items"]["files"], newest["items"]["what"]),
                          (2, ["hello.py", "README.md"], ["say hello"]))
@@ -98,7 +112,9 @@ class PlanBlockTest(unittest.TestCase):
 
     def test_show_status_and_drop(self):
         plan_id, _ = self.present()
-        self.assertIn(f"## Plan: Add a greeting ({plan_id} rev 1)", self.call("plan_show"))
+        shown = self.call("plan_show")
+        self.assertIn("## Plan\nServices: agent-code\nWhat: say hello\n", shown)
+        self.assertIn(f'exactly: {YES} plan "Add a greeting" ({plan_id} rev 1)?', shown)  # it waits: the form again
         approvals(self.port, "s1", {self.port.waiting()[0]["question"]: "do it another way"})
         status = self.call("plan_status", plan=plan_id)
         self.assertIn("rev 1", status)
@@ -107,6 +123,9 @@ class PlanBlockTest(unittest.TestCase):
         self.assertIn("1 revision(s) stay", self.call("plan_drop", plan=plan_id))
         self.assertEqual(self.port.waiting(), [])
         self.assertIn("not waiting (dropped)", self.call("plan_status", plan=plan_id))
+        shown = self.call("plan_show", plan=plan_id)
+        self.assertIn("is dropped; it does not wait for an approval", shown)
+        self.assertNotIn("AskUserQuestion", shown)  # no form for a plan that does not wait
         with self.assertRaises(ValueError):
             self.call("plan_drop", plan=plan_id)
 

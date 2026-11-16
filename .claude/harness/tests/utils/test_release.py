@@ -2,10 +2,10 @@
 current names the one in force and only a whole release can be."""
 import unittest
 
-from harness.utils.gateway.release import build, current, publish, release_dir, stamp
+from harness.utils.gateway.release import build, current, entry_of, publish, release_dir, stamp
 from harness.tests import tree
 
-CODE = {"harness/a.py": "A = 1\n", "entry/boot.py": "x\n", "harness/nets/n.py": "n\n", "harness/tests/test_a.py": "t\n",
+CODE = {"harness/a.py": "A = 1\n", "entry/boot.py": "x\n", "harness/entry/hook.py": "h\n", "harness/nets/n.py": "n\n", "harness/tests/test_a.py": "t\n",
         "project.json": "{}", "docs/a.md": "d\n", "harness/__pycache__/a.pyc": "junk"}
 
 
@@ -33,7 +33,8 @@ class ReleaseTest(unittest.TestCase):
         self.assertFalse((copy / "harness" / "__pycache__").exists())
         self.assertFalse((copy / "project.json").exists())
         self.assertTrue((copy / "harness" / "tests" / "test_a.py").is_file())
-        self.assertEqual(sorted(p.name for p in copy.iterdir()), ["entry", "harness"])  # a release is these two
+        self.assertEqual([p.name for p in copy.iterdir()], ["harness"])  # a release is the harness folder only
+        self.assertEqual(entry_of(copy, "hook"), copy / "harness" / "entry" / "hook.py")  # its one entry folder
         self.assertEqual(build(home), sha)  # once per sha
         publish(home, sha)
         self.assertEqual(current(home), sha)

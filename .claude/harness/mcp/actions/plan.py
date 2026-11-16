@@ -9,7 +9,7 @@ from typing import Any
 from harness.utils.contracts import READ, WRITE, ActionContext, ActionError, McpAction
 from harness.utils.orchestra import child, crew
 from harness.utils.plan import desk
-from harness.utils.plan.render import block, form_call
+from harness.utils.plan import render
 from harness.utils.shapes import PlanItems, Revision
 
 ACTIONS = [("plan.plan_present", "PlanPresent"), ("plan.plan_revise", "PlanRevise"), ("plan.plan_show", "PlanShow"),
@@ -48,20 +48,26 @@ def declared(ctx: ActionContext) -> list[str]:
     return list(ctx.ports.get("units", dict)())
 
 
-def answer(head: str, items: PlanItems, plan_id: str, rev: int) -> str:
-    """The text for the model about a revision: head, the ## Plan block, and the form call it must make.
+def answer(head: str, items: PlanItems, plan_id: str, rev: int, shown: str = "", form: bool = True) -> str:
+    """The text for the model about a revision (docs 04 section 8): the head line, the instruction with the form call,
+    the overview of a plan with no code (its block does not hold it), and the block in a text fence.
 
     Args:
-        head: the first line, e.g. "Plan <pd-id> rev N (light) waits for the user's approval.".
+        head: the first line (render.head for a waiting revision).
         items: the revision's items.
         plan_id: the desk id (pd-...).
         rev: the revision number.
+        shown: the lines to show instead of the whole block (a revision's changed lines); "" for the block.
+        form: False leaves the instruction and the form call out (the plan does not wait).
 
     Returns:
-        head, the ## Plan block and the instruction with the form call, separated by blank lines.
+        The parts, separated by blank lines.
     """
-    return "\n\n".join([head, block(items, plan_id, rev), f"Write one line (the title and rev {rev}), then the form, "
-                                                          f"nothing after it. {form_call(items, plan_id, rev)}"])
+    ask = (f"The user sees this answer in the tool row: do not repeat it. Write one line (the title and rev {rev}), "
+           f"then the form, nothing after it. {render.form_call(items, plan_id, rev)}")
+    above = [] if items.get("code") else render.overview_lines(items)
+    return "\n\n".join([head] + ([ask] if form else []) + (["\n".join(above)] if above else [])
+                       + [render.fenced(shown or render.block(items))])
 
 
 def target(ctx: ActionContext, sid: str, args: dict[str, Any]) -> Revision:
@@ -98,7 +104,7 @@ class PlanPresent(McpAction):
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Keep a new desk plan from the plan's data (cleaned, normalized, checked; its root the server's folder); answer
-        its ## Plan block and the form call. ActionError in a child session, while a delegated plan runs in the
+        its head line, the form call and its ## Plan block. ActionError in a child session, while a delegated plan runs in the
         session, for unknown keys or a plan that does not check."""
         sid, raw = session_of(ctx), args["plan"]
         ticket = ctx.ports["plans"].ticket(sid)
@@ -112,8 +118,7 @@ class PlanPresent(McpAction):
             raise ActionError(NOT_KEPT + "; ".join(problems))
         items["root"] = os.getcwd().replace("\\", "/")  # the MCP server runs in the project's folder
         plan_id, rev, _ = ctx.ports["plans"].present(items, sid=sid)
-        return answer(f"Plan {plan_id} rev {rev} ({desk.tier(items)}) waits for the user's approval.", items,
-                      plan_id, rev)
+        return answer(render.head(items, plan_id, rev), items, plan_id, rev)
 
 
 class PlanRevise(McpAction):
@@ -125,8 +130,8 @@ class PlanRevise(McpAction):
     needs = ("plans", "session", "units")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Keep a new revision of the session's plan with only the items that change; answer its ## Plan block and the
-        form call. ActionError for another session's or an ended plan, record items of a running plan, a plan that
+        """Keep a new revision of the session's plan with only the items that change; answer its head line naming the
+        changed items, the form call, and only the changed lines of the block. ActionError for another session's or an ended plan, record items of a running plan, a plan that
         does not check, or no change."""
         sid, port, changes = session_of(ctx), ctx.ports["plans"], args["changes"]
         old = port.revision(args["plan"])
@@ -154,21 +159,26 @@ class PlanRevise(McpAction):
             raise ActionError("nothing changed")
         why = {k: v for k, v in (args.get("why") or {}).items() if k in clean}
         plan_id, rev, _ = port.present(items, plan_id=args["plan"], sid=sid, why=why)
-        return answer(f"Plan {plan_id} rev {rev} waits for the user's approval again.", items, plan_id, rev)
+        return answer(render.head(items, plan_id, rev, sorted(clean)), items, plan_id, rev,
+                      shown=render.changed(old["items"], items) or "(no line of the block changed)")
 
 
 class PlanShow(McpAction):
     """plan.plan_show: the newest revision of a plan, as the user reads it."""
     block, name, effect = "plan", "plan_show", READ
-    summary = "Show the newest revision of a plan as the user reads it, with its form call"
+    summary = "Show the newest revision of a plan as the user reads it, its state, and its form call while it waits"
     args_schema = {"type": "object", "properties": {"plan": {"type": "string"}}, "required": []}
     needs = ("plans", "session")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Answer the newest revision of the named plan (or the session's) as the user reads it, with its form call."""
+        """Answer the newest revision of the named plan (or the session's) as the user reads it and its state; its
+        form call too while it waits."""
         found = target(ctx, session_of(ctx), args)
-        return answer(f"Plan {found['plan_id']} rev {found['rev']}: {found['event']}.", found["items"],
-                      found["plan_id"], found["rev"])
+        items, plan_id, rev = found["items"], found["plan_id"], found["rev"]
+        if found["event"] == "waiting":
+            return answer(render.head(items, plan_id, rev), items, plan_id, rev)
+        return answer(f'"{items.get("title", "")}": plan {plan_id} rev {rev} (sha {found["sha"][:8]}) is '
+                      f'{found["event"]}; it does not wait for an approval.', items, plan_id, rev, form=False)
 
 
 class PlanStatus(McpAction):

@@ -1,5 +1,5 @@
-"""h23.one-core: a repository's own wiring (boot.py ... --project) is the harness when none is installed for the user;
-when one is (entry/install.py), that one is the core and the repository's copy gives way: its hook does nothing and its
+"""h23.one-core: a repository's own wiring (anchor.py ... --project) is the harness when none is installed for the user;
+when one is (harness/entry/install.py), that one is the core and the repository's copy gives way: its hook does nothing and its
 MCP server is the core's, so a clone of the harness being worked on never keeps a second ledger."""
 import json
 import sys
@@ -47,7 +47,7 @@ class OneCoreTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")  # it judges
         self.hook(self.clone, "UserPromptSubmit", "", {})
-        self.assertIn("waits for the user's approval", self.present(self.clone))
+        self.assertIn("is waiting for the user's approval", self.present(self.clone))
         self.assertEqual(len(LedgerPort(self.clone).waiting()), 1)  # kept in its own ledger
 
     def test_with_a_harness_installed_the_repository_copy_gives_way(self):
@@ -57,7 +57,7 @@ class OneCoreTest(unittest.TestCase):
         code, out, _ = self.write(core, project=False)  # the core's own hook, as the user's settings run it
         self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")
         self.hook(core, "UserPromptSubmit", "", {}, project=False)
-        self.assertIn("waits for the user's approval", self.present(self.clone))  # the copy's .mcp.json entry
+        self.assertIn("is waiting for the user's approval", self.present(self.clone))  # the copy's .mcp.json entry
         self.assertEqual(len(LedgerPort(core).waiting()), 1)  # the plan is in the core's ledger
         self.assertFalse((self.clone / "state" / "harness.db").exists())  # the copy keeps none
 
@@ -67,7 +67,7 @@ class OneCoreTest(unittest.TestCase):
         code, out, _ = self.write(self.clone, project=False)
         self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")
         self.hook(self.clone, "UserPromptSubmit", "", {}, project=False)
-        self.assertIn("waits for the user's approval", self.present(self.clone))  # its own server, no hand-over
+        self.assertIn("is waiting for the user's approval", self.present(self.clone))  # its own server, no hand-over
 
     def test_settings_that_name_no_harness_leave_the_repository_copy_the_core(self):
         for text in ("[1]", "{not json", json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command":
@@ -77,37 +77,33 @@ class OneCoreTest(unittest.TestCase):
                 code, out, _ = self.write(self.clone)
                 self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")
 
-    def test_a_machine_set_up_before_the_anchor_keeps_working(self):
-        old = self.clone / "entry" / "boot.py"  # what its hooks and MCP server still name
-        payload = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Write", "session_id": "s1",
-                              "cwd": str(self.repo), "tool_input": {"file_path": str(self.repo / "a.py")}})
-        code, out, err = run(old, payload, args=("hook",), env=self.env)
-        self.assertEqual(code, 0, err)
-        self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")  # forwarded, it judges
-        self.assertIn("0 errors", run(self.clone / "entry" / "doctor.py", env=self.env)[1])  # as its release check runs
-        code, out, _ = run(self.clone / "entry" / "install.py", env=self.env, args=(
+    def test_a_machine_set_up_before_the_anchor_is_moved_by_one_install(self):
+        old = str((self.clone / "entry" / "boot.py").resolve())  # what its hooks named; the forwarder is gone
+        self.assertFalse((self.clone / "entry").exists())  # one entry folder: harness/entry
+        (self.user / "settings.json").write_text(json.dumps({"hooks": {"Stop": [{"hooks": [
+            {"type": "command", "command": f'"python3" "{old}" hook'}]}]}}), encoding="utf-8")
+        code, out, _ = run(self.clone / "harness" / "entry" / "install.py", env=self.env, args=(
             "--user-dir", str(self.user), "--claude-json", str(self.user / "claude.json"), "--no-cli"))
         self.assertEqual(code, 0, out)
-        self.assertIn(str(anchor_of(self.clone).resolve()), (self.user / "settings.json").read_text())
+        settings = (self.user / "settings.json").read_text()
+        self.assertIn(str(anchor_of(self.clone).resolve()), settings)
+        self.assertNotIn("boot.py", settings)  # the old wiring is taken out
 
-    def test_a_core_installed_under_the_old_path_is_still_the_core(self):
+    def test_settings_that_name_the_old_path_name_no_core_until_the_install_runs_again(self):
         core = copy_tree(self)
         install(core, self.user, self.user / "claude.json", sys.executable, use_cli=False)
         settings = self.user / "settings.json"
-        old = str((core / "entry" / "boot.py").resolve())
+        old = str((core / "entry" / "boot.py").resolve())  # the forwarder that is gone: the path names no file
         settings.write_text(settings.read_text().replace(str(anchor_of(core).resolve()), old), encoding="utf-8")
-        self.assertIn("boot.py", settings.read_text())
-        self.assertEqual(self.write(self.clone)[:2], (0, ""))  # the copy gives way to it
-        run(old, json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": "s1", "cwd": str(self.repo)}),
-            args=("hook",), env=self.env)
-        self.assertIn("waits for the user's approval", self.present(self.clone))
-        self.assertEqual(len(LedgerPort(core).waiting()), 1)  # in the core's ledger, through its old path
+        code, out, _ = self.write(self.clone)
+        self.assertEqual(json.loads(out)["hookSpecificOutput"]["permissionDecision"], "deny")  # the copy still judges
 
     def test_a_release_built_before_the_entries_moved_still_runs(self):
         sha = build(self.clone)
         publish(self.clone, sha)
         release = self.clone / "state" / "live" / sha
         (release / "harness" / "entry" / "doctor.py").unlink()
+        (release / "entry").mkdir()  # as a release of that time held it
         (release / "entry" / "doctor.py").write_text("print('the doctor of an old release')\n", encoding="utf-8")
         code, out, err = run(anchor_of(self.clone), args=("doctor",), env=self.env)
         self.assertEqual((code, out.strip()), (0, "the doctor of an old release"), err)

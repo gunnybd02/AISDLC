@@ -1,4 +1,4 @@
-"""entry: an entry script (harness/entry/*.py, the forwarders of entry/, and anchor.py beside .claude) imports only the
+"""entry: an entry script (harness/entry/*.py, and anchor.py beside .claude) imports only the
 standard library at load time, wherever the import sits (inside try, if, with...), and its main() has a handler for
 BaseException. So a harness that does not load, or quits, is still answered: the hook exits 2 and blocks the call
 instead of crashing open."""
@@ -46,7 +46,7 @@ def catches_everything(tree: ast.Module) -> bool:
 
 
 def scripts(claude_dir: str | Path) -> Iterator[tuple[str, ast.Module]]:
-    """(name, syntax tree) of each entry script: harness/entry/, entry/, and the anchor when it is beside the tree.
+    """(name, syntax tree) of each entry script: harness/entry/, and the anchor when it is beside the tree.
 
     Args:
         claude_dir: the .claude folder read.
@@ -55,8 +55,8 @@ def scripts(claude_dir: str | Path) -> Iterator[tuple[str, ast.Module]]:
         (posix path from claude_dir, or ../anchor.py, its syntax tree); an anchor that does not parse gives an empty
         tree.
     """
-    for rel, tree in python(claude_dir, ("entry", "harness")):
-        if rel.startswith(("entry/", "harness/entry/")):
+    for rel, tree in python(claude_dir, ("harness",)):
+        if rel.startswith("harness/entry/"):
             yield rel, tree
     anchor = Path(claude_dir).resolve().parent / "anchor.py"
     if Path(claude_dir).name == ".claude" and anchor.is_file():

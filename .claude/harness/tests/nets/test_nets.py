@@ -25,6 +25,13 @@ class LayoutNetTest(unittest.TestCase):
             with self.subTest(rel=rel):
                 self.assertIn(rel, joined(layout_net, self, {rel: ""}))
 
+    def test_a_second_entry_folder_cannot_come_back(self):
+        for rel in ("entry/boot.py", "entry/install.py"):  # the forwarders of the old paths are gone: one entry folder
+            with self.subTest(rel=rel):
+                self.assertIn(rel, joined(layout_net, self, {rel: ""}))
+        self.assertEqual(layout_net.check(tree(self, {"harness/entry/hook.py": ""})), [])
+        self.assertFalse((CLAUDE_DIR / "entry").exists())
+
     def test_declared_places_pass_and_double_star_crosses_folders(self):
         files = {"harness/gear/decide/arbiter.py": "", "harness/tests/gear/deep/test_x.py": "",
                  "harness/mcp/skill_docs/a/SKILL.md": ""}
@@ -85,9 +92,10 @@ class ImportsNetTest(unittest.TestCase):
         self.assertIn("harness/utils/a.py", joined(imports_net, self, {"harness/utils/a.py": "import harness.gear.decide\n"}))
 
     def test_entry_imports_only_assemble(self):
-        self.assertIn("entry/hook.py", joined(imports_net, self, {"entry/hook.py": "from harness.gear import decide\n"}))
+        self.assertIn("harness/entry/hook.py",
+                      joined(imports_net, self, {"harness/entry/hook.py": "from harness.gear import decide\n"}))
         ok = "def main():\n    from harness.assemble.engine.build import run_hook\n"
-        self.assertEqual(joined(imports_net, self, {"entry/hook.py": ok}), "")
+        self.assertEqual(joined(imports_net, self, {"harness/entry/hook.py": ok}), "")
 
     def test_a_dynamic_import_outside_the_loader_is_reported(self):
         for text in ("import importlib", "from importlib import import_module", "__import__('harness.mcp')"):
@@ -176,7 +184,7 @@ class EntryNetTest(unittest.TestCase):
                      "try:\n    import harness.assemble.engine.build\nexcept ImportError:\n    pass\n",
                      "if True:\n    from harness.assemble import build\n"):
             with self.subTest(text=text):
-                self.assertIn("imports harness", joined(entry_net, self, {"entry/hook.py": MAIN + text}))
+                self.assertIn("imports harness", joined(entry_net, self, {"harness/entry/hook.py": MAIN + text}))
 
     def test_an_entry_whose_main_does_not_catch_everything_is_reported(self):
         nested = "def main():\n    def inner():\n        try:\n            pass\n        except BaseException:\n" \
@@ -184,11 +192,10 @@ class EntryNetTest(unittest.TestCase):
         for text in ("import sys\n", "def main():\n    try:\n        pass\n    except Exception:\n        return 2\n",
                      nested):
             with self.subTest(text=text):
-                self.assertIn("BaseException", joined(entry_net, self, {"entry/hook.py": text}))
+                self.assertIn("BaseException", joined(entry_net, self, {"harness/entry/hook.py": text}))
 
     def test_stdlib_at_the_top_and_the_harness_inside_main_pass(self):
         text = "import sys\nfrom pathlib import Path\n\n" + MAIN
-        self.assertEqual(joined(entry_net, self, {"entry/hook.py": text}), "")
         self.assertEqual(joined(entry_net, self, {"harness/entry/hook.py": text}), "")
 
     def test_an_entry_inside_the_harness_is_held_to_the_same_rule(self):
