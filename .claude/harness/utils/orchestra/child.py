@@ -14,7 +14,7 @@ import sqlite3
 from typing import Any, Optional
 
 from harness.utils.orchestra.brief import CARD_CLOSE, CARD_OPEN, HEAD, branch
-from harness.utils.orchestra.card import HOME, behaviour_id
+from harness.utils.orchestra.card import HOME, HOME_SPEC, behaviour_id
 from harness.utils.plan import desk, tickets
 from harness.utils.plan.item_checks import STANDALONE, one_line
 from harness.utils.shapes import ChildRole, PlanItems, Ticket
@@ -46,8 +46,13 @@ def parse(text: str) -> Optional[ChildRole]:
     if not isinstance(card, dict) or card.get("name") != name or body.get("plan") != plan \
             or body.get("branch") != branch(plan, name) or not str(body.get("parent", "")).strip():
         return None
+    unit = body.get("unit") if isinstance(body.get("unit"), dict) else {}
+    unit = {**HOME_SPEC, **{k: v for k, v in unit.items() if k in HOME_SPEC}}
+    if not isinstance(unit["path"], str) or ".." in unit["path"].replace("\\", "/").split("/") \
+            or unit["path"].startswith("/") or not isinstance(unit["verify"], list):
+        return None
     return {"name": name, "plan": plan, "draft": str(body.get("draft", "")), "parent": str(body["parent"]),
-            "branch": body["branch"], "card": card,
+            "branch": body["branch"], "card": card, "unit": unit,
             "behaviours": [behaviour_id(plan, name, n) for n in range(1, len(card.get("ac", [])) + 1)]}
 
 
@@ -106,15 +111,30 @@ def role_of(ticket: Optional[Ticket]) -> Optional[ChildRole]:
     return role if isinstance(role, dict) and role.get("name") else None
 
 
+def unit_root(role: ChildRole, repo: str) -> str:
+    """The folder a child's plan is rooted in: its unit's folder in the repository's clone.
+
+    Args:
+        role: the child's role.
+        repo: the root of the clone.
+
+    Returns:
+        The folder, with forward slashes.
+    """
+    path = role.get("unit", HOME_SPEC)["path"].replace("\\", "/").strip("/")
+    return repo.rstrip("/") if path in ("", ".") else f"{repo.rstrip('/')}/{path}"
+
+
 def card_plan(role: ChildRole, root: str) -> PlanItems:
     """The plan a child opens with take, made from its card (spec 05 section 6): title "<name>: <goal>", the goal as
     what, need and the commit, the change paths as files and code, the test paths as tests, one step, one behaviour
     per criterion (id p<plan>.<name>.ac<n>, what "AC<n>: <criterion>", the first test when the card has one), and the
-    fixed checks, assumption, not doing and risk.
+    fixed checks, assumption, not doing and risk; verify, the unit's test command, when its unit names one (set here,
+    by the server, never by the model).
 
     Args:
         role: the child's role.
-        root: the folder the plan's paths are relative to (the repository's root).
+        root: the folder the plan's paths are relative to (the unit's folder: unit_root).
 
     Returns:
         The items, normalized, with their root.
@@ -141,4 +161,5 @@ def card_plan(role: ChildRole, root: str) -> PlanItems:
         "notDoing": ["anything outside the card"], "risks": ["a case the AC does not name stays unchecked"],
         "branch": role["branch"],
     }
-    return {**desk.normalize(items), "root": root}
+    verify = role.get("unit", HOME_SPEC).get("verify") or []
+    return {**desk.normalize(items), **({"verify": list(verify)} if verify else {}), "root": root}

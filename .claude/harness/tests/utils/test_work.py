@@ -88,6 +88,37 @@ class WorkTest(unittest.TestCase):
         with self.assertRaisesRegex(work.WorkError, "commit is stopped"):
             work.handback(self.port, "c1", REPORT, lambda *a: Verdict("refuse", "a secret"), lambda *a: ALLOW)
 
+    def test_the_card_plan_stays_open_after_its_last_step_and_the_child_stays_a_child(self):
+        self.take()
+        ticket, plan = self.port.ticket("c1"), self.port.approved("c1")
+        self.port.step_commit("c1", ticket, plan, str(self.repo), git(self.repo, "rev-parse", "HEAD").strip(), False)
+        after = self.port.ticket("c1")
+        self.assertEqual((after["state"], after["phase"]), ("open", "deliver"))  # waits for its handback
+        self.port.write(lambda con, rec: __import__("harness.utils.plan.tickets", fromlist=["x"]).save(
+            con, {**self.port.ticket("c1"), "state": "closed", "closeReason": "delivered"}))
+        work.take(self.port, "c1", str(self.repo))  # a take on a new ticket keeps the role
+        self.assertEqual(self.port.ticket("c1")["child"]["name"], "api")
+
+    def test_a_child_of_a_unit_works_in_the_units_folder_with_its_test_command(self):
+        repo = git_repo(self, {"services/api/a.py": "X = 1\n", "web/b.js": "1\n"})
+        unit = {"repo": "https://github.com/me/shop", "path": "services/api", "verify": ["{python}", "-c", "pass"],
+                "base": "develop"}
+        Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": brief.brief(7, "pd-x", {**CARD, "unit": "api"},
+                                                                              "session_p1", unit)}, "u1", str(repo)),
+                           {}, ALLOW)
+        work.take(self.port, "u1", str(repo / "web"))  # anywhere in the clone: the plan is rooted in the unit
+        plan = self.port.approved("u1")
+        self.assertEqual((plan["root"], plan["verify"], plan["services"]),
+                         (f"{repo.as_posix()}/services/api", ["{python}", "-c", "pass"], ["api"]))
+        from harness.utils.plan.verify import command_of
+        self.assertEqual(command_of(plan, ["other"])[1:], ["-c", "pass"])
+        bad = {**unit, "path": "nowhere"}
+        Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": brief.brief(7, "pd-x", {**CARD, "unit": "api"},
+                                                                              "session_p1", bad)}, "u2", str(repo)),
+                           {}, ALLOW)
+        with self.assertRaisesRegex(work.WorkError, "folder nowhere is not in this clone"):
+            work.take(self.port, "u2", str(repo))
+
 
 if __name__ == "__main__":
     unittest.main()

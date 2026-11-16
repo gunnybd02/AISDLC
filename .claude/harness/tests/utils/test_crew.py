@@ -114,6 +114,20 @@ class CrewTest(unittest.TestCase):
         self.assertIn("run('orchestra', 'started'", text)
         self.assertEqual(self.port.ticket("s1")["crew"], {})
 
+    def test_spawn_gives_a_declared_unit_to_the_child(self):
+        self.approve(extra={"children": [{**GOOD, "name": "c1", "unit": "api"}]})
+        units = {"api": {"repo": "https://github.com/me/shop", "path": "services/api", "verify": ["npm", "test"],
+                         "base": "develop"}}
+        ctx = ActionContext({"plans": self.port, "session": lambda: "s1", "units": lambda: units})
+        text = Spawn().run(ctx, {"name": "c1"})
+        call = json.loads(text[text.index("\n{") + 1:])
+        self.assertEqual(call["source_url"], "https://github.com/me/shop")
+        self.assertIn("in the folder services/api of its repository; its pull request will target develop",
+                      call["prompt"])
+        block = call["prompt"][call["prompt"].index(brief.CARD_OPEN) + len(brief.CARD_OPEN):
+                               call["prompt"].index(brief.CARD_CLOSE)]
+        self.assertEqual(json.loads(block)["unit"], units["api"])
+
     def test_started_records_a_running_child_once(self):
         self.approve()
         self.assertIn("1 of 3 running", Started().run(self.ctx, {"name": "c1", "sid": "session_child0001"}))

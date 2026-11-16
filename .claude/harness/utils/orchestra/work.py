@@ -83,7 +83,11 @@ def switch(repo: str, name: str) -> str:
     if git(repo, "branch", "--list", name).strip():
         git(repo, "switch", "-q", name)
         return "on"
-    if git(repo, "ls-remote", "--heads", "origin", name).strip():
+    try:
+        remote = git(repo, "ls-remote", "--heads", "origin", name).strip()
+    except GitError:
+        remote = ""  # no origin, or it cannot be reached: the branch starts here
+    if remote:
         git(repo, "fetch", "-q", "origin", name)
         git(repo, "switch", "-q", "-c", name, "--track", f"origin/{name}")
         return "tracked"
@@ -132,7 +136,10 @@ def take(port: PlanStore, sid: str, root: str) -> str:
         how = switch(repo, role["branch"])
     except GitError as e:
         raise WorkError(f"git cannot stand on {role['branch']}: {e}") from e
-    plan_id, _, _ = port.present(child.card_plan(role, repo), sid=sid)
+    folder = child.unit_root(role, repo)
+    if not Path(folder).is_dir():
+        raise WorkError(f"the unit's folder {role['unit']['path']} is not in this clone ({repo})")
+    plan_id, _, _ = port.present(child.card_plan(role, folder), sid=sid)
     number = port.approve(sid, port.revision(plan_id), by=f"grant of plan {role['plan']} ({role['parent']})")
     return (f"Card plan {plan_id} (plan {number}) is open, approved by the grant of plan {role['plan']}; you are on "
             f"{role['branch']} ({how}). Files: {', '.join(role['card']['change'])}. Behaviours: "
@@ -244,7 +251,8 @@ def facts(port: PlanStore, ticket: Ticket, role: ChildRole, repo: str) -> dict[s
         repo: the repository's root.
 
     Returns:
-        {commits: [{sha, files}], verify: ok/red/missing, behaviours: {id: {what, tests, status}}, uncommitted, base}.
+        {commits: [{sha, files}], verify: ok/red/missing, behaviours: {id: {what, tests, status}}, uncommitted,
+        refused (each step the harness refused because nobody could answer, once), base}.
     """
     plan = tickets.approved_plan(ticket)
     commits = []
@@ -261,8 +269,10 @@ def facts(port: PlanStore, ticket: Ticket, role: ChildRole, repo: str) -> dict[s
                   for k, v in (port.registry(plan) if plan else {}).items() if k.startswith(prefix)}
     dirty = [line[3:] for line in git(repo, "status", "--porcelain").splitlines()
              if line[3:].strip() and not line[3:].startswith(RECEIPTS)]
+    refused = [r["detail"] for r in port.rows("SELECT detail FROM act_rule_decisions WHERE sid = ? AND rule = ? "
+                                               "ORDER BY at", (ticket["sid"], "child.no_keyboard"))]
     return {"commits": commits, "verify": verify, "behaviours": behaviours, "uncommitted": dirty,
-            "base": (plan or {}).get("base")}
+            "refused": list(dict.fromkeys(refused)), "base": (plan or {}).get("base")}
 
 
 def handback(port: PlanStore, sid: str, report: dict[str, Any], commit_judge: CommitJudge, git_judge: GitJudge) -> str:
@@ -292,7 +302,8 @@ def handback(port: PlanStore, sid: str, report: dict[str, Any], commit_judge: Co
     if git(repo, "branch", "--show-current").strip() != role["branch"]:
         raise WorkError(f"stand on your branch {role['branch']} to hand back")
     body = {"name": role["name"], "plan": role["plan"], "draft": role["draft"], "parent": role["parent"],
-            "branch": role["branch"], "cardPlan": plan["id"], "at": now(),
+            "branch": role["branch"], "unit": {"name": role["card"].get("unit"), **role.get("unit", {})},
+            "cardPlan": plan["id"], "at": now(),
             "report": {k: report.get(k, []) for k in LISTS + tuple(PAIRS)}, **facts(port, ticket, role, repo)}
     rel = f"{RECEIPTS}/{role['name']}.json"
     path = Path(repo) / rel

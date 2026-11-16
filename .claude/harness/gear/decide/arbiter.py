@@ -1,6 +1,8 @@
 """Decide: the one judge. Each finding is looked up in the rules of gear/rules/*.json; the strongest verdict of all the
 findings wins, with the reasons of the findings that gave it. A finding no rule names asks the user, its name and detail
 in the question. No finding: allow.
+A finding of IN_PLACE_OF_ASK stands in for a person who is not there (child.no_keyboard: a child session, whose keyboard
+nobody watches): it counts only when the other findings would ask, and then its row's verdict replaces the question.
 
 A rule row: {"finding": kind, "verdict": allow|ask|refuse, "why": the sentence shown, "test": "harness/tests/<file>.py#<test>"};
 a row whose test is not a test function under harness/tests/ does not load."""
@@ -15,6 +17,7 @@ from harness.utils.contracts import ALLOW, ASK, VERDICTS, Finding, Verdict
 
 RULES = ("harness", "gear", "rules")  # under the .claude folder
 FIELDS = ("finding", "verdict", "why", "test")
+IN_PLACE_OF_ASK = ("child.no_keyboard",)
 TEST = re.compile(r"^harness/tests/(?:[A-Za-z_][\w]*/)*test_\w+\.py#test_\w+$")
 
 
@@ -120,13 +123,19 @@ class Decide:
 
         Returns:
             allow with no reason when there is no finding; else the strongest verdict of the findings, the reasons of
-            the findings that gave it (joined by "; ", each once) and every finding.
+            the findings that gave it (joined by "; ", each once) and every finding. A stand-in finding (IN_PLACE_OF_ASK)
+            is left out, unless the verdict would be ask: then its row's verdict and reason come first.
         """
+        stand_in = [f for f in findings if f.kind in IN_PLACE_OF_ASK]
+        findings = [f for f in findings if f.kind not in IN_PLACE_OF_ASK]
         if not findings:
             return Verdict(ALLOW)
         judged = [self.judge(f) for f in findings]
         decision = max((v for v, _ in judged), key=VERDICTS.index)
         reason = "; ".join(dict.fromkeys(why for v, why in judged if v == decision))
+        if decision == ASK and stand_in:  # nobody would answer the question: the stand-in's row decides
+            first, why = self.judge(stand_in[0])
+            return Verdict(first, f"{why} Why it would have asked: {reason}", tuple(findings + stand_in[:1]))
         return Verdict(decision, reason, tuple(findings))
 
     def judge(self, finding: Finding) -> tuple[str, str]:

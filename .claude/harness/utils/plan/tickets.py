@@ -25,6 +25,8 @@ DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
 _count = itertools.count()
 
 
+CARRIED = ("child", "asks")  # what a new ticket of the session keeps (utils/orchestra/child.py)
+
 def now() -> int:
     """The time now in ms.
 
@@ -143,7 +145,8 @@ def open_plan(con: sqlite3.Connection, sid: str, plan: dict[str, Any]) -> Ticket
     - an open ticket with no plan is reused;
     - an open ticket of the same desk plan (a revision) keeps its id, rootId and work, and takes the new plan;
     - an open ticket of another plan closes superseded, and the new ticket carries its done steps and commits;
-    - else a new ticket. The ticket is in execute.
+    - else a new ticket. The ticket is in execute. A child's role and its questions (CARRIED) go with it to any new
+      ticket: the session stays the child its brief made it.
 
     Args:
         con: the connection of the transaction.
@@ -155,6 +158,7 @@ def open_plan(con: sqlite3.Connection, sid: str, plan: dict[str, Any]) -> Ticket
     """
     plan = {**plan, "type": APPROVED_PLAN}
     old = latest(con, sid)
+    kept = {k: old[k] for k in CARRIED if old and k in old}  # a child stays a child on any new ticket
     if old and old["state"] == OPEN and old.get("plan") and old.get("draft") == plan["plan_id"]:
         ticket = {**old, "plan": plan, "phase": EXECUTE if old["phase"] == PREPARE else old["phase"]}
         return save(con, ticket)
@@ -166,8 +170,8 @@ def open_plan(con: sqlite3.Connection, sid: str, plan: dict[str, Any]) -> Ticket
         ticket = old
     else:
         ticket = blank(sid)
-    return save(con, {**ticket, "phase": EXECUTE, "plan": plan, "draft": plan["plan_id"], "rootId": plan["id"],
-                      "freshApproval": True})
+    return save(con, {**ticket, **kept, "phase": EXECUTE, "plan": plan, "draft": plan["plan_id"],
+                      "rootId": plan["id"], "freshApproval": True})
 
 
 def deliver(con: sqlite3.Connection, ticket: Ticket, sha: str) -> Ticket:

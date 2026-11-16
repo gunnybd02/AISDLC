@@ -36,6 +36,18 @@ def session_of(ctx: ActionContext) -> str:
     return sid
 
 
+def declared(ctx: ActionContext) -> list[str]:
+    """The names of the units project.json declares, for the services and children of a plan.
+
+    Args:
+        ctx: the action's ports, with units (units() -> {name: {repo, path, verify, base}}) when the server gives it.
+
+    Returns:
+        The names; [] when no unit is declared or the port is not there (a test's context).
+    """
+    return list(ctx.ports.get("units", dict)())
+
+
 def answer(head: str, items: PlanItems, plan_id: str, rev: int) -> str:
     """The text for the model about a revision: head, the ## Plan block, and the form call it must make.
 
@@ -82,7 +94,7 @@ class PlanPresent(McpAction):
     summary = ("Present a plan as data (title, what, files, tests; a full plan: steps, behaviors, checks, "
                "assumptions, notDoing, risks...); kept waiting for the user's approval in the form")
     args_schema = {"type": "object", "properties": {"plan": {"type": "object"}}, "required": ["plan"]}
-    needs = ("plans", "session")
+    needs = ("plans", "session", "units")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Keep a new desk plan from the plan's data (cleaned, normalized, checked; its root the server's folder); answer
@@ -95,7 +107,7 @@ class PlanPresent(McpAction):
         if busy:
             raise ActionError(NOT_KEPT + busy)
         items = desk.normalize(desk.clean(raw))
-        problems = desk.unknown(raw) + desk.check(items, need_title=True)
+        problems = desk.unknown(raw) + desk.check(items, need_title=True, units=declared(ctx))
         if problems:
             raise ActionError(NOT_KEPT + "; ".join(problems))
         items["root"] = os.getcwd().replace("\\", "/")  # the MCP server runs in the project's folder
@@ -110,7 +122,7 @@ class PlanRevise(McpAction):
     summary = "Change a presented plan with only the items that change; the new revision waits for the form again"
     args_schema = {"type": "object", "properties": {"plan": {"type": "string"}, "changes": {"type": "object"},
                                                     "why": {"type": "object"}}, "required": ["plan", "changes"]}
-    needs = ("plans", "session")
+    needs = ("plans", "session", "units")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Keep a new revision of the session's plan with only the items that change; answer its ## Plan block and the
@@ -134,7 +146,7 @@ class PlanRevise(McpAction):
                               "what, commit, test, teamSkills)")
         root = old["items"].get("root")
         items = desk.normalize(desk.merge({k: v for k, v in old["items"].items() if k != "root"}, clean))
-        problems = desk.check(items, need_title=False, keys=list(clean))
+        problems = desk.check(items, need_title=False, keys=list(clean), units=declared(ctx))
         if problems:
             raise ActionError(NOT_KEPT + "; ".join(problems))
         items["root"] = root

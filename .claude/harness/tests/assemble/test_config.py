@@ -57,6 +57,23 @@ class ConfigTest(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(ConfigError):
                 Config.load(tree(self, {"project.json": json.dumps({"name": "x", "verify": bad})}))
 
+    def test_units_of_any_repository_or_of_one_shared_repository(self):
+        units = {"api": {"repo": "https://github.com/me/shop", "path": "services/api", "base": "develop"},
+                 "web": {"repo": "https://github.com/me/shop", "path": "web", "verify": ["npm", "test"]},
+                 "docs": {}}
+        config = Config.load(tree(self, {"project.json": json.dumps({"name": "x", "verify": ["{python}", "-m", "t"],
+                                                                     "units": units})}))
+        self.assertEqual([n for n, _ in config.units], ["api", "web", "docs"])
+        self.assertEqual(config.unit("api").spec(), {"repo": "https://github.com/me/shop", "path": "services/api",
+                                                      "verify": ["{python}", "-m", "t"], "base": "develop"})
+        self.assertEqual((config.unit("web").verify, config.unit("docs").repo, config.unit("docs").path),
+                         (("npm", "test"), "", "."))
+        self.assertIsNone(config.unit("nope"))
+        for bad in ({"home": {}}, {"Api": {}}, {"a": {"repo": "git@github.com:o/r"}}, {"a": {"path": "../x"}},
+                    {"a": {"verify": []}}, {"a": {"base": "a b"}}, {"a": {"other": 1}}, ["a"]):
+            with self.subTest(bad=bad), self.assertRaises(ConfigError):
+                Config.load(tree(self, {"project.json": json.dumps({"name": "x", "units": bad})}))
+
     def test_a_config_written_with_a_bom_loads(self):
         root = tree(self, {"project.json": "﻿" + json.dumps({"name": "x"})})
         self.assertEqual(Config.load(root).name, "x")
