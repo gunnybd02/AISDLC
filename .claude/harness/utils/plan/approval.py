@@ -4,9 +4,11 @@ of a form, read from its PostToolUse, reach here."""
 from __future__ import annotations
 
 from harness.utils.contracts import YES
+from harness.utils.orchestra import crew
 from harness.utils.shapes import PlanStore
 
 APPROVED = "GATE: the user approved plan {plan} rev {rev} in the form. You may edit its files: {files}."
+BLOCKED = "GATE: plan {plan} rev {rev} was not opened: {why}."
 REFINE = 'GATE: the user did not approve plan {plan} rev {rev}; they answered "{label}". Revise it, then ask again.'
 
 
@@ -20,14 +22,18 @@ def approvals(port: PlanStore, session: str, answers: dict[str, str]) -> list[st
         answers: {form question: the label the user chose} of an AskUserQuestion call.
 
     Returns:
-        One APPROVED or REFINE note per waiting revision whose question was answered.
+        One APPROVED, BLOCKED (a delegated plan runs in the session) or REFINE note per waiting revision whose
+        question was answered.
     """
     notes = []
     for waiting in port.waiting() if answers else []:
         label = answers.get(waiting["question"])
         if label is None:
             continue
-        if label.strip() == YES:
+        busy = crew.blocks_other(port.ticket(session), waiting["plan_id"]) if label.strip() == YES else ""
+        if busy:
+            notes.append(BLOCKED.format(plan=waiting["plan_id"], rev=waiting["rev"], why=busy))
+        elif label.strip() == YES:
             port.approve(session, waiting)
             notes.append(APPROVED.format(plan=waiting["plan_id"], rev=waiting["rev"],
                                          files=", ".join(waiting["items"]["files"])))

@@ -71,6 +71,12 @@ behaviour.
 `run("plan", "plan_drop", {})` stops one that still waits. A new plan approved while another is open closes the old
 one as superseded: to change work in hand, revise.
 
+**Parts for child sessions** (orchestra, `docs/05b-orchestra-cloud.md`): a full plan with `children`, each card
+`{name, unit, goal, ac, read?, change?, tests?, actions?}`; each AC names a visible case. One "Duyệt" approves them
+all; then, per child, `run("orchestra", "spawn", {"name"})` gives the brief and the `create_session` call, and
+`run("orchestra", "started", {"name", "sid"})` records it (3 run at most; `run("orchestra", "status", {})`). While it
+runs no other plan opens in the session; revise it instead.
+
 ## 3. Build each step
 1. Edit only the files the plan names; any other file is refused.
 2. Write the step's tests: each behaviour of the step needs its test file to exist.

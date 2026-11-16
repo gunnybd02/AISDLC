@@ -16,6 +16,7 @@ import time
 from collections.abc import Collection, Iterable
 from typing import Any, Optional
 
+from harness.utils.orchestra import card
 from harness.utils.plan.item_checks import (BEHAVIOR_ID, MAX_POINT, STANDALONE, branch_problems, code_problems,
                                             commands_problems, one_line, overview_problems, path_problems, points,
                                             services_problems, steps_problems, strings, test_problems, title_problems)
@@ -30,7 +31,6 @@ FULL_MARKS = ("steps", "behaviors", "code", "test", "children")
 FULL_REQUIRED = ("services", "what", "files", "checks", "assumptions", "notDoing", "risks")
 STEP_ID = re.compile(r"^s(\d+)\.")
 HOST_RE = re.compile(r"^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$")
-CHILD_NAME = re.compile(r"^[a-z0-9-]{1,40}$")
 
 
 def new_id() -> str:
@@ -74,10 +74,13 @@ def normalize(items: PlanItems) -> PlanItems:
         items: cleaned items (clean, or a merge of them).
 
     Returns:
-        A new dict: behaviors gains the steps' (ids "s<n>.<id>") and the test item's, files and tests gain those of the
-        steps, code and test, and a light plan with no services gets ["agent-code"].
+        A new dict: children cleaned (utils/orchestra/card.clean_cards), behaviors gains the steps' (ids "s<n>.<id>")
+        and the test item's, files and tests gain those of the steps, code and test, and a light plan with no services
+        gets ["agent-code"].
     """
     out = dict(items)
+    if "children" in items:
+        out["children"] = card.clean_cards(items["children"])
     behaviors = [dict(b) for b in items.get("behaviors", []) if isinstance(b, dict)]
     for n, step in enumerate(s for s in items.get("steps", []) if isinstance(s, dict)):
         for b in step.get("behaviors", []) if isinstance(step.get("behaviors"), list) else []:
@@ -226,45 +229,9 @@ def network_problems(value: Any, units: Collection[str] = ()) -> list[str]:
                                              and 1 <= n["port"] <= 65535 and str(n.get("why") or "").strip())]
 
 
-def children_problems(value: Any, units: Collection[str] = ()) -> list[str]:
-    """The problems of children: each {name, unit, goal, ac, read, change, tests, actions}, one child per unit.
-
-    Args:
-        value: the item as given.
-        units: the declared units; a child's unit is one of them, none or agent-code.
-
-    Returns:
-        The problems of every child, each starting with its name; [] when all are good.
-    """
-    if not isinstance(value, list):
-        return ["a list of {name, unit, goal, ac, read, change, tests, actions}"]
-    out, seen = [], set()
-    for c in value:
-        if not isinstance(c, dict) or not isinstance(c.get("name"), str) or not CHILD_NAME.match(c["name"]):
-            out.append("each child has a name of a-z, 0-9 and -, 40 at most")
-            continue
-        if c.get("unit") not in STANDALONE and c.get("unit") not in units:
-            out.append(f"{c['name']}: unit {c.get('unit')!r} is neither the home nor a declared unit")
-        elif c.get("unit") in seen:
-            out.append(f"{c['name']}: one child per unit")
-        seen.add(c.get("unit"))
-        if not isinstance(c.get("goal"), str) or not c["goal"].strip() or len(c["goal"]) > MAX_POINT:
-            out.append(f"{c['name']}: goal is at most {MAX_POINT} characters")
-        ac = c.get("ac")
-        if not isinstance(ac, list) or not 1 <= len(ac) <= 6 or not all(
-                isinstance(a, str) and len(a) <= 120 and len(re.findall(r"[A-Za-z\u00c0-\u1ef9]{3,}", a)) >= 2 for a in ac):
-            out.append(f"{c['name']}: ac is 1 to 6 checks of at most 120 characters, two words at least")
-        for key in ("read", "change", "tests"):
-            if len(c.get(key, [])) > 8 or path_problems(c.get(key, [])):
-                out.append(f"{c['name']}: {key} is at most 8 paths")
-        if set(c.get("actions", [])) - {"push"}:
-            out.append(f"{c['name']}: the only action a child may take is push")
-    return out
-
-
 CHECKS = {**{k: points for k in POINTS}, "overview": overview_problems, "code": code_problems,
           "test": test_problems, "services": services_problems, "steps": steps_problems,
           "behaviors": behaviors_problems, "network": network_problems, "commands": commands_problems,
-          "children": children_problems, "branch": branch_problems, "teamSkills": points,
+          "children": card.card_problems, "branch": branch_problems, "teamSkills": points,
           "files": lambda v, u: path_problems(v, required=True), "tests": path_problems,
           "commit": lambda v, u: [] if isinstance(v, str) else ["the commit message"]}

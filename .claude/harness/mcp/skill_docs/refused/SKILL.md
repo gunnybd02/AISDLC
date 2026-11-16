@@ -49,6 +49,14 @@ wildcard, inline code that may write. Simple commands with plain paths pass with
 `drive.remove`, `drive.move`: a Drive file would be trashed, moved or renamed. The user is asked each time, because
 the ledger store on Drive only grows (`guide("store", "skills")`). Uploading and reading are free.
 
+## Orchestra
+| Answer | Meaning | Move |
+|---|---|---|
+| `the delegated plan ... runs in this session`, `GATE: plan ... was not opened` | a plan with children runs; another would orphan them | finish it (children hand back, it closes) or `plan_revise` it |
+| `no delegated plan is in force` | spawn needs a plan with children the user approved | present it, ask the form |
+| `3 children run already` | the cap | wait until one is accepted or forgotten |
+| `has started already`, `one session is one child` | the crew has it | `run("orchestra", "status", {})` |
+
 ## The end of a turn
 `store.unsaved`: commits, plan events or pushes of this session are in no copy of the store. Export and upload one
 (`guide("store", "skills")`); when that cannot be done, say so and the turn ends.

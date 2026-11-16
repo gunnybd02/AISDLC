@@ -46,8 +46,9 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #23 | The store's lifecycle (`utils/ledger/store.py`, rows of `pl_notes`): a copy has a record inside the ledger and a name that say ledger, number, session, reason, time and commit; a copy is due at a checkpoint (after a push or merge request, when a plan closes, or when the end of a turn is held: `store.unsaved`, once for the same work), no longer after each commit; the hook keeps that the store holds a copy when the Drive tool answers with its file; `run("ledger", "store_status")`. Also mends `git.commit`, whose answer failed after the commit was made (a name not imported, from #21) |
 | #24 | A Drive call is known by what it is, not by its server's name: a cloud session can name a connector's tools by an id (`mcp__caaed075-...__create_file`), so the upload was not kept and the Drive guard did not see a trash or a move (found by the live check of #23) |
 | #25 | Every function says what it takes and gives: type hints on all 555 functions, docstrings with Args, Returns and Raises; the data named in `utils/shapes.py` (`ApprovedPlan`, `Ticket`, `Receipt`, `PlanStore`...); the `hints` net keeps it. Files split to stay under 400 lines: `ports.py` (LedgerCore, DeskPort, TicketPort), `desk.py` (`item_checks.py`), `place_ops.py` (`write_ops.py`, `cmdlets.py`), `scan.py` (`command.py`, `dialects.py`) |
+| #26 | Orchestra, part 1 (`docs/05b-orchestra-cloud.md`): the user's full spec 05 saved in four files; the card rules of spec 5.1 (`utils/orchestra/card.py`; several children may share a unit in the cloud); a plan with children opens a delegated ticket (grant, crew, a pending row per child) and no other plan opens beside it; block `orchestra`: `spawn` (the brief and the `create_session` call), `started`, `status`; `git ls-remote` is read-only |
 
-399 tests pass (1 skipped, Windows only); doctor: 0 errors.
+413 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 ## The cloud, as it runs now
 
@@ -88,18 +89,14 @@ forwarders in `.claude/entry/`.
 
 1. **A real governed run with the user**: done on 2026-11-15 (the "Duyệt" click, edit, gate refusals). It fixed
    verify on a plan without tests and wrote `docs/05b-orchestra-cloud.md`; what it left open is item 5.
-2. **Spec "05b - Orchestra in the cloud"** (a document first, for the user's review). The user's spec 05 (delegated
-   plans with children) assumes one machine: shared ledger, worktrees, `claude --bg`. The cloud extension the user
-   asked for: children as separate cloud sessions. The card travels in the brief; the child works on its own branch
-   and pushes it; the handback comes back as a message; the parent fetches the branch, runs the AC tests, merges.
-   Nothing important stays only in a child's ledger. Children as subagents on the parent's machine are the second
-   option (close to spec 05, one ledger). Spec 05 itself is saved as the user pasted it: `docs/05-orchestra.md` (sections 1-7) and
-   `docs/05-orchestra-2.md` (sections 8-12).
-3. **Orchestra, spec 05, for the PC**: not built. Today: `children` is a plan item the desk accepts and prints, the
-   `pl_children` table exists (without the `why` and `checks` columns), the verify lock is worktree-aware. Missing:
-   units in the config, worktrees (`utils/worktree`), the card (`utils/plan/children.py`), the crew and the rest of
-   `utils/orchestra/`, the sessions port, the actions, `orchestra watch`, the skill. Order: units, worktrees, card and
-   delegated opening, crew (spawn, take, handback), check and accept, watch, reach and cleanup, lineage.
+2. **Orchestra in the cloud** (`docs/05b-orchestra-cloud.md`, decided by the user on 2026-11-16: children are cloud
+   sessions, the card rides in the brief and the receipt on the child's branch, at most 3 run). A live probe showed a
+   child acts on a parent's send-back only because its brief says so. Part 1 is built (#26). Next: part 2, the child
+   (binding on its first prompt, `take`, its branch, the child refusals, `ask`, `handback` and its receipt); part 3,
+   the parent (`check`, `accept`, `reject`, `answer`, `land`, `forget`, `release`, `read`, the close); part 4,
+   `remove`, the scheduled check-in, the `orchestrate` skill and a full live run.
+3. **Spec 05 for the PC** (`docs/05-orchestra.md` to `05-orchestra-4.md`, worktrees and `claude --bg`): set aside for
+   the cloud path the user chose; its card, crew, check and accept rules are the ones the cloud parts follow.
 4. Skills: the three of #19 were written from this code. The user's own skills (their old harness on the PC, such
    as `orchestrate`) were never in this repository; they go beside these when the user pushes or pastes them. Two
    rule rows still name the old command (`stop.unverified` and `agent.registry` say `python3 -m entry.cli ...`; it is

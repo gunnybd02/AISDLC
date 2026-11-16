@@ -13,6 +13,7 @@
     "harness/utils/git/*.py",
     "harness/utils/maint/*.py",
     "harness/utils/gateway/*.py",
+    "harness/utils/orchestra/*.py",
     "harness/utils/ledger/schema.sql",
     "harness/hooks/*.py",
     "harness/mcp/__init__.py",

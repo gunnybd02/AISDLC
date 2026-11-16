@@ -40,8 +40,8 @@ class DeskTest(unittest.TestCase):
         self.assertTrue(desk.network_problems([{"host": "https://x.com", "port": 443, "why": "w"}]))
         self.assertEqual(desk.network_problems([{"host": "api.x.com", "port": 443, "why": "w"}]), [])
         good = {"name": "api", "unit": "agent-code", "goal": "g", "ac": ["returns the list", "keeps the order"]}
-        self.assertEqual(desk.children_problems([good]), [])
-        self.assertTrue(desk.children_problems([{**good, "actions": ["merge"]}]))
+        self.assertEqual(desk.CHECKS["children"]([good], ()), [])
+        self.assertTrue(desk.CHECKS["children"]([{**good, "actions": ["merge"]}], ()))
         self.assertRegex(desk.new_id(), r"^pd-[0-9a-z]+-[0-9a-f]{6}$")
 
 

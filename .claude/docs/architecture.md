@@ -12,7 +12,7 @@ anchor.py       the one file Claude Code runs; it routes to an entry of the rele
     mcp/        what the model calls: server/ (stdio, tool base), tools/ (find, guide, run), skills/ (library) and
                 skill_docs/ (its texts, <name>/SKILL.md), actions/ (one file per block, ACTIONS = [...])
     assemble/   engine/ (loader, config, ports, runner, select, pipeline, build, wire_mcp, checks) and pipelines/
-    utils/      shared code with no policy: contracts, shapes (the named data), ledger/, plan/, shell/, git/
+    utils/      shared code with no policy: contracts, shapes (the named data), ledger/, plan/, orchestra/, shell/, git/
     nets/       the rules of the tree, checked by the doctor
     tests/      tests/<block>/test_<module>.py, plus nets/ and e2e/
   project.json  the values of the user (name, verify: the unit's test command, ledger: the real ledger)
@@ -74,8 +74,9 @@ delivery (utils/plan/closing.py)         the commit is judged by what it holds: 
 A ticket (`pl_tickets`, `utils/plan/tickets.py`) runs each approved plan: the approval opens it in phase `execute`
 (an open ticket with no plan is reused, a revision keeps its ticket and `rootId`, another plan closes the open one
 `superseded` and carries its done steps and commits), `step_done` closes it `delivered` (a home plan needs no form).
-`tickets.approved_plan(ticket)` is the one rule for a plan in force; `LedgerPort.approved` reads only it. The MCP
-server knows its session from the hook: the session whose prompt or harness tool call came last (`sessions`).
+A plan with `children` makes it delegated: the grant and the crew (`utils/orchestra/crew.py`), and no other plan opens
+in the session while it runs. `tickets.approved_plan(ticket)` is the one rule for a plan in force; `LedgerPort.approved`
+reads only it. The MCP server knows its session from the hook: whose prompt or harness tool call came last.
 
 Every commit from the shell is refused (`commit.raw`): `git commit`, and any line that may commit another way. A
 commit made around the gate (a shell form the reader does not know) can still land in the repository; delivery
@@ -235,9 +236,9 @@ judged.
 
 | Block | Actions |
 |---|---|
-| `plan` | `plan_present`, `plan_revise`, `plan_show`, `plan_status`, `plan_drop` |
+| `plan` | `plan_present`, `plan_revise`, `plan_show`, `plan_status`, `plan_drop`, `step_done`, `step_skip`, `plan_close` |
 | `verify` | `run` |
-| `plan` | `step_done`, `step_skip`, `plan_close` |
+| `orchestra` | `spawn`, `started`, `status` (children as cloud sessions: `utils/orchestra/`, `docs/05b-orchestra-cloud.md`) |
 | `git` | `run`, `commit`, `push`, `mr_open` |
 | `ledger` | `db_query`, `plans_settle`, `export`, `store_status` |
 | `maint` | `grant`, `status` |
@@ -286,9 +287,8 @@ The nets read the whole tree except two places, and only these: `state/` (the pr
 The nets read the code as written, not as it runs. A name built at run time (`getattr(m, "AL" + "LOW")`) gets past
 them. Review keeps that out, and no net claims to.
 
-A file that does not decode as UTF-8 is reported by `size`, and a file that does not parse by `imports`. No net
-crashes on it. An index or a skill that does not decode is also reported by the loader or the skill library, which
-need it. The nets read `harness/` (its tests only where a net names them), `entry/` and the anchor; the test run shows
+A file that does not decode as UTF-8 is reported by `size`, a file that does not parse by `imports`; no net crashes
+on it. The loader and the skill library also report an index or a skill that does not decode. The nets read `harness/` (its tests only where a net names them), `entry/` and the anchor; the test run shows
 a test file that does not parse.
 
 ## How to add a thing
