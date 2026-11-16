@@ -30,7 +30,8 @@ def commit(repo: str | Path, paths: Sequence[str], message: str) -> str:
 
     Args:
         repo: the repository.
-        paths: the paths to stage and commit (a deletion too).
+        paths: the paths to stage and commit (a deletion too, one already staged with git rm as well: only the
+            paths still in the tree or the index are staged, git refuses the others, and the commit takes them all).
         message: the commit message.
 
     Returns:
@@ -39,6 +40,9 @@ def commit(repo: str | Path, paths: Sequence[str], message: str) -> str:
     Raises:
         GitError: git add, git commit (a hook too) or git rev-parse fails.
     """
-    git(repo, "add", "--all", "--", *paths)
+    tracked = set(git(repo, "ls-files", "-z", "--", *paths).split("\0")) if paths else set()
+    known = [p for p in paths if (Path(repo) / p).exists() or p in tracked]  # a staged deletion is in neither
+    if known:
+        git(repo, "add", "--all", "--", *known)
     git(repo, "commit", "--only", "-q", "-m", message, "--", *paths)
     return git(repo, "rev-parse", "HEAD").strip()

@@ -48,7 +48,8 @@ def declared(ctx: ActionContext) -> list[str]:
     return list(ctx.ports.get("units", dict)())
 
 
-def answer(head: str, items: PlanItems, plan_id: str, rev: int, shown: str = "", form: bool = True) -> str:
+def answer(head: str, items: PlanItems, plan_id: str, rev: int, shown: str = "", form: bool = True,
+           overview: bool = True) -> str:
     """The text for the model about a revision (docs 04 section 8): the head line, the instruction with the form call,
     the overview of a plan with no code (its block does not hold it), and the block in a text fence.
 
@@ -59,13 +60,14 @@ def answer(head: str, items: PlanItems, plan_id: str, rev: int, shown: str = "",
         rev: the revision number.
         shown: the lines to show instead of the whole block (a revision's changed lines); "" for the block.
         form: False leaves the instruction and the form call out (the plan does not wait).
+        overview: False leaves the overview of a plan with no code out (a revision that did not change it).
 
     Returns:
         The parts, separated by blank lines.
     """
     ask = (f"The user sees this answer in the tool row: do not repeat it. Write one line (the title and rev {rev}), "
            f"then the form, nothing after it. {render.form_call(items, plan_id, rev)}")
-    above = [] if items.get("code") else render.overview_lines(items)
+    above = [] if items.get("code") or not overview else render.overview_lines(items)
     return "\n\n".join([head] + ([ask] if form else []) + (["\n".join(above)] if above else [])
                        + [render.fenced(shown or render.block(items))])
 
@@ -160,7 +162,8 @@ class PlanRevise(McpAction):
         why = {k: v for k, v in (args.get("why") or {}).items() if k in clean}
         plan_id, rev, _ = port.present(items, plan_id=args["plan"], sid=sid, why=why)
         return answer(render.head(items, plan_id, rev, sorted(clean)), items, plan_id, rev,
-                      shown=render.changed(old["items"], items) or "(no line of the block changed)")
+                      shown=render.changed(old["items"], items) or "(no line of the block changed)",
+                      overview="overview" in clean)
 
 
 class PlanShow(McpAction):

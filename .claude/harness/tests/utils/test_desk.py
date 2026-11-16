@@ -45,5 +45,25 @@ class DeskTest(unittest.TestCase):
         self.assertRegex(desk.new_id(), r"^pd-[0-9a-z]+-[0-9a-f]{6}$")
 
 
+class RevisedBehavioursTest(unittest.TestCase):
+    def test_a_replaced_test_or_steps_item_takes_the_behaviours_it_made_with_it(self):
+        def test(name):
+            return {"file": "t.py", "name": name, "expects": "e", "how": "h", "why": "w"}
+        own = {"id": "kept-one", "what": "w", "how": "h", "why": "y"}
+        old = desk.normalize(desk.clean({"title": "A plan here", "what": ["w"], "files": ["a.py"], "behaviors": [own],
+                                         "test": [test("old-one"), test("old-two")],
+                                         "steps": [{"commit": "c", "points": ["p"], "files": ["a.py"],
+                                                    "behaviors": [{"id": "made", "what": "w", "how": "h", "why": "y"}]}]}))
+        ids = lambda items: sorted(b["id"] for b in items["behaviors"])
+        self.assertEqual(ids(old), ["kept-one", "old-one", "old-two", "s1.made"])
+        new = desk.normalize(desk.merge(old, desk.clean({"test": [test("s1.new-one")]})))
+        self.assertEqual(ids(new), ["kept-one", "s1.made", "s1.new-one"])  # the old test names are gone
+        steps = desk.normalize(desk.merge(old, desk.clean({"steps": [{"commit": "c", "points": ["p"], "files": ["a.py"]}]})))
+        self.assertEqual(ids(steps), ["kept-one", "old-one", "old-two"])  # the old step's behaviour is gone
+        given = desk.normalize(desk.merge(old, desk.clean({"test": [test("x")], "behaviors": [own]})))
+        self.assertEqual(ids(given), ["kept-one", "s1.made", "x"])  # a behaviors item given replaces the list whole;
+        # the steps are not replaced, so their behaviour comes back from them
+
+
 if __name__ == "__main__":
     unittest.main()

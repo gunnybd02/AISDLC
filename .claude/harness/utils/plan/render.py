@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from harness.utils.contracts import YES
+from harness.utils.orchestra.card import with_card_files
 from harness.utils.shapes import Card, PlanItems
 
 REFINE_LABEL = "Change plan"
@@ -185,10 +186,11 @@ def head(items: PlanItems, plan_id: str, rev: int, changed_items: Sequence[str] 
         changed_items: the items a revision changed, named at the end; () for a new plan.
 
     Returns:
-        The title, id, revision, the first 8 characters of the block's sha, the counts of files, steps and
-        behaviours, who approves, and "Changed: ..." for a revision.
+        The title, id, revision, the first 8 characters of the block's sha, the counts of files (the cards' too),
+        steps and behaviours, who approves, and "Changed: ..." for a revision.
     """
-    paths = list(dict.fromkeys(list(items.get("files", [])) + list(items.get("tests", []))))
+    whole = with_card_files(items)  # a delegated plan touches its cards' files too
+    paths = list(dict.fromkeys(list(whole.get("files", [])) + list(whole.get("tests", []))))
     text = (f'"{items.get("title", "")}": plan {plan_id} rev {rev} is waiting for the user\'s approval (sha '
             f"{sha(block(items))[:8]}): {len(paths)} files, {len(items.get('steps', []))} steps, "
             f"{len(items.get('behaviors', []))} behaviours. Only the user's \"{YES}\" in the approval form approves "

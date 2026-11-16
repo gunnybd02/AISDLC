@@ -110,6 +110,23 @@ class PlanBlockTest(unittest.TestCase):
         self.assertIn("add file", str(caught.exception))
         self.assertIn("rev 2", self.call("plan_revise", plan=plan_id, changes={"what": ["say hello and bye"]}))
 
+    def test_a_new_plan_replaces_the_plan_that_waited_in_the_same_session(self):
+        first, _ = self.present()
+        other, _, _ = self.port.present({**PLAN, "root": "/r"}, sid="s2")  # another session's plan stays
+        second, _ = self.present({**PLAN, "title": "Add a farewell", "overview": OVERVIEW})
+        self.assertEqual(sorted(w["plan_id"] for w in self.port.waiting()), sorted([other, second]))
+        self.assertEqual(self.port.revision(first)["event"], "dropped")  # its form no longer counts
+        revised = self.call("plan_revise", plan=second, changes={"what": ["say bye"]})
+        self.assertIn("rev 2 is waiting", revised)  # a revision replaces nothing
+        self.assertEqual(sorted(w["plan_id"] for w in self.port.waiting()), sorted([other, second]))
+
+    def test_a_revision_shows_the_overview_only_when_it_changed(self):
+        plan_id, _ = self.present()
+        files = self.call("plan_revise", plan=plan_id, changes={"files": ["hello.py", "README.md"]})
+        self.assertNotIn("Problem: no greeting", files)
+        changed = self.call("plan_revise", plan=plan_id, changes={"overview": {**OVERVIEW, "need": ["greet and wave"]}})
+        self.assertIn("Problem: no greeting\nNeed: greet and wave", changed)
+
     def test_show_status_and_drop(self):
         plan_id, _ = self.present()
         shown = self.call("plan_show")
