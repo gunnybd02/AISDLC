@@ -1,7 +1,7 @@
 # Handover: where the harness stands, and what comes next
 
 Written at the end of a long session (it ran out of machine time) for the session that continues the work. A new
-session cannot read the old chat; it reads this file. Details not here are in `docs/architecture.md`,
+session cannot read the old chat; it reads this file. The frame of every plan is `docs/map.md`. Details not here are in `docs/architecture.md`,
 `docs/live-test.md`, `docs/migration-map.md`, and, slowly, in the old chat (session `session_01EXL6xY5uGx26YMuQyXbhjh`).
 
 ## The model the user works by
@@ -15,9 +15,10 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 
 ## How the user wants the work done
 
-- Explain simply and briefly; when asked "simpler", shorten again. English, with the form labels in Vietnamese.
+- Explain simply and briefly; when asked "simpler", shorten again. English only, the form labels too.
 - Before building: present the plan in a form (AskUserQuestion) with the question
-  `Approve plan "<title>" (<pd-id> rev N)?` and the options "Approve", "Change plan", "Drop plan". Build only after "Approve".
+  `Approve plan "<title>" (<pd-id> rev N)?` and the options "Approve", "Change plan", exactly as `plan_present` prints
+  it, after presenting the plan through the harness. Build only after "Approve".
 - After building: tests and doctor, a pull request, then ask in a form "Merge PR #N?" ("Allow" / "Deny") and
   merge it yourself on "Allow" (merging through the GitHub API works from a cloud session).
 - Test live in a real cloud session when a change touches how sessions start; say plainly what was not tested.
@@ -59,6 +60,7 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #42 | The remove checklist always has two choices: a question of one child also offers "Keep all", which archives nothing and wins over ticks (the form tool refuses a question with one option: found live) |
 | #43 | The `## Plan` block follows the plan spec (04, sections 7.3, 8, 10): a bare heading, one line per item, overview and code first for a plan with code, the whole card on a child's line (so its criteria are shown and hashed), no Root line; `plan_present` answers the spec's head line, `plan_revise` only the changed lines. One entry folder: the forwarders of `.claude/entry/` are gone; a machine whose hooks still name `.claude/entry/boot.py` runs `python3 .claude/harness/entry/install.py` once |
 | #44 | The ledger records every action by itself (`docs/12-ledger.md`): a schema version with one upgrade door (only the code in force upgrades); turns, prompts, tool calls, gate and tool spans; file writes and shell lines; skill loads, the session's epoch, project and release; tokens and cost from the transcript; upkeep (daily totals, pruning at 180 days, a daily backup); a closure row; `ledger.chain_check`, `ledger.annotate`, `ledger.usage_backfill`. A recording fault never blocks a call. A step no longer owes the tests of later steps |
+| #45 | The plan cycle as spec 04 says (a new plan replaces the waiting one, a revision shows only what changed, card files counted, replaced test items drop old behaviours, a staged deletion commits); the recording tells the user from others (notifications and peer messages, `peer` spans), names guide and find, counts what the backfill writes; verify makes no ledger copy; `docs/map.md`, the map of the brain |
 
 451 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
