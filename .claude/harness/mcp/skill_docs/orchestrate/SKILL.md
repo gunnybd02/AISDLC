@@ -75,7 +75,8 @@ When every child has ended (accepted, forgotten or released): `run("orchestra", 
 - Green and nothing left: the plan is delivered. Delete the check-in, and save your own ledger as the answer says.
 
 ## 6. Remove the sessions, then report
-1. `run("orchestra", "remove", {})` gives one checklist. Ask it exactly as given; the user ticks.
+1. `run("orchestra", "remove", {})` gives one checklist. Ask it exactly as given; the user ticks. A question of one
+   child also offers "Keep all" (a question needs two choices); it archives nothing, and remove asks again later.
 2. `run("orchestra", "remove", {})` again: it removes exactly the ticked children whose databases are in the store
    and gives each `archive_session` call. Make them. A ticked child not in the store yet waits (search, then remove
    again).

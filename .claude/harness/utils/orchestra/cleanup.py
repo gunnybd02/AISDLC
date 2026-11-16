@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 QUESTION = re.compile(r"^Remove the child sessions of plan (?P<plan>\d+) \[(?P<code>r[0-9a-f]{12})\]\?$")
 DONE = (crew.ACCEPTED, crew.FORGOTTEN, crew.RELEASED)
 PER_QUESTION = 4
+KEEP = "Keep all"  # the choice that archives none: a question with one child needs a second choice (2 at least)
 
 
 def release(port: PlanStore, sid: str, name: str, why: str) -> str:
@@ -85,7 +86,8 @@ def checklist(ticket: Ticket) -> list[dict[str, Any]]:
         ticket: the parent's ticket.
 
     Returns:
-        The questions of one AskUserQuestion call ({question, header, multiSelect, options}).
+        The questions of one AskUserQuestion call ({question, header, multiSelect, options}); a question of one child
+        also offers KEEP, since a question needs two choices.
     """
     team, plan, out = ticket.get("crew") or {}, ticket["plan"]["id"], []
     names = removable(ticket)
@@ -94,7 +96,8 @@ def checklist(ticket: Ticket) -> list[dict[str, Any]]:
         out.append({"question": f"Remove the child sessions of plan {plan} [{code_of(plan, part)}]?",
                     "header": "Remove", "multiSelect": True,
                     "options": [{"label": n, "description": f"{team[n]['state']}; session {team[n].get('sid')}; "
-                                                            "archived when ticked"} for n in part]})
+                                                            "archived when ticked"} for n in part]
+                    + ([{"label": KEEP, "description": "archive none of these sessions now"}] if len(part) < 2 else [])})
     return out
 
 
@@ -106,14 +109,16 @@ def removal_accepts(port: PlanStore, answers: dict[str, str]) -> list[str]:
         answers: {form question: the labels the user chose, joined by ", "} of an AskUserQuestion call.
 
     Returns:
-        One note per checklist answered; [] when none was.
+        One note per checklist answered; [] when none was. KEEP ticked keeps every session of that question, whatever
+        else is ticked.
     """
     notes = []
     for q, label in (answers or {}).items():
         m = QUESTION.match(str(q))
         if not m:
             continue
-        names = [n.strip() for n in str(label).split(",") if re.match(r"^[a-z0-9][a-z0-9-]{0,39}$", n.strip())]
+        picked = [n.strip() for n in str(label).split(",")]
+        names = [] if KEEP in picked else [n for n in picked if re.match(r"^[a-z0-9][a-z0-9-]{0,39}$", n)]
         for name in names:
             port.write(lambda con, rec, key=f"{m['code']}:{name}": con.execute(
                 "INSERT OR REPLACE INTO pl_asks (sid, key, at, used) VALUES ('', ?, ?, 0)",
