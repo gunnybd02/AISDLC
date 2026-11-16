@@ -47,7 +47,7 @@ class StoreTest(unittest.TestCase):
         refused = f"Nothing was uploaded: /w/.harness-export/{record['title']} either does not exist or can't be sent"
         for answer, tool in ((refused, DRIVE), ({"id": "1AbCdEfGhIjKlMnOp", "title": "other.db"}, DRIVE),
                              ({"title": record["title"]}, DRIVE), (None, "mcp__Google_Drive__search_files"),
-                             (None, "mcp__other__create_file")):
+                             (None, "create_file")):
             with self.subTest(answer=answer, tool=tool):
                 self.assertEqual(self.upload(record, answer, tool), [])
         self.assertIsNone(store.saved(self.port))
@@ -56,7 +56,13 @@ class StoreTest(unittest.TestCase):
             self.assertEqual(self.upload(record, answer), [f"The store holds copy 1 of this ledger: {record['title']}."])
         held = store.saved(self.port)
         self.assertEqual((held["seq"], held["title"], held["file_id"]), (1, record["title"], "1AbCdEfGhIjKlMnOp"))
-        self.assertEqual(len(self.port.rows("SELECT 1 AS x FROM pl_notes WHERE kind = 'store.uploaded'")), 1)
+        second = store.begin(self.port, "s1", "manual")  # a connector Claude Code names by its id, a plain JSON answer
+        by_id = "mcp__caaed075-fab9-4852-ba97-a638e8eac9e4__create_file"
+        text = json.dumps({"fileSize": "409600", "id": "1o4T5wPp6eX9DAvKctWEdmzH8bD6", "title": second["title"]},
+                          separators=(",", ":"))
+        self.assertEqual(self.upload(second, text, by_id), [f"The store holds copy 2 of this ledger: {second['title']}."])
+        self.assertEqual(store.saved(self.port)["file_id"], "1o4T5wPp6eX9DAvKctWEdmzH8bD6")
+        self.assertEqual(len(self.port.rows("SELECT 1 AS x FROM pl_notes WHERE kind = 'store.uploaded'")), 2)
 
     def test_work_is_unsaved_until_a_copy_made_after_it_is_in_the_store(self):
         self.assertEqual(store.unsaved(self.port), [])  # an empty ledger owes nothing
