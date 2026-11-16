@@ -4,6 +4,7 @@ import json
 import os
 import re
 import unittest
+import unittest.mock
 
 from harness.assemble.engine.config import Config
 from harness.utils.plan.verify import verify
@@ -34,6 +35,19 @@ class VerifyBlockTest(unittest.TestCase):
         port.approve("s1", port.waiting()[0])
         self.assertIn("passed", verify(port, Config.load(claude_dir).verify, plan_id))
         self.assertEqual(port.receipt(port.approved("s1"))["ok"], 1)
+
+    def test_a_projects_tests_never_see_the_harness_in_force(self):
+        """A child's verify once ran the harness's suite with HARNESS_HOME set, and its tests wrote to the live ledger."""
+        check = "import os, sys; sys.exit(1 if any(os.environ.get(k) for k in %r) else 0)" % (
+            ("HARNESS_HOME", "HARNESS_CODE", "HARNESS_SESSION"),)
+        claude_dir = copy_tree(self, {"project.json": json.dumps({"name": "t", "verify": ["{python}", "-c", check]})})
+        repo = git_repo(self, {"a.md": "one\n"})
+        port = LedgerPort(claude_dir)
+        plan_id, _, q = port.present({"title": "t", "files": ["a.md"], "root": str(repo)})
+        port.approve("s1", port.waiting()[0])
+        live = {"HARNESS_HOME": "/live/.claude", "HARNESS_CODE": "/live/code", "HARNESS_SESSION": "s-live"}
+        with unittest.mock.patch.dict(os.environ, live):
+            self.assertIn("passed", verify(port, Config.load(claude_dir).verify, plan_id))
 
 
 if __name__ == "__main__":

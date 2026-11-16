@@ -7,6 +7,8 @@ from pathlib import Path
 
 CLAUDE_DIR = Path(__file__).resolve().parent.parent.parent
 os.environ.pop("HARNESS_DRIVE_FOLDER", None)  # the tests never see the user's store: one that needs a folder sets its own
+for _name in ("HARNESS_HOME", "HARNESS_CODE", "HARNESS_SESSION", "CLAUDE_PROJECT_DIR"):
+    os.environ.pop(_name, None)  # run in a governed shell, the tests never reach the live home, its release or session
 WINDOWS = os.name == "nt"
 
 

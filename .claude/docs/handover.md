@@ -49,8 +49,9 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #26 | Orchestra, part 1 (`docs/05b-orchestra-cloud.md`): the user's full spec 05 saved in four files; the card rules of spec 5.1 (`utils/orchestra/card.py`; several children may share a unit in the cloud); a plan with children opens a delegated ticket (grant, crew, a pending row per child) and no other plan opens beside it; block `orchestra`: `spawn` (the brief and the `create_session` call), `started`, `status`; `git ls-remote` is read-only |
 | #27 | The shell reader knows `git ls-remote` reads only (found by the live check of #26) |
 | #28 | Orchestra, part 2: a brief as a session's first prompt makes it a child; `take` opens its card plan by the parent's grant (no form) on `orch/p<plan>/<name>`; `push`, `question`, `handback` (the receipt `.harness/handback/<name>.json` committed and pushed); a child never asks the user, presents or closes a plan, asks for the maint grant, merges or pushes another branch (`child_guard`) |
+| #29 | A project's tests never see the harness in force: `verify` and the test package drop `HARNESS_HOME`, `HARNESS_CODE`, `HARNESS_SESSION` (and the tests `CLAUDE_PROJECT_DIR`); before, the harness's own suite failed 22 tests in a governed session and wrote test plans into the live ledger (found by orchestra's live run with one child) |
 
-425 tests pass (1 skipped, Windows only); doctor: 0 errors.
+426 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 ## The cloud, as it runs now
 
@@ -105,11 +106,10 @@ forwarders in `.claude/entry/`.
    Smaller items: the wiring files use `python3` (a Windows PC with only `python` needs that word changed; never tested on
    Windows, nor against the user's real ledger); a real GitLab merge request was never opened; `ports.py` is near the
    400-line cap; the notes block and the gitlab read actions are not built.
-5. Found by the first governed run (2026-11-15), not fixed: (a) the harness's `verify` fails 24 tests in its own
-   environment (the MCP server's; one of them fails as soon as `CLAUDE_PROJECT_DIR` is set) while the same command
-   passes 364 by hand, so `step_done` cannot commit a change to this repository; that run was committed with the guards
-   off. (b) Running the unit tests by hand in a governed shell leaves a test plan in the live ledger (session `flow`,
-   root under `/tmp/harness-test-*`), and `cli verify` then picks that plan. (c) The shell-write gate reads a
+5. Found by the first governed run (2026-11-15). (a) and (b) are fixed by #29: the harness's `verify` failed 22
+   tests in its own environment and the tests wrote to the live ledger, because `HARNESS_HOME`, `HARNESS_CODE` and
+   `HARNESS_SESSION` reached them (an orchestra child's verify met it again on 2026-11-16); `verify` and the test package
+   now drop them. Not fixed: (c) The shell-write gate reads a
    relative path from the session's kept folder, not from the `cd` in the command. (d) An approved plan cannot have a
    file path corrected: `add file` needs a behaviour, so a docs plan needs a new plan and a new approval.
 6. For the user to do: delete the merged branches on GitHub (`harness/*`, `install/user-level`,
