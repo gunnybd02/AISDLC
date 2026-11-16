@@ -144,6 +144,24 @@ def card_problems(value: Any, units: Collection[str] = ()) -> list[str]:
     return out
 
 
+HOME_SPEC = {"repo": "", "path": ".", "verify": [], "base": "main"}
+
+
+def unit_spec(card: Card, units: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """The unit a child works in, as its card block carries it: {repo, path, verify, base}. The home (and none,
+    agent-code) is the parent's own repository at its root, with the child's own verify; any other unit is the
+    declared one (project.json units).
+
+    Args:
+        card: the child's card.
+        units: the declared units by name, each {repo, path, verify, base}.
+
+    Returns:
+        The spec; the home's when the card's unit is not declared.
+    """
+    return dict(units.get(card.get("unit", HOME), HOME_SPEC))
+
+
 def card_of(items: PlanItems, name: str) -> Card | None:
     """The card of a child by its name in a plan's children.
 

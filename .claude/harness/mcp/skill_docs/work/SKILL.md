@@ -72,7 +72,8 @@ behaviour.
 one as superseded: to change work in hand, revise.
 
 **Parts for child sessions** (orchestra, `docs/05b-orchestra-cloud.md`): a full plan with `children`, each card
-`{name, unit, goal, ac, read?, change?, tests?, actions?}`; each AC names a visible case. One "Duyệt" approves them
+`{name, unit, goal, ac, read?, change, tests?, actions?}`; each AC names a visible case; a unit is `home` or one
+`project.json` declares in `units` (`{repo, path, verify, base}`: any repository, or a folder of a shared one). One "Duyệt" approves them
 all; then, per child, `run("orchestra", "spawn", {"name"})` gives the brief and the `create_session` call, and
 `run("orchestra", "started", {"name", "sid"})` records it (3 run at most; `run("orchestra", "status", {})`). While it
 runs no other plan opens in the session; revise it instead.

@@ -73,7 +73,8 @@ class TicketPort(LedgerCore):
             done = {**fresh, "commits": fresh["commits"] + shas, "noted": [],
                     "stepCommits": {**fresh.get("stepCommits", {}), step: fresh.get("stepCommits", {}).get(step, []) + shas}}
             done = {**done, "phase": "deliver"} if fixing else tickets.move(done)
-            if not fixing and done["phase"] == "deliver" and not plan.get("children") and home_plan(plan):
+            if not fixing and done["phase"] == "deliver" and not plan.get("children") and home_plan(plan) \
+                    and not fresh.get("child"):  # a child's card plan waits in deliver for its handback
                 done = {**done, "state": tickets.CLOSED, "closeReason": tickets.DELIVERED}
                 self.event(con, rec, plan["plan_id"], "delivered", plan["rev"], plan["id"], sid)
             return tickets.save(con, done)

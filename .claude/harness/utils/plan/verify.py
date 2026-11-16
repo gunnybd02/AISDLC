@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import time
 from collections.abc import Sequence
@@ -152,12 +153,27 @@ def project_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if k not in HARNESS_ENV}
 
 
+def command_of(plan: ApprovedPlan, default: Sequence[str]) -> list[str]:
+    """The test command of a plan: its own (a child's card plan carries its unit's verify, set by the server, never
+    by the model), else default, the config's; "{python}" is this Python.
+
+    Args:
+        plan: the plan in force.
+        default: the config's verify command.
+
+    Returns:
+        The command's words; [] when neither names one.
+    """
+    words = plan.get("verify") or list(default)
+    return [sys.executable if w == "{python}" else w for w in words]
+
+
 def verify(port: PlanStore, command: Sequence[str], plan_id: str) -> str:
     """The MCP door: run the test command for the approved plan plan_id and say whether it passed.
 
     Args:
         port: the harness ledger (plans, tickets, audit rows).
-        command: the test command's words.
+        command: the config's test command (a plan that carries its own runs that one: command_of).
         plan_id: the desk id (pd-...) of the plan in force.
 
     Returns:
@@ -170,6 +186,9 @@ def verify(port: PlanStore, command: Sequence[str], plan_id: str) -> str:
     plan = port.approved_plan(plan_id)
     if plan is None:
         raise ValueError(f"no approved plan {plan_id} waits for delivery")
+    command = command_of(plan, command)
+    if not command:
+        raise ValueError("no verify command: the config names none")
     ok, code, tail, _ = run(port, {**plan, "grants": port.grants(plan)}, command)
     word = "passed" if ok else ("failed" + (f" (exit {code})" if code else ""))
     return f"verify {word} for plan {plan_id}." + ("" if ok else "\n" + "\n".join(tail[-5:]))

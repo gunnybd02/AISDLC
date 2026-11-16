@@ -17,9 +17,9 @@ class Run(McpAction):
     needs = ("plans", "verify_command")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Run the config's verify command for the plan (utils/plan/verify.verify) and keep the receipt; answer
-        the result. ActionError when the config names no verify command."""
-        command = ctx.ports["verify_command"]()
-        if not command:
-            raise ActionError("the config names no verify command")
-        return verify(ctx.ports["plans"], command, args["plan"])
+        """Run the plan's verify command (its unit's, else the config's: utils/plan/verify.verify) and keep the
+        receipt; answer the result. ActionError when there is no such plan or no command."""
+        try:
+            return verify(ctx.ports["plans"], ctx.ports["verify_command"](), args["plan"])
+        except ValueError as e:
+            raise ActionError(str(e)) from e

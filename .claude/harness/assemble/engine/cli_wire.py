@@ -13,7 +13,7 @@ from harness.assemble.engine import cli_live, cli_tool
 from harness.assemble.engine.config import Config, ConfigError
 from harness.assemble.engine.ports import LedgerPort
 from harness.utils.plan import grants
-from harness.utils.plan.verify import MAX_TIMEOUT, VERIFY_TIMEOUT, run
+from harness.utils.plan.verify import command_of as plan_command, MAX_TIMEOUT, VERIFY_TIMEOUT, run
 from harness.utils.shapes import ApprovedPlan
 
 SESSION_ENV = "HARNESS_SESSION"
@@ -134,7 +134,9 @@ def verify(port: LedgerPort, sid: str, args: argparse.Namespace, claude_dir: Pat
     """
     if not 1 <= args.timeout <= MAX_TIMEOUT:
         raise Refused(f"--timeout is 1 to {MAX_TIMEOUT} seconds")
-    plan, command = plan_of(port, sid), command_of(args, claude_dir)
+    plan = plan_of(port, sid)
+    words = args.command[1:] if args.command[:1] == ["--"] else args.command
+    command = list(words) if words else plan_command(plan, []) or command_of(args, claude_dir)
     folder = os.path.abspath(args.folder) if args.folder else plan["root"]
     ok, code, tail, files = run(port, plan, command, args.timeout, folder)
     proven = len([b for b in port.registry(plan).values() if b["status"] == "active"]) if ok else 0
