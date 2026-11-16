@@ -4,10 +4,8 @@ run is no pass."""
 from __future__ import annotations
 
 import os
-import sqlite3
 import subprocess
 import sys
-import tempfile
 import time
 from collections.abc import Sequence
 from pathlib import Path
@@ -68,37 +66,15 @@ def blobs(plan: ApprovedPlan) -> dict[str, Optional[str]]:
         raise ValueError(f"the plan's root is not in a git repository: {e}") from e
 
 
-def sandbox(ledger_path: str | Path, folder: str | Path) -> Optional[Path]:
-    """A copy of the live ledger (sqlite backup) in folder, for the tests to open instead of it; None without one.
-
-    Args:
-        ledger_path: the live ledger's file.
-        folder: the folder the copy goes to (a temp folder).
-
-    Returns:
-        <folder>/harness.db, or None when there is no live ledger.
-    """
-    if not Path(ledger_path).is_file():
-        return None
-    copy = Path(folder) / "harness.db"
-    src, dst = sqlite3.connect(f"{Path(ledger_path).resolve().as_uri()}?mode=ro", uri=True), sqlite3.connect(copy)
-    try:
-        src.backup(dst)
-    finally:
-        src.close()
-        dst.close()
-    return copy
-
-
 def run(port: PlanStore, plan: ApprovedPlan, command: Sequence[str], timeout: float = VERIFY_TIMEOUT,
         cwd: Optional[str | Path] = None) -> tuple[bool, int, list[str], list[str]]:
-    """Run command (a list of words, no shell, stdin closed) for the approved plan under the verify lock, with
-    HARNESS_DB set to a copy of the live ledger and without the harness's own variables (project_env); keep the
-    receipt (ok, exit code, last lines, changed files).
+    """Run command (a list of words, no shell, stdin closed) for the approved plan under the verify lock, without the
+    harness's own variables (project_env); keep the receipt (ok, exit code, last lines, changed files). The tests get
+    no ledger: one that records builds its own home (docs/12-ledger.md).
     Exit 124: the timeout ended it; 127: it could not start. A file that changed while it ran makes it red.
 
     Args:
-        port: the harness ledger (plans, tickets, audit rows); its path is copied for the tests.
+        port: the harness ledger (plans, tickets, audit rows); the receipt is kept in it.
         plan: the approved plan with its grants.
         command: the test command's words.
         timeout: the seconds the command may run.
@@ -115,10 +91,9 @@ def run(port: PlanStore, plan: ApprovedPlan, command: Sequence[str], timeout: fl
         raise ValueError("no verify command: the config names none and none was given")
     folder = cwd or plan["root"]
     started = time.monotonic()
-    with VerifyLock(folder), tempfile.TemporaryDirectory(prefix="harness-verify-") as tmp:
+    with VerifyLock(folder):
         files, changed = blobs(plan), dirty(plan)
-        copy = sandbox(port.path, tmp)
-        env = {**project_env(), **({"HARNESS_DB": str(copy)} if copy else {})}
+        env = project_env()
         try:
             p = subprocess.run(list(command), cwd=folder, capture_output=True, timeout=timeout, env=env,
                                stdin=subprocess.DEVNULL)

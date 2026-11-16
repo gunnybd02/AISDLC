@@ -110,5 +110,15 @@ class UsageTest(unittest.TestCase):
         self.assertAlmostEqual(cost, expected, places=9)
 
 
+    def test_with_write_the_backfill_reports_what_it_wrote(self):
+        run = caller(self.claude_dir)
+        with mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(self.folder)}), \
+                mock.patch.object(usage, "pending", return_value=(1, 15)):  # counted before the transcript grew
+            done = run("ledger", "usage_backfill", write=True).text
+        self.assertIn("2 message(s) of 1 transcript(s) recorded", done)
+        self.assertIn("s1: 2 message(s), 1000130 tokens", done)  # what is in the ledger now
+        self.assertEqual(self.rows("SELECT SUM(tokens) FROM pl_usage"), [(1000130,)])
+
+
 if __name__ == "__main__":
     unittest.main()

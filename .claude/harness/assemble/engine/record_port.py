@@ -160,6 +160,7 @@ class RecordPort(LedgerCore):
             self.seen(con, event.session)
             activity.record_call(con, rec, event, facts.get("plan"), word, verdict.findings)
             writes.record(con, event, facts)
+            activity.peers(con, event)
             load = activity.skill_seen(event, self.skill_names()) if event.session else None
             if load:
                 activity.skill_load(con, event.session, *load)
@@ -230,9 +231,11 @@ class RecordPort(LedgerCore):
             for sid, path in found:
                 try:
                     count, tokens = usage.pending(con, sid, path)
-                    if write and count:
+                    if write and count:  # what is written is counted, not what was counted before
                         self.seen(con, sid)
-                        usage.read_new(con, sid, path)
+                        before = usage.tokens_of(con, sid)
+                        count = usage.read_new(con, sid, path)
+                        tokens = usage.tokens_of(con, sid) - before
                 except OSError as e:
                     lines.append(f"{sid}: not read ({type(e).__name__})")
                     continue
