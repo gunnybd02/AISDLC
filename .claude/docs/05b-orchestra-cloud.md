@@ -3,7 +3,7 @@
 > How this harness builds the user's spec 05 (`05-orchestra.md` to `05-orchestra-4.md`), which assumes one PC.
 > Decided by the user on 2026-11-16: a child is a **cloud session**; the card travels **in the brief** and the
 > handback receipt **on the child's branch** (no refs of the harness on the remote); at most **3** children run; a
-> live probe first, then one plan per part. Part 1 is built; parts 2 to 4 are designed here and built next.
+> live probe first, then one plan per part. Parts 1 and 2 are built; parts 3 and 4 are designed here.
 
 ## 1. Why spec 05 changes here
 
@@ -61,7 +61,7 @@ sequenceDiagram
     C->>C: first prompt binds; orchestra take opens the card plan from the card block
     loop work
         C->>G: push orch/p<plan>/<name> after every step
-        C-->>P: orchestra ask, then send_message (optional)
+        C-->>P: orchestra question, then send_message (optional)
         P-->>C: orchestra answer, then send_message
     end
     C->>G: orchestra handback: receipt file on the branch, pushed
@@ -81,8 +81,8 @@ sequenceDiagram
 | Part | What it builds | State |
 |---|---|---|
 | 1 | Card rules, delegated opening, one delegated plan at a time, `spawn`, `started`, `status`, the brief, the `ls-remote` fix | built |
-| 2 | The child: binding on its first prompt, `take`, its branch, the child refusals, `ask`, `handback` and its receipt | next |
-| 3 | The parent: `check`, `accept`, `reject`, `answer`, `land`, `forget`, `release`, `read`, the digest, the parent's close | |
+| 2 | The child: binding on its first prompt, `take`, `push`, `question`, `handback` and its receipt, the child refusals | built |
+| 3 | The parent: `check`, `accept`, `reject`, `answer`, `land`, `forget`, `release`, `read`, the digest, the parent's close | next |
 | 4 | `remove` (checklist, then archive), the scheduled check-in, the `orchestrate` skill, a full live run | |
 
 ## 5. Part 1, as built
@@ -116,32 +116,41 @@ another plan there (`GATE: plan ... was not opened`). A revision of the running 
 **The brief** (`utils/orchestra/brief.py`) begins with `child session "<name>" of the delegated plan <n>` and the
 parent's session id, then: the goal and unit; `take` first and never a plan of its own; nobody at the keyboard; the
 branch and pushing it after every step; that send-backs and answers from the parent are part of its plan (the probe);
-`ask`; verify bare; `handback` and one `send_message`; the files; the criteria with their behaviour ids
+`question`; verify bare; `handback` and one `send_message`; the files; the criteria with their behaviour ids
 `p<plan>.<name>.ac<n>`; and the card block, one JSON object between `<<<harness-card` and `harness-card>>>` with plan,
 draft, parent, branch, card and behaviour ids. Part 2's harness reads that block; until part 2, a child started from
 a brief cannot `take`.
 
-## 6. Parts 2 to 4, designed
+## 6. Part 2, as built
 
-**Binding (part 2).** A session whose first prompt starts with the brief's words and carries a card block becomes a
-child: its ticket is marked as a child with its role, the parent's session id and the plan number. Who may write a
-session's first prompt is whoever opened it: the user or one of their sessions.
+**Binding** (`utils/orchestra/child.py`, called by `runner.Act` at UserPromptSubmit). A session whose **first**
+prompt starts `You are child session "<name>" of the delegated plan <n>` and carries a card block that names the same
+child, plan and branch gets a role on its ticket (`child`: name, plan, draft, parent, branch, card, behaviour ids).
+Only the first prompt counts: a later one (a message from another session among them) never makes a session a child.
+Whoever opens a session writes its first prompt: the user or one of their sessions.
 
-**`take`.** Opens the card plan from the card block like a user's approval, stamped `approved by grant of plan <n>`
-of the parent session: title the goal, files the change paths, tests the test paths, one behaviour per AC with the
-id from the card, one step committed as the goal. It checks out `orch/p<plan>/<name>` from the base.
+**Actions of a child** (`utils/orchestra/work.py`):
 
-**Child refusals.** `AskUserQuestion`; `plan_present` when it has a card (and a plan of its own outside the grant's
-units); merging; pushing any branch but its own; `plan_close`; the request actions of maint. Pushing its own branch
-is allowed by the card (a cloud child must push, or its work dies with its machine).
+| Action | What it does |
+|---|---|
+| `take` | Stands on `orch/p<plan>/<name>` (local, else the remote one tracked, else new from HEAD) and opens the card plan, approved **by the grant** of the parent plan: `rec_plans` says reason `grant`, the logs say `grant`, no form is recorded. The card plan: title `<name>: <goal>`, files the change paths, tests the test paths, one step committed as the goal, one behaviour per AC (id `p<plan>.<name>.ac<n>`, what `AC<n>: ...`, the first card test; registered at once when there is one). A card without `change` is refused (and `spawn` refuses it in the parent: a cloud child's plan is built from those paths). |
+| `push` | Pushes its own branch only, judged by the git rules like `git push` in a shell (a refusal or a question stops it: nobody answers in a child), kept in `pl_git_audit`. |
+| `question {question}` | Kept on the child's ticket (`asks`); the answer says the line to send to the parent with `send_message`. Named `question`, not `ask`: the verdict net keeps the word `ask` for the arbiter. |
+| `handback {changed, checked, notChecked, risks, testsChanged, added?, faults?}` | Checks the report (spec 11.4: at most 10 entries of 200 characters, 400 for two-part ones). Adds what harness code reads: commits and their files, the newest verify (ok, red, missing), the behaviours `p<plan>.<name>.ac*`, uncommitted files, the base. Writes `.harness/handback/<name>.json`, commits it through the commit gate, pushes the branch, and tells the model to send one line `handed back <branch> <sha>` to the parent. |
 
-**`handback`.** The report of spec 11.4 (changed, checked, notChecked, risks, testsChanged, added?, faults?), plus
-what harness code reads itself: the commits and their files, the newest verify, the behaviours `p<plan>.<name>.ac*`,
-uncommitted files, the base commit. It is written to `.harness/handback/<name>.json`, committed and pushed on the
-branch. The model then sends one line: `handed back <branch> <sha>`. The merge leaves that file out.
+**Child refusals.** `plan_present`, `plan_close` and `maint grant` refuse in a child. The detector `child_guard`
+refuses `child.ask_user` (AskUserQuestion), `child.merge` (git merge, pull, rebase) and `child.push_other` (a push to
+another branch, `--all`, `--mirror`, `--tags`). Not refused yet: leaving its branch by `git switch`; Claude Code's
+own permission prompts in a child are not denied.
 
-**`ask`** records the question and tells the model to send it with `send_message`; the parent's `answer` sends the
-reply the same way. A message is a knock, never the proof: every fact the parent acts on comes from the branch.
+**A limit of the cloud.** The harness's home there is the installed copy (`/root/.harness`), so a clone of this
+repository is a unit: a child that changes files under `.claude/` is refused at commit (`commit.agent_files`).
+Children cannot develop the harness itself in the cloud yet.
+
+## 7. Parts 3 and 4, designed
+
+**`answer`** (part 3) sends the parent's reply with `send_message`. A message is a knock, never the proof: every fact
+the parent acts on comes from the branch.
 
 **`check` (part 3).** Fetch the branch; read the receipt (refused when it is missing, does not name the branch tip,
 or names uncommitted files); count one registered behaviour per AC (description starting `AC<n>:`, not retired, with
@@ -163,7 +172,7 @@ model archives it". The digest is built on request from the crew and the fetched
 the parent's model archives exactly those. One scheduled check-in (hours, not minutes) is set at the first spawn and
 cancelled at the last accept. The `orchestrate` skill holds the parent's procedure of spec 20.
 
-## 7. Limits
+## 8. Limits
 
 | Limit | Value | Why |
 |---|---|---|
@@ -172,7 +181,7 @@ cancelled at the last accept. The `orchestrate` skill holds the parent's procedu
 | Send-back rounds | 3, then the user decides | Spec 05 |
 | Card | as spec 21 | Spec 05 |
 
-## 8. Trust
+## 9. Trust
 
 - Only the user's "Duyệt" in the parent's form approves the delegated plan; nothing a child says approves or widens it.
 - A child trusts its brief because it is its first prompt; it trusts its parent's send-backs because the brief names

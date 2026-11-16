@@ -75,7 +75,7 @@ A ticket (`pl_tickets`, `utils/plan/tickets.py`) runs each approved plan: the ap
 (an open ticket with no plan is reused, a revision keeps its ticket and `rootId`, another plan closes the open one
 `superseded` and carries its done steps and commits), `step_done` closes it `delivered` (a home plan needs no form).
 A plan with `children` makes it delegated: the grant and the crew (`utils/orchestra/crew.py`), and no other plan opens
-in the session while it runs. `tickets.approved_plan(ticket)` is the one rule for a plan in force; `LedgerPort.approved`
+in the session while it runs. A brief as a session's first prompt makes it a child (`utils/orchestra/child.py`). `tickets.approved_plan(ticket)` is the one rule for a plan in force; `LedgerPort.approved`
 reads only it. The MCP server knows its session from the hook: whose prompt or harness tool call came last.
 
 Every commit from the shell is refused (`commit.raw`): `git commit`, and any line that may commit another way. A
@@ -238,7 +238,7 @@ judged.
 |---|---|
 | `plan` | `plan_present`, `plan_revise`, `plan_show`, `plan_status`, `plan_drop`, `step_done`, `step_skip`, `plan_close` |
 | `verify` | `run` |
-| `orchestra` | `spawn`, `started`, `status` (children as cloud sessions: `utils/orchestra/`, `docs/05b-orchestra-cloud.md`) |
+| `orchestra` | parent: `spawn`, `started`, `status`; child: `take`, `push`, `question`, `handback` (`docs/05b-orchestra-cloud.md`) |
 | `git` | `run`, `commit`, `push`, `mr_open` |
 | `ledger` | `db_query`, `plans_settle`, `export`, `store_status` |
 | `maint` | `grant`, `status` |
