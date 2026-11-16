@@ -56,8 +56,9 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #37 | Orchestra fixes from the two-child live run: `accept` takes the receipt off the child's branch with a git commit and a branch push (the cloud's proxy refuses GitHub's file API); `take` starts a child's branch from its unit's base |
 | #38 | A delegated plan is done only when every child's database is in the Drive store: copies carry the plan marker `orch.<plan id>.<child or parent>`; a child uploads at handback; the hook reads Drive's own search answer to verify each child's copy; `land` delivers and `remove` archives only verified children (a dead child only with the user's Allow) |
 | #40 | From the live run of #38: a child's copy in Drive is recognised by its own harness id, which its receipt names (it differs from its cloud session id); `land` waits for GitHub's mergeability and does not call a refusal with a clean local merge a conflict; the Drive search is given in Drive's own query syntax |
+| #42 | The remove checklist always has two choices: a question of one child also offers "Keep all", which archives nothing and wins over ticks (the form tool refuses a question with one option: found live) |
 
-450 tests pass (1 skipped, Windows only); doctor: 0 errors.
+451 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 ## The cloud, as it runs now
 
