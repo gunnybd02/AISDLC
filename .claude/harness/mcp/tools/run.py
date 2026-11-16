@@ -2,26 +2,43 @@
 the server has every port it names in needs, which are all it is given. A write action is judged first: the judge
 port answers the verdict of the rules for the call, and only an allow that a rule row decided lets it run (an ask too
 is refused, the server cannot ask the user; an allow no rule decided is write-unjudged). A read is never judged."""
+from __future__ import annotations
+
 import os
+from typing import TYPE_CHECKING, Any
 
 from harness.mcp.actions.table import args_problem
 from harness.mcp.server.tool import Result, Tool
 from harness.utils.contracts import WRITE, ActionContext, ActionError, Event, judged_allow
+
+if TYPE_CHECKING:
+    from harness.mcp.actions.table import ActionTable
 
 TOOL = "mcp__harness__run"  # the name Claude Code gives this tool; the rules read it from the event
 UNJUDGED = "write-unjudged: no rule decides this write, so it does not run; a rule row for it is needed first"
 
 
 class Run(Tool):
+    """The run tool: one action of the action table, checked, and judged when it writes."""
     name = "run"
     description = "Run an action of a block: run(block, action, args). guide(block, 'mcp') lists the actions."
     schema = {"type": "object", "properties": {"block": {"type": "string"}, "action": {"type": "string"},
                                                "args": {"type": "object"}}, "required": ["block", "action"]}
 
-    def __init__(self, table, ports):
+    def __init__(self, table: ActionTable, ports: dict[str, Any]) -> None:
+        """Keep the action table and the server's ports.
+
+        Args:
+            table: the actions run can reach.
+            ports: the server's ports by name (ledger: a PlanStore, judge: judge(event) -> Verdict, git_judge,
+                commit_judge...); each kind of port is its own type.
+        """
         self.table, self.ports = table, ports
 
-    def call(self, args):
+    def call(self, args: dict[str, Any]) -> Result:
+        """Run the action {block, action, args?} with only the ports it needs, a write only when a rule allows it;
+        answer its text, or an error for an unknown action, bad arguments, a missing port, a refused write or the
+        action's ActionError or ValueError."""
         block, name, given = args.get("block"), args.get("action"), args.get("args", {})
         try:
             action = self.table.action(block, name)
@@ -42,8 +59,18 @@ class Run(Tool):
         except (ActionError, ValueError) as e:
             return Result(str(e), True)
 
-    def judge(self, block, name, given):
-        """Why the write may not run, or ""."""
+    def judge(self, block: str, name: str, given: dict[str, Any]) -> str:
+        """Why the write may not run, or "".
+
+        Args:
+            block: the action's block.
+            name: the action's name.
+            given: the action's arguments.
+
+        Returns:
+            "" when an allow a rule row decided lets it run; else why not: no judge port, the judge failed, the
+            reason of the rules that ask or refuse, or UNJUDGED when no rule decided it.
+        """
         judge = self.ports.get("judge")
         if judge is None:
             return f"{block}.{name} is a write and this server has no judge: it does not run"

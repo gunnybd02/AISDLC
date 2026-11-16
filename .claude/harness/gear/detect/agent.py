@@ -9,23 +9,48 @@
   user changes them outside a session);
 - agent.session_start: a shell line that runs the SessionStart entry, which puts the newest main in force without the
   user's word: only Claude Code runs it, when a session begins (in a session: live update and the form)."""
+from __future__ import annotations
+
 import os
+from pathlib import Path
 
 from harness.gear.detect.git import agent_file
-from harness.utils.contracts import Detector, Finding
+from harness.utils.contracts import Detector, Event, Finding
+from harness.utils.shapes import Facts
 
 
-def beside_harness(path):
-    """Whether the file sits beside a .claude folder that holds a harness: the root of a core repository."""
+def beside_harness(path: str | Path) -> bool:
+    """Whether the file sits beside a .claude folder that holds a harness: the root of a core repository.
+
+    Args:
+        path: the file written (absolute).
+
+    Returns:
+        True when <its folder>/.claude/harness is a folder.
+    """
     return os.path.isdir(os.path.join(os.path.dirname(str(path)), ".claude", "harness"))
 
 
-def parts(path):
+def parts(path: str | Path) -> list[str]:
+    """The parts of a path, lower case, either slash, empty parts left out.
+
+    Args:
+        path: a file path.
+
+    Returns:
+        Its parts in order, e.g. ["c:", "repo", ".claude", "rules", "x.md"].
+    """
     return [p.lower() for p in str(path).replace("\\", "/").split("/") if p]
 
 
 class AgentFiles(Detector):
-    def detect(self, event, facts):
+    """What agent files never take: commit.agent_files, agent.rules, agent.memory, agent.registry, agent.anchor,
+    agent.session_start."""
+
+    def detect(self, event: Event, facts: Facts) -> list[Finding]:
+        """Report agent.session_start for a shell line that runs the SessionStart entry, commit.agent_files for a
+        unit's commit that holds agent files, and agent.rules, agent.memory, agent.registry or agent.anchor for each
+        write to such a place."""
         out = []
         if event.kind == "PreToolUse" and facts.get("harness_session_start"):
             out.append(Finding("agent.session_start", event.input.get("command", "")))

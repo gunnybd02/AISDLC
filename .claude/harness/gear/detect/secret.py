@@ -1,8 +1,11 @@
 """SecretScan: commit.secret, a line a commit adds that holds a secret: a private key, a cloud or forge token, an API
 key. Only the added lines are read (gear/translate/commit.py)."""
+from __future__ import annotations
+
 import re
 
-from harness.utils.contracts import Detector, Finding
+from harness.utils.contracts import Detector, Event, Finding
+from harness.utils.shapes import Facts
 
 SECRETS = {
     "a private key": re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY"),
@@ -17,7 +20,10 @@ SECRETS = {
 
 
 class SecretScan(Detector):
-    def detect(self, event, facts):
+    """A secret in a line a commit adds: commit.secret."""
+
+    def detect(self, event: Event, facts: Facts) -> list[Finding]:
+        """Report commit.secret for each kind of secret in the lines a commit adds, one finding per file and kind."""
         out = []
         for path, lines in sorted((facts.get("commit_added") or {}).items()):
             kinds = sorted({kind for line in lines for kind, pattern in SECRETS.items() if pattern.search(line)})

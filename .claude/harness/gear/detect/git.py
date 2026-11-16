@@ -15,7 +15,15 @@ Each one asks the user, never refuses: the git block (run('git', 'run')) keeps t
   to another repository or skip its hooks.
 The git facts it needs come from the port's git_view (the branch a repository is on, what a push would send, the
 home), read only when a command needs them."""
-from harness.utils.contracts import Detector, Finding
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional, Protocol
+
+from harness.utils.contracts import Detector, Event, Finding
+from harness.utils.shapes import Facts
+
+if TYPE_CHECKING:
+    from harness.gear.translate.git_cli import GitAction
 
 AGENT_FILES = ("CLAUDE.md", "CLAUDE.local.md", ".mcp.json", "AGENTS.md")
 ADD_ALL = {"-A", "--all", ".", ":/", ":/*", "*", "--no-ignore-removal"}
@@ -25,18 +33,61 @@ PUSH_VALUES = {"--repo", "-o", "--push-option", "--receive-pack", "--exec"}
 FORCE = {"--force", "--force-with-lease", "--force-if-includes", "--mirror"}
 
 
-def agent_file(path):
+class GitView(Protocol):
+    """The git facts of the port (the fact git_view; assemble/engine/ports.py GitView), each read only when called."""
+
+    def branch_of(self, repo: str) -> str:
+        """The branch the repository is on ("" when it is not a folder)."""
+        ...
+
+    def protected(self, branch: str) -> bool:
+        """Whether the branch is protected (project.json protected, default main and master)."""
+        ...
+
+    def unpushed(self, repo: str, remote: str, source: str) -> list[str]:
+        """The files of the commits a push of source to remote would send."""
+        ...
+
+    def is_home(self, repo: str) -> bool:
+        """Whether repo is the repository that holds the harness."""
+        ...
+
+
+def agent_file(path: str) -> bool:
+    """Whether a path is an agent file: under a .claude folder, a .claude folder, or CLAUDE.md, CLAUDE.local.md,
+    .mcp.json or AGENTS.md.
+
+    Args:
+        path: a path as git or a commit names it (either slash).
+
+    Returns:
+        True for an agent file.
+    """
     parts = path.replace("\\", "/").strip("/").split("/")
     return ".claude" in parts[:-1] or parts[-1] in AGENT_FILES or path.replace("\\", "/").rstrip("/").endswith(".claude")
 
 
-def shorts(args):
-    """The letters of the short options among args (-fu is f and u)."""
+def shorts(args: list[str]) -> set[str]:
+    """The letters of the short options among args (-fu is f and u).
+
+    Args:
+        args: the words of a git command after its subcommand.
+
+    Returns:
+        The set of letters, e.g. {"f", "u"}.
+    """
     return {c for a in args if a.startswith("-") and not a.startswith("--") for c in a[1:]}
 
 
-def push_parts(args):
-    """(options, remote, refspecs) of the words after git push."""
+def push_parts(args: list[str]) -> tuple[list[str], str, list[str]]:
+    """(options, remote, refspecs) of the words after git push.
+
+    Args:
+        args: the words after git push.
+
+    Returns:
+        (the options in order, the remote ("origin" when none is named), the refspecs after it).
+    """
     options, positional, i = [], [], 0
     while i < len(args):
         a = args[i]
@@ -53,7 +104,12 @@ def push_parts(args):
 
 
 class GitRules(Detector):
-    def detect(self, event, facts):
+    """The git rules, where a protected branch is touched: git.add_all, git.no_verify, git.reset_hard, git.force_push,
+    git.protected_write, push.never_repo, push.agent_files, git.unread."""
+
+    def detect(self, event: Event, facts: Facts) -> list[Finding]:
+        """Report the git rules' findings for each git command of a shell line before it runs (git_actions), the
+        ones the reader saw whole."""
         if event.kind != "PreToolUse":
             return []
         view = facts.get("git_view")
@@ -63,7 +119,17 @@ class GitRules(Detector):
                 out += self.check(action, view)
         return out
 
-    def check(self, action, view):
+    def check(self, action: GitAction, view: Optional[GitView]) -> list[Finding]:
+        """The findings of one git command; none unless it touches a protected branch.
+
+        Args:
+            action: one git command of the line (GitAction: sub, args, repo, globals).
+            view: the port's git facts, or None when there are none (then nothing is found).
+
+        Returns:
+            Its findings: git.unread, git.no_verify, git.add_all, push.agent_files, git.reset_hard, the push's
+            findings and git.protected_write.
+        """
         sub, args, repo = action["sub"], action["args"], action["repo"]
         if view is None or not self.touches_protected(sub, args, repo, view):
             return []
@@ -91,7 +157,19 @@ class GitRules(Detector):
         return out
 
     @staticmethod
-    def touches_protected(sub, args, repo, view):
+    def touches_protected(sub: str, args: list[str], repo: str, view: GitView) -> bool:
+        """Whether a git command touches a protected branch: the repository is on one, a push names one (or --all,
+        --mirror), or a branch command names one.
+
+        Args:
+            sub: the git subcommand.
+            args: the words after it.
+            repo: the repository it runs in.
+            view: the port's git facts.
+
+        Returns:
+            True when the git rules hold for it.
+        """
         if view.protected(view.branch_of(repo)):
             return True
         if sub == "push":
@@ -101,7 +179,18 @@ class GitRules(Detector):
                                                                     for d in dsts)
         return sub == "branch" and any(not a.startswith("-") and view.protected(a) for a in args)
 
-    def push(self, args, repo, view):
+    def push(self, args: list[str], repo: str, view: Optional[GitView]) -> list[Finding]:
+        """The findings of one git push.
+
+        Args:
+            args: the words after git push.
+            repo: the repository it runs in.
+            view: the port's git facts, or None (then only a force push is found).
+
+        Returns:
+            git.force_push, push.never_repo (a push from the home), git.protected_write (--all, --mirror or a
+            protected destination) and push.agent_files (agent files in the commits it would send).
+        """
         options, remote, refspecs = push_parts(args)
         out = []
         if set(options) & FORCE or any(o.startswith("--force-with-lease=") for o in options) or "f" in shorts(options) \

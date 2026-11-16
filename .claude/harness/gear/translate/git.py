@@ -17,11 +17,15 @@ Everything else that can make a commit is unsafe ({"unsafe": why}):
   above (an abbreviated --amen is outside it too).
 A line where git only reads or stages (status, diff, add, push...) is no commit.
 git_actions (git_cli.py): every git command of the line, for the git rules (gear/detect/git.py)."""
+from __future__ import annotations
+
 import os
 import re
+from typing import Optional, TypedDict
 
 from harness.gear.translate.git_cli import git_actions
-from harness.utils.contracts import Translator
+from harness.utils.contracts import Event, Translator
+from harness.utils.shapes import Facts
 from harness.utils.shell.words import program, read as read_shell
 
 GIT = re.compile(r"(?<![\w.-])git(?:\.exe)?(?![\w.-])", re.I)
@@ -37,8 +41,23 @@ VALUE_LONG = {"--message", "--file"}
 SHELL_TOOLS = {"Bash": "bash", "PowerShell": "powershell", "HarnessGit": "bash"}  # HarnessGit: the git block's own
 
 
-def commit_flags(args):
-    """Why the options of a commit are unsafe, or ""."""
+class GitCommit(TypedDict):
+    """A shell line that may commit (the fact git_commit): repo the repository (forward slashes), unsafe why the
+    gate cannot see the whole commit ("" for one plain safe commit)."""
+    repo: str
+    unsafe: str
+
+
+def commit_flags(args: list[str]) -> str:
+    """Why the options of a commit are unsafe, or "".
+
+    Args:
+        args: the words after git commit.
+
+    Returns:
+        "" when every option is on the safe list (-m, -F, -q, -s, -v, --message, --file, --quiet, --signoff,
+        --verbose, --allow-empty); else why not: an option outside it or a path named.
+    """
     j = 0
     while j < len(args):
         arg = args[j]
@@ -63,8 +82,17 @@ def commit_flags(args):
     return ""
 
 
-def git_command(words, cwd):
-    """For a command whose program is git: None when it makes no commit, else (repository, why it is unsafe or "")."""
+def git_command(words: list[str], cwd: str) -> Optional[tuple[str, str]]:
+    """For a command whose program is git: None when it makes no commit, else (repository, why it is unsafe or "").
+
+    Args:
+        words: the command's words, git first.
+        cwd: the folder it runs in.
+
+    Returns:
+        None for a subcommand that makes no commit; else (the repository, -C followed and normalized with forward
+        slashes; why the commit is unsafe, or "").
+    """
     repo, unsafe, i = cwd, "", 1
     while i < len(words) and words[i].startswith("-"):
         if words[i] == "-C" and i + 1 < len(words):
@@ -83,15 +111,33 @@ def git_command(words, cwd):
     return os.path.normpath(repo).replace("\\", "/"), unsafe
 
 
-def holds_git(text):
+def holds_git(text: str) -> bool:
+    """Whether a shell line may hold git: "git" in it, lower case, with quotes and backslashes taken out.
+
+    Args:
+        text: the shell line.
+
+    Returns:
+        True when the line may run git (so g""it counts).
+    """
     flat = text.lower()
     for mark in "\"'\\":
         flat = flat.replace(mark, "")
     return "git" in flat
 
 
-def read(text, cwd, dialect="bash"):
-    """{"repo", "unsafe"} when the line may commit, else None."""
+def read(text: str, cwd: str, dialect: str = "bash") -> Optional[GitCommit]:
+    """{"repo", "unsafe"} when the line may commit, else None.
+
+    Args:
+        text: the shell line.
+        cwd: the folder it runs in (forward slashes).
+        dialect: the shell that reads it: "bash" or "powershell".
+
+    Returns:
+        None when the line makes no commit; else a GitCommit: the repository and why the commit is unsafe ("" for
+        one plain safe commit alone on its line).
+    """
     if not holds_git(text):
         return None
     unsafe = {"repo": cwd, "unsafe": ""}
@@ -125,7 +171,11 @@ def read(text, cwd, dialect="bash"):
 
 
 class GitCommands(Translator):
-    def translate(self, event):
+    """Whether a shell line commits, and its git commands, for the commit gate and the git rules."""
+
+    def translate(self, event: Event) -> Facts:
+        """Give git_commit (a GitCommit) when the line may commit and git_actions (a list of GitAction) when it runs
+        git, for a Bash, PowerShell or HarnessGit call; else {}."""
         if event.tool not in SHELL_TOOLS or not isinstance(event.input.get("command"), str):
             return {}
         cwd = (event.cwd or os.getcwd()).replace("\\", "/")
