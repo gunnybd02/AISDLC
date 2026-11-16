@@ -6,7 +6,10 @@ A Drive call is known by what it is, not by its server's name: Claude Code names
 (mcp__Google_Drive__trash_file) or by an id (mcp__caaed075-...__trash_file). So it is an MCP tool whose server's name
 holds "drive", or whose call names a Drive file (fileId). The harness cannot see which folder a file id is in, so every
 Drive file is guarded alike."""
-from harness.utils.contracts import Detector, Finding
+from __future__ import annotations
+
+from harness.utils.contracts import Detector, Event, Finding
+from harness.utils.shapes import Facts
 
 REMOVE = ("trash_file", "delete_file")
 FILE_KEYS = ("fileId", "file_id")
@@ -14,7 +17,11 @@ MOVE_KEYS = ("title", "name", "parentId", "parent_id")
 
 
 class DriveGuard(Detector):
-    def detect(self, event, facts):
+    """A Drive file a session would take away or move: drive.remove, drive.move."""
+
+    def detect(self, event: Event, facts: Facts) -> list[Finding]:
+        """Report drive.remove for a Drive file trashed or deleted, drive.move for one moved or renamed, before
+        the call runs."""
         parts = str(event.tool or "").split("__")
         given = event.input if isinstance(event.input, dict) else {}
         if event.kind != "PreToolUse" or len(parts) < 3 or parts[0] != "mcp":

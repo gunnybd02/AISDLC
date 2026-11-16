@@ -1,25 +1,41 @@
 """Verify: run the unit's test command for an approved plan in its root and keep the receipt: the result and the blob
 id of each file of the plan, which the commit gate compares with what is staged. A file that changes while the tests
 run is no pass."""
+from __future__ import annotations
+
 import os
 import sqlite3
 import subprocess
 import tempfile
 import time
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Optional
 
 from harness.utils.git.commit import changed
 from harness.utils.git.facts import blob, top
 from harness.utils.plan.files import allows, is_pattern
 from harness.utils.git.run import GitError
 from harness.utils.plan.verify_lock import VerifyLock
+from harness.utils.shapes import ApprovedPlan, PlanStore
 
 VERIFY_TIMEOUT = 600
 MAX_TIMEOUT = 3600
 
 
-def dirty(plan):
-    """The paths (from the plan's root) of the files under its root that differ from HEAD and that the plan allows."""
+def dirty(plan: ApprovedPlan) -> list[str]:
+    """The paths (from the plan's root) of the files under its root that differ from HEAD and that the plan allows.
+
+    Args:
+        plan: the approved plan; its root, files, tests and grants are read.
+
+    Returns:
+        The changed paths the plan allows, from its root, sorted as git status gives them.
+
+    Raises:
+        ValueError: the plan's root is not in a git repository.
+        GitError: git status fails.
+    """
     repo = top(plan["root"])
     if not repo:
         raise ValueError(f"the plan's root {plan['root']} is not in a git repository")
@@ -32,8 +48,18 @@ def dirty(plan):
     return out
 
 
-def blobs(plan):
-    """{path from the root: blob id or None} of the plan's named files and every changed file it allows."""
+def blobs(plan: ApprovedPlan) -> dict[str, Optional[str]]:
+    """{path from the root: blob id or None} of the plan's named files and every changed file it allows.
+
+    Args:
+        plan: the approved plan; its root, files, tests and grants are read.
+
+    Returns:
+        {path from the plan's root: the blob id git would store, None for a missing file}; patterns left out.
+
+    Raises:
+        ValueError: the plan's root is not in a git repository.
+    """
     named = [p for p in plan["files"] + plan.get("tests", []) if not is_pattern(p)]
     try:
         return {p: blob(plan["root"], p) for p in dict.fromkeys(named + dirty(plan))}
@@ -41,8 +67,16 @@ def blobs(plan):
         raise ValueError(f"the plan's root is not in a git repository: {e}") from e
 
 
-def sandbox(ledger_path, folder):
-    """A copy of the live ledger (sqlite backup) in folder, for the tests to open instead of it; None without one."""
+def sandbox(ledger_path: str | Path, folder: str | Path) -> Optional[Path]:
+    """A copy of the live ledger (sqlite backup) in folder, for the tests to open instead of it; None without one.
+
+    Args:
+        ledger_path: the live ledger's file.
+        folder: the folder the copy goes to (a temp folder).
+
+    Returns:
+        <folder>/harness.db, or None when there is no live ledger.
+    """
     if not Path(ledger_path).is_file():
         return None
     copy = Path(folder) / "harness.db"
@@ -55,10 +89,26 @@ def sandbox(ledger_path, folder):
     return copy
 
 
-def run(port, plan, command, timeout=VERIFY_TIMEOUT, cwd=None):
+def run(port: PlanStore, plan: ApprovedPlan, command: Sequence[str], timeout: float = VERIFY_TIMEOUT,
+        cwd: Optional[str | Path] = None) -> tuple[bool, int, list[str], list[str]]:
     """Run command (a list of words, no shell, stdin closed) for the approved plan under the verify lock, with
     HARNESS_DB set to a copy of the live ledger; keep the receipt. (ok, exit code, last lines, changed files).
-    Exit 124: the timeout ended it; 127: it could not start. A file that changed while it ran makes it red."""
+    Exit 124: the timeout ended it; 127: it could not start. A file that changed while it ran makes it red.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows); its path is copied for the tests.
+        plan: the approved plan with its grants.
+        command: the test command's words.
+        timeout: the seconds the command may run.
+        cwd: the folder it runs in; None for the plan's root.
+
+    Returns:
+        (ok, exit code, the last 25 lines of its output, the changed files the plan allows); the receipt is kept.
+
+    Raises:
+        ValueError: no command, or the plan's root is not in a git repository.
+        LockTimeout: another verify held the lock too long.
+    """
     if not command:
         raise ValueError("no verify command: the config names none and none was given")
     folder = cwd or plan["root"]
@@ -86,8 +136,21 @@ def run(port, plan, command, timeout=VERIFY_TIMEOUT, cwd=None):
     return ok, code, tail, changed
 
 
-def verify(port, command, plan_id):
-    """The MCP door: run the test command for the approved plan plan_id and say whether it passed."""
+def verify(port: PlanStore, command: Sequence[str], plan_id: str) -> str:
+    """The MCP door: run the test command for the approved plan plan_id and say whether it passed.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        command: the test command's words.
+        plan_id: the desk id (pd-...) of the plan in force.
+
+    Returns:
+        The text for the model: "verify passed for plan <id>." or "verify failed (exit N) ..." with the last 5 lines.
+
+    Raises:
+        ValueError: no plan in force has that desk id, no command, or its root is not in a git repository.
+        LockTimeout: another verify held the lock too long.
+    """
     plan = port.approved_plan(plan_id)
     if plan is None:
         raise ValueError(f"no approved plan {plan_id} waits for delivery")

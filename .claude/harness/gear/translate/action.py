@@ -1,12 +1,18 @@
 """Actions: the facts of a call of the harness's run tool that says it writes (mcp/tools/run.py builds that event for a
 write action before it runs; Claude Code names the tool mcp__harness__run). action_write is "block.name"."""
-from harness.utils.contracts import WRITE, Translator
+from __future__ import annotations
+
+from harness.utils.contracts import WRITE, Event, Translator
+from harness.utils.shapes import Facts
 
 RUN_TOOLS = ("mcp__harness__run",)
 
 
 class Actions(Translator):
-    def translate(self, event):
+    """The facts of a write action of the harness's run tool about to run."""
+
+    def translate(self, event: Event) -> Facts:
+        """Give action_write ("block.name") for a call of the run tool whose effect is write; else {}."""
         data = event.input
         if event.tool not in RUN_TOOLS or data.get("effect") != WRITE:
             return {}

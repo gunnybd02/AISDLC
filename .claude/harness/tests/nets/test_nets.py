@@ -1,10 +1,11 @@
 """h1.blocks-and-nets: each net finds its break in a fake tree and nothing in the real one."""
 import unittest
 
-from harness.nets import bridges_net, config_net, entry_net, imports_net, layout_net, size_net, verdict_net
+from harness.nets import (bridges_net, config_net, entry_net, hints_net, imports_net, layout_net, size_net,
+                          verdict_net)
 from harness.tests import CLAUDE_DIR, tree
 
-NETS = (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net, entry_net)
+NETS = (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net, entry_net, hints_net)
 
 
 def joined(net, test, files):
@@ -128,16 +129,46 @@ class VerdictNetTest(unittest.TestCase):
     def test_a_verdict_made_outside_decide_is_reported(self):
         for text in ("from harness.utils.contracts import REFUSE\n",
                      "from harness.utils import contracts\nV = contracts.Verdict(contracts.REFUSE)\n",
-                     "from harness.utils.contracts import Verdict\n",
+                     "from harness.utils.contracts import Verdict\nV = Verdict('x')\n",
+                     "from harness.utils.contracts import Verdict\ndef f(v: Verdict = Verdict('x')) -> int:\n    return 1\n",
                      "import harness.utils.contracts as c\nX = c.ASK\n"):
             with self.subTest(text=text):
                 self.assertIn("harness/gear/a.py", joined(verdict_net, self, {"harness/gear/a.py": text}))
+
+    def test_a_type_hint_may_name_verdict(self):
+        text = ("from harness.utils.contracts import Verdict\nfrom harness.utils import contracts\n\n"
+                "def f(v: Verdict, w: 'contracts.Verdict' = None) -> list[contracts.Verdict]:\n    x: Verdict = v\n"
+                "    return [x]\n")
+        self.assertEqual(verdict_net.check(tree(self, {"harness/gear/a.py": text})), [])
 
     def test_decide_contracts_and_longer_text_pass(self):
         files = {"harness/gear/decide/arbiter.py": "X = 'ask'\n", "harness/utils/contracts.py": "Y = 'deny'\n",
                  "harness/mcp/a.py": '"""We ask nothing."""\nX = "ask the user"\n'}
         self.assertEqual(verdict_net.check(tree(self, files)), [])
 
+
+
+class HintsNetTest(unittest.TestCase):
+    """h25.hints: every function of the harness says what it takes and gives."""
+
+    def test_a_function_without_hints_or_docstring_is_reported(self):
+        text = ('"""m"""\n\n\ndef f(a, b: int):\n    return a\n\n\nclass C:\n    def m(self, x: int) -> int:\n'
+                '        return x\n\n    @staticmethod\n    def s(y) -> None:\n        """s"""\n')
+        found = hints_net.check(tree(self, {"harness/gear/a.py": text}))
+        self.assertEqual(found, ["hints: harness/gear/a.py:4 f has no hint for a, return",
+                                 "hints: harness/gear/a.py:4 f has no docstring",
+                                 "hints: harness/gear/a.py:9 m has no docstring",
+                                 "hints: harness/gear/a.py:13 s has no hint for y"])
+
+    def test_full_hints_a_docstring_and_a_bare_closure_pass(self):
+        text = ('"""m"""\n\n\ndef f(a: int, *rest: str, **more: int) -> int:\n    """f"""\n'
+                '    def inner(x: int) -> int:\n        return x\n    return inner(a)\n\n\n'
+                'class C:\n    """c"""\n\n    def m(self, x: int) -> None:\n        """m"""\n')
+        files = {"harness/gear/a.py": text, "harness/tests/gear/test_a.py": "def test_x(self):\n    pass\n"}
+        self.assertEqual(hints_net.check(tree(self, files)), [])  # a test file is not read
+
+    def test_the_harness_says_what_every_function_takes_and_gives(self):
+        self.assertEqual(hints_net.check(CLAUDE_DIR), [])
 
 class EntryNetTest(unittest.TestCase):
     def test_a_harness_import_at_the_top_of_an_entry_script_is_reported(self):

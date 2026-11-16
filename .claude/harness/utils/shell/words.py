@@ -13,36 +13,61 @@ a string run by a shell that is dynamic, wrappers nested deeper than DEPTH strin
 Wrappers: sudo, env, nohup, time, command, exec, nice, timeout, stdbuf, builtin, xargs run the words after their own
 options; sh/bash/zsh/dash/ksh -c, eval, powershell/pwsh -Command and cmd /c run a string, read again in its dialect;
 a shell with no argument runs its heredoc. A wrapper's redirections and environment stay on what it runs."""
-import os
-from dataclasses import dataclass, replace
+from __future__ import annotations
 
-from harness.utils.shell.scan import NAME, Unread, Word, scan
+import os
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
+from typing import Any, Optional
+
+from harness.utils.shell.command import Command, Unread, Word
+from harness.utils.shell.scan import NAME, scan
 
 DEPTH = 4  # strings inside strings: sh -c "eval '...'" is two
 
 
 @dataclass
 class Line:
-    commands: list
-    unread: list
+    """A line read: the commands that really run, or none and why the line cannot be seen whole (unread)."""
+    commands: list[Command]
+    unread: list[str]
 
 
-def program(word):
-    """The program a word names: its base name, lower case, without .exe."""
+def program(word: str) -> str:
+    """The program a word names: its base name, lower case, without .exe.
+
+    Args:
+        word: a command's first word (a name or a path, / or \\).
+
+    Returns:
+        The program's name ("git" for C:/Program Files/Git/bin/git.exe).
+    """
     name = os.path.basename(word.replace("\\", "/")).lower()
     return name[:-4] if name.endswith(".exe") else name
 
 
 @dataclass(frozen=True)
 class Options:
-    flags: frozenset = frozenset()
-    values: frozenset = frozenset()
+    """The options of a wrapper: flags (no value), values (an option followed by its value), and how its command
+    starts."""
+    flags: frozenset[str] = frozenset()
+    values: frozenset[str] = frozenset()
     positional: int = 0  # words between the options and the command (the duration of timeout)
     assign: bool = False  # NAME=value words set the environment (env)
     numeric: bool = False  # -<n> is an option (nice -5)
 
 
-def opts(flags="", values="", **kw):
+def opts(flags: str = "", values: str = "", **kw: Any) -> Options:
+    """The Options of a wrapper, written short.
+
+    Args:
+        flags: the flags, separated by spaces.
+        values: the options with a value, separated by spaces.
+        **kw: positional, assign or numeric (Options fields).
+
+    Returns:
+        The Options.
+    """
     return Options(frozenset(flags.split()), frozenset(values.split()), **kw)
 
 
@@ -70,8 +95,20 @@ PS_VALUES = ("-executionpolicy", "-ep", "-ex", "-inputformat", "-outputformat", 
 CMD_FLAGS = ("/d", "/q", "/s", "/a", "/u")
 
 
-def skip_options(name, words, spec):
-    """(environment set by the wrapper, the words of the command it runs)."""
+def skip_options(name: str, words: Sequence[Word], spec: Options) -> tuple[list[str], Sequence[Word]]:
+    """(environment set by the wrapper, the words of the command it runs).
+
+    Args:
+        name: the wrapper's program name.
+        words: the words after the wrapper's name.
+        spec: the wrapper's options.
+
+    Returns:
+        (the NAME=value words it sets, the words of the command it runs).
+
+    Raises:
+        Unread: a dynamic word, an unknown option, or no word left for its command.
+    """
     env, i = [], 0
     while i < len(words):
         word = words[i]
@@ -99,8 +136,20 @@ def skip_options(name, words, spec):
     return env, words[i:]
 
 
-def shell_string(name, words, heredoc):
-    """The string a shell runs (-c), its heredoc when it has no argument, or None when it runs a script."""
+def shell_string(name: str, words: Sequence[Word], heredoc: Optional[str]) -> Optional[Word]:
+    """The string a shell runs (-c), its heredoc when it has no argument, or None when it runs a script.
+
+    Args:
+        name: the shell's program name (sh, bash...).
+        words: the words after its name.
+        heredoc: the body of its heredoc, or None.
+
+    Returns:
+        The word of the string it runs, its heredoc as a Word, or None.
+
+    Raises:
+        Unread: an unknown long option, or -c with no command.
+    """
     i, has_c = 0, False
     while i < len(words) and words[i].text[:1] in "-+" and words[i].text not in ("-", "+"):
         w = words[i].text
@@ -121,7 +170,19 @@ def shell_string(name, words, heredoc):
     return None
 
 
-def powershell_string(name, words):
+def powershell_string(name: str, words: Sequence[Word]) -> Optional[Sequence[Word]]:
+    """The words of the command a PowerShell runs (-Command, or the first word for powershell).
+
+    Args:
+        name: the first word of the command as written (powershell, pwsh.exe...).
+        words: the words after it.
+
+    Returns:
+        The words of its command, or None when it runs a file or has no command.
+
+    Raises:
+        Unread: an encoded command, or an option the reader does not know.
+    """
     for i, word in enumerate(words):
         w = word.text.lower()
         if w in PS_FLAGS:
@@ -142,7 +203,18 @@ def powershell_string(name, words):
     return None
 
 
-def cmd_string(words):
+def cmd_string(words: Sequence[Word]) -> Optional[Sequence[Word]]:
+    """The words of the command cmd runs (/c or /k).
+
+    Args:
+        words: the words after cmd.
+
+    Returns:
+        The words after /c or /k, or None when there is none.
+
+    Raises:
+        Unread: an option the reader does not know.
+    """
     for i, word in enumerate(words):
         w = word.text.lower()
         if w in ("/c", "/k"):
@@ -152,14 +224,40 @@ def cmd_string(words):
     return None
 
 
-def joined(name, words):
+def joined(name: str, words: Sequence[Word]) -> str:
+    """The string a wrapper runs, its words joined by spaces.
+
+    Args:
+        name: the wrapper's name.
+        words: the words of the string.
+
+    Returns:
+        The string.
+
+    Raises:
+        Unread: a word is dynamic.
+    """
     if any(w.dynamic for w in words):
         raise Unread(f"{name} runs a string the shell makes when it runs")
     return " ".join(w.text for w in words)
 
 
-def inner(outer, text, dialect, label, depth):
-    """The commands of a string a wrapper runs, each carrying the wrapper's redirections and environment."""
+def inner(outer: Command, text: str, dialect: str, label: str, depth: int) -> list[Command]:
+    """The commands of a string a wrapper runs, each carrying the wrapper's redirections and environment.
+
+    Args:
+        outer: the wrapper's command.
+        text: the string it runs.
+        dialect: the dialect the string is read in.
+        label: how the wrapper runs it, added to via ("bash -c", "eval"...).
+        depth: how many strings deep the wrapper already is.
+
+    Returns:
+        The commands that really run for the string.
+
+    Raises:
+        Unread: deeper than DEPTH, or the string cannot be seen whole.
+    """
     if depth >= DEPTH:
         raise Unread(f"strings run inside strings deeper than {DEPTH}")
     out = []
@@ -170,8 +268,19 @@ def inner(outer, text, dialect, label, depth):
     return out
 
 
-def unwrap(command, depth=0):
-    """The commands that really run for command, its wrappers taken off."""
+def unwrap(command: Command, depth: int = 0) -> list[Command]:
+    """The commands that really run for command, its wrappers taken off.
+
+    Args:
+        command: a command as scanned.
+        depth: how many strings deep it is.
+
+    Returns:
+        The commands that run (the command itself when it is no wrapper).
+
+    Raises:
+        Unread: a wrapper the reader cannot follow.
+    """
     if not command.words or command.words[0].dynamic:
         return [command]
     name = program(command.name)
@@ -210,8 +319,16 @@ def unwrap(command, depth=0):
     return [command]
 
 
-def read(text, dialect="bash"):
-    """The commands that really run for a line, or no command and why it cannot be seen whole."""
+def read(text: str, dialect: str = "bash") -> Line:
+    """The commands that really run for a line, or no command and why it cannot be seen whole.
+
+    Args:
+        text: the line.
+        dialect: "bash", "powershell" or "cmd".
+
+    Returns:
+        A Line: its commands and no unread, or no command and [why].
+    """
     try:
         out = []
         for command in scan(text, dialect):

@@ -1,14 +1,26 @@
 """What a commit would add: the added lines of each file to commit, against HEAD (a new file: all its lines). The
 secret scan reads these, never the whole history."""
+from __future__ import annotations
+
 import os
+from collections.abc import Sequence
 
 from harness.utils.git.run import GitError, git
 
 LONGEST = 2_000_000  # characters read of one new file
 
 
-def added_lines(repo, paths):
-    """{path from the repository root: [added lines]} of paths, against HEAD; a binary file adds no line."""
+def added_lines(repo: str, paths: Sequence[str]) -> dict[str, list[str]]:
+    """{path from the repository root: [added lines]} of paths, against HEAD; a binary file adds no line.
+
+    Args:
+        repo: the repository's root.
+        paths: the files to commit, from the repository root.
+
+    Returns:
+        {path: the lines the commit would add}; an untracked file gives its first LONGEST characters' lines, an
+        unreadable one [].
+    """
     out = {p: [] for p in paths}
     try:
         diff = git(repo, "diff", "HEAD", "--no-color", "--no-renames", "--unified=0", "--", *paths) if paths else ""

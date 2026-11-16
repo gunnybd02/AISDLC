@@ -11,10 +11,13 @@ After cd X, a relative path is read both from the folder before and from X: the 
   Grep, Glob, LS and NotebookRead, their folder when they name none), so the gate keeps the harness's state shut.
 - harness_cli: the shell line runs the harness's own CLI (the session is linked to it, as for its MCP tools);
   harness_session_start: it runs the SessionStart entry, which only Claude Code runs (agent.session_start)."""
-from harness.utils.contracts import Translator
+from __future__ import annotations
+
+from harness.utils.contracts import Event, Translator
 from harness.utils.shell.paths import absolute
 from harness.utils.shell.mentions import mentioned, runs_harness, runs_session_start
 from harness.utils.shell.place_ops import shell_places
+from harness.utils.shapes import Facts
 
 KEYS = {"Write": "file_path", "Edit": "file_path", "MultiEdit": "file_path", "NotebookEdit": "notebook_path"}
 SHELL_TOOLS = {"Bash": "bash", "PowerShell": "powershell"}
@@ -22,8 +25,15 @@ READERS = {"Read": ("file_path",), "NotebookRead": ("notebook_path",), "LS": ("p
            "Glob": ("path", "pattern")}
 
 
-def reader_places(event):
-    """The places a reading tool names: its path (a Glob's pattern under it), or its folder when it names none."""
+def reader_places(event: Event) -> list[str]:
+    """The places a reading tool names: its path (a Glob's pattern under it), or its folder when it names none.
+
+    Args:
+        event: a call of Read, NotebookRead, LS, Grep or Glob.
+
+    Returns:
+        Absolute paths with forward slashes: its path (or the cwd), then a Glob's pattern read under it.
+    """
     keys = READERS[event.tool]
     path = event.input.get(keys[0])
     folder = absolute(path, event.cwd) if isinstance(path, str) and path else absolute(".", event.cwd)
@@ -35,7 +45,12 @@ def reader_places(event):
 
 
 class Places(Translator):
-    def translate(self, event):
+    """The files a call writes and the places it names, for the edit gate."""
+
+    def translate(self, event: Event) -> Facts:
+        """Give writes for an editing tool; for a shell call before it runs, the shell reader's facts (writes,
+        shell_unread, shell_command, shell_said), mentions, harness_cli and harness_session_start; mentions for a
+        reading tool before it runs; else {}."""
         dialect = SHELL_TOOLS.get(event.tool)
         if dialect:
             command = event.input.get("command")

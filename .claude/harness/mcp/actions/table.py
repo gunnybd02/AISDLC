@@ -1,22 +1,53 @@
 """ActionTable: the actions `run` can reach, by block and name. A block is only the prefix of an action's name; the
 actions come from the ACTIONS literals of mcp/actions/*.py (the loader reads them), each a McpAction class
 (utils/contracts.py). args_problem checks the arguments of a call against the action's args_schema before it runs."""
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from harness.utils.contracts import McpAction
+
 TYPES = {"string": str, "object": dict, "boolean": bool, "integer": int, "number": (int, float), "array": list}
 
 
-def fields(action):
-    """(argument name, type, required) of each property of the action's args_schema."""
+def fields(action: type[McpAction]) -> list[tuple[str, str, bool]]:
+    """(argument name, type, required) of each property of the action's args_schema.
+
+    Args:
+        action: an action class.
+
+    Returns:
+        One (name, JSON type ("string" when it names none), required) per property, in the schema's order.
+    """
     schema = action.args_schema
     required = set(schema.get("required", ()))
     return [(n, p.get("type", "string"), n in required) for n, p in schema.get("properties", {}).items()]
 
 
-def signature(action):
+def signature(action: type[McpAction]) -> str:
+    """How the model calls the action, as guide shows it.
+
+    Args:
+        action: an action class.
+
+    Returns:
+        "name(arg: type, optional?: type)".
+    """
     return f"{action.name}(" + ", ".join(f"{n}{'' if req else '?'}: {t}" for n, t, req in fields(action)) + ")"
 
 
-def args_problem(action, given):
-    """Why the arguments do not fit the action, or "": an object, every required one there, each of its type, no other."""
+def args_problem(action: type[McpAction], given: Any) -> str:
+    """Why the arguments do not fit the action, or "": an object, every required one there, each of its type, no other.
+
+    Args:
+        action: an action class.
+        given: the arguments of the call as the model sent them (any JSON value; good ones are an object).
+
+    Returns:
+        "" when they fit; else the action's signature and why: not an object, one missing, one of the wrong type
+        (a boolean is no number), or arguments it does not take.
+    """
     if not isinstance(given, dict):
         return "the arguments are an object"
     spec = {n: (t, req) for n, t, req in fields(action)}
@@ -31,10 +62,21 @@ def args_problem(action, given):
 
 
 class ActionTable:
-    def __init__(self):
+    """The actions run can reach, by (block, name)."""
+
+    def __init__(self) -> None:
+        """Start with no action."""
         self.entries = {}  # (block, name) -> McpAction class
 
-    def add(self, action):
+    def add(self, action: type[McpAction]) -> None:
+        """Add one action class.
+
+        Args:
+            action: an action class (McpAction) with its block, name and args_schema.
+
+        Raises:
+            ValueError: the block and name are added already, or its args_schema names a type outside TYPES.
+        """
         key = (action.block, action.name)
         if key in self.entries:
             raise ValueError(f"{action.block}.{action.name} is added already")
@@ -44,15 +86,43 @@ class ActionTable:
         self.entries[key] = action
 
     @property
-    def blocks(self):
+    def blocks(self) -> list[str]:
+        """The blocks of the table, sorted, each once."""
         return sorted({b for b, _ in self.entries})
 
-    def about(self, block):
-        """What a block does: the summaries of its actions."""
+    def about(self, block: str) -> str:
+        """What a block does: the summaries of its actions.
+
+        Args:
+            block: a block of the table.
+
+        Returns:
+            The summaries of its actions, joined by "; " ("" for an unknown block).
+        """
         return "; ".join(a.summary for a in self.actions(block))
 
-    def actions(self, block):
+    def actions(self, block: str) -> list[type[McpAction]]:
+        """The actions of a block.
+
+        Args:
+            block: a block of the table.
+
+        Returns:
+            Its action classes, by name ([] for an unknown block).
+        """
         return [a for (b, _), a in sorted(self.entries.items()) if b == block]
 
-    def action(self, block, name):
+    def action(self, block: str, name: str) -> type[McpAction]:
+        """The action of that block and name.
+
+        Args:
+            block: the action's block.
+            name: the action's name.
+
+        Returns:
+            The action class.
+
+        Raises:
+            KeyError: no such action.
+        """
         return self.entries[(block, name)]

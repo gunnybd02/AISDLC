@@ -1,29 +1,71 @@
 """The plan as the user reads it: the ## Plan block (overview and code first when the plan has code), and the form
 question that approves one revision of it. The block's sha is the revision's sha (pl_plan_revs)."""
+from __future__ import annotations
+
 import hashlib
+from collections.abc import Sequence
+from typing import Any
 
 from harness.utils.contracts import YES
+from harness.utils.shapes import PlanItems
 
 REFINE_LABEL = "S\u1eeda plan"
 HEADER = f"{YES} plan"
 
 
-def question(items, plan_id, rev):
+def question(items: PlanItems, plan_id: str, rev: int) -> str:
+    """The form question that approves one revision of a plan.
+
+    Args:
+        items: the plan's items; its title is read.
+        plan_id: the desk id (pd-...).
+        rev: the revision number.
+
+    Returns:
+        'Duy\u1ec7t plan "<title>" (<plan_id> rev <rev>)?'.
+    """
     return f'{YES} plan "{items.get("title", "")}" ({plan_id} rev {rev})?'
 
 
-def form_call(items, plan_id, rev):
-    """What the model asks, exactly: one question, two options, never an answer of its own."""
+def form_call(items: PlanItems, plan_id: str, rev: int) -> str:
+    """What the model asks, exactly: one question, two options, never an answer of its own.
+
+    Args:
+        items: the plan's items; its title is read.
+        plan_id: the desk id (pd-...).
+        rev: the revision number.
+
+    Returns:
+        The text for the model: the AskUserQuestion call to make, with its question, header and options.
+    """
     return (f"Ask it now with AskUserQuestion, one question, exactly: {question(items, plan_id, rev)} Header: "
             f"\"{HEADER}\". Options: \"{YES}\", \"{REFINE_LABEL}\". Never fill in the answer.")
 
 
-def bullets(title, values):
+def bullets(title: str, values: Sequence[Any]) -> list[str]:
+    """The lines of one titled list of the block.
+
+    Args:
+        title: the list's title, shown in bold.
+        values: its entries (each shown with str formatting).
+
+    Returns:
+        ["**<title>**", "- <value>", ...], or [] when values is empty.
+    """
     return [f"**{title}**"] + [f"- {v}" for v in values] if values else []
 
 
-def block(items, plan_id, rev):
-    """The ## Plan block of a revision, in the order of docs 04 (render.py)."""
+def block(items: PlanItems, plan_id: str, rev: int) -> str:
+    """The ## Plan block of a revision, in the order of docs 04 (render.py).
+
+    Args:
+        items: the plan's items, as desk.normalize keeps them.
+        plan_id: the desk id (pd-...).
+        rev: the revision number.
+
+    Returns:
+        The block as markdown lines joined by newlines.
+    """
     out = [f"## Plan: {items.get('title', '')} ({plan_id} rev {rev})"]
     if items.get("code"):
         ov = items.get("overview") or {}
@@ -54,5 +96,13 @@ def block(items, plan_id, rev):
     return "\n".join(out)
 
 
-def sha(text):
+def sha(text: str) -> str:
+    """The sha256 of a text.
+
+    Args:
+        text: the text (a rendered block).
+
+    Returns:
+        The hex sha256 of its UTF-8 bytes.
+    """
     return hashlib.sha256(text.encode("utf-8")).hexdigest()

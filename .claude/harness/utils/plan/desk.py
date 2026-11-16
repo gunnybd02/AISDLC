@@ -6,12 +6,21 @@ tier: full when any of steps, behaviors, code, test, children is given, else lig
 new), what (or overview.need) and files; a full plan needs services, what, files, checks, assumptions, notDoing and
 risks, and on a new plan an overview and code too.
 
-Paths are relative to the plan's root (the folder the MCP server runs in), inside it, never in .git."""
+Paths are relative to the plan's root (the folder the MCP server runs in), inside it, never in .git. The form checks of
+single items are in item_checks.py; CHECKS here names the check of every item."""
+from __future__ import annotations
+
 import re
 import secrets
 import time
+from collections.abc import Collection, Iterable
+from typing import Any, Optional
 
+from harness.utils.plan.item_checks import (BEHAVIOR_ID, MAX_POINT, STANDALONE, branch_problems, code_problems,
+                                            commands_problems, one_line, overview_problems, path_problems, points,
+                                            services_problems, steps_problems, strings, test_problems, title_problems)
 from harness.utils.plan.tickets import base36
+from harness.utils.shapes import PlanItems
 
 KEYS = ("title", "overview", "code", "test", "services", "branch", "what", "files", "tests", "checks", "commit",
         "steps", "behaviors", "network", "commands", "children", "teamSkills", "assumptions", "notDoing", "risks")
@@ -19,35 +28,30 @@ POINTS = ("what", "checks", "assumptions", "notDoing", "risks")
 RECORD = ("title", "overview", "code", "checks", "assumptions", "notDoing", "risks")
 FULL_MARKS = ("steps", "behaviors", "code", "test", "children")
 FULL_REQUIRED = ("services", "what", "files", "checks", "assumptions", "notDoing", "risks")
-OVERVIEW = ("problem", "need", "how", "accept")
-STANDALONE = ("none", "agent-code")
-MAX_POINTS, MAX_POINT, MAX_CODE, MAX_OVERVIEW = 10, 200, 600, 5
-BEHAVIOR_ID = re.compile(r"^[a-z][a-z0-9]*([.-][a-z0-9]+)*$")
 STEP_ID = re.compile(r"^s(\d+)\.")
-BRANCH_RE = re.compile(r"^(?!-)(?!.*\.\.)[A-Za-z0-9._/-]+$")
 HOST_RE = re.compile(r"^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$")
-COMMAND_RE = re.compile(r"^twg\s[^;&|<>`]*$")
 CHILD_NAME = re.compile(r"^[a-z0-9-]{1,40}$")
-CODE_TITLE = re.compile(r"^(pd-\S+|[0-9a-f]{7,})$", re.I)
-ABSOLUTE = re.compile(r"^([A-Za-z]:|[\\/~])")
 
 
-def new_id():
+def new_id() -> str:
+    """A new desk id.
+
+    Returns:
+        "pd-<the time in ms, base 36>-<6 random hex characters>".
+    """
     return f"pd-{base36(int(time.time() * 1000))}-{secrets.token_hex(3)}"
 
 
-def one_line(text):
-    return " ".join(str(text).split())
+def clean(raw: dict[str, Any]) -> PlanItems:
+    """The known items of raw in their plain shape; optional items only when given.
 
+    Args:
+        raw: the plan as the model sent it (unknown keys are left out here; unknown() names them).
 
-def strings(value):
-    """A list of stripped non-empty strings (one string is a list of one), deduped in order."""
-    items = [value] if isinstance(value, str) else value if isinstance(value, list) else []
-    return list(dict.fromkeys(s.strip().replace("\\", "/") for s in items if isinstance(s, str) and s.strip()))
-
-
-def clean(raw):
-    """The known items of raw in their plain shape; optional items only when given."""
+    Returns:
+        The items of KEYS that raw holds: title and branch on one line, commit without markdown marks, lists of points
+        and paths as clean strings; other items as given.
+    """
     out = {}
     for key in KEYS:
         if key not in raw:
@@ -63,8 +67,16 @@ def clean(raw):
     return out
 
 
-def normalize(items):
-    """What follows from the items: step and test behaviours, files and tests of steps and code, light services."""
+def normalize(items: PlanItems) -> PlanItems:
+    """What follows from the items: step and test behaviours, files and tests of steps and code, light services.
+
+    Args:
+        items: cleaned items (clean, or a merge of them).
+
+    Returns:
+        A new dict: behaviors gains the steps' (ids "s<n>.<id>") and the test item's, files and tests gain those of the
+        steps, code and test, and a light plan with no services gets ["agent-code"].
+    """
     out = dict(items)
     behaviors = [dict(b) for b in items.get("behaviors", []) if isinstance(b, dict)]
     for n, step in enumerate(s for s in items.get("steps", []) if isinstance(s, dict)):
@@ -94,8 +106,16 @@ def normalize(items):
     return out
 
 
-def merge(old, changes):
-    """A revision: each given item replaces the old one whole; without steps, new files and tests join the last step."""
+def merge(old: PlanItems, changes: PlanItems) -> PlanItems:
+    """A revision: each given item replaces the old one whole; without steps, new files and tests join the last step.
+
+    Args:
+        old: the items of the newest revision (without root).
+        changes: the cleaned items of the revision.
+
+    Returns:
+        The new items, not normalized.
+    """
     out = {**old, **changes}
     if "steps" not in changes and old.get("steps"):
         steps = [dict(s) for s in old["steps"]]
@@ -108,16 +128,43 @@ def merge(old, changes):
     return out
 
 
-def tier(items):
+def tier(items: PlanItems) -> str:
+    """The tier of a plan.
+
+    Args:
+        items: the plan's items.
+
+    Returns:
+        "full" when any of steps, behaviors, code, test, children is given, else "light".
+    """
     return "full" if any(items.get(k) for k in FULL_MARKS) else "light"
 
 
-def unknown(raw):
+def unknown(raw: dict[str, Any]) -> list[str]:
+    """The keys of a raw plan that are no item.
+
+    Args:
+        raw: the plan as the model sent it.
+
+    Returns:
+        "unknown item <key>" for each key not in KEYS.
+    """
     return [f"unknown item {k}" for k in raw if k not in KEYS]
 
 
-def check(items, need_title=True, keys=None, units=()):
-    """Every problem of the items: the form of each item (only those in keys, when given), then what the tier needs."""
+def check(items: PlanItems, need_title: bool = True, keys: Optional[Iterable[str]] = None,
+          units: Collection[str] = ()) -> list[str]:
+    """Every problem of the items: the form of each item (only those in keys, when given), then what the tier needs.
+
+    Args:
+        items: normalized items.
+        need_title: True for a new plan: the title is checked and a full plan needs overview and code.
+        keys: the items whose form is checked (a revision's changed items); None for all.
+        units: the declared units, for services and children.
+
+    Returns:
+        Every problem, "<key>: <problem>" for an item's form; [] when the plan may be kept.
+    """
     look = set(items) if keys is None else set(keys)
     out = []
     if need_title or "title" in look:
@@ -137,111 +184,16 @@ def check(items, need_title=True, keys=None, units=()):
     return out
 
 
-def title_problems(title):
-    if not isinstance(title, str) or not title.strip():
-        return ["title is needed: one line, 3 to 80 characters, two words at least"]
-    t = one_line(title)
-    if not 3 <= len(t) <= 80 or len(t.split()) < 2:
-        return ["title is one line of 3 to 80 characters, two words at least"]
-    if CODE_TITLE.match(t) or '"' in t:
-        return ["title is words, not a code, and holds no double quote (the form question quotes it)"]
-    return []
+def behaviors_problems(value: Any, units: Collection[str] = ()) -> list[str]:
+    """The problems of behaviors: each {id, what, how, why, test?}, its id a behaviour id whose s<n>. matches its step.
 
+    Args:
+        value: the item as given.
+        units: the declared units (not read).
 
-def points(value, units=(), most=MAX_POINTS):
-    if not isinstance(value, list) or not all(isinstance(p, str) and p.strip() for p in value):
-        return ["a list of points (strings)"]
-    if len(value) > most:
-        return [f"at most {most} points"]
-    return [f"a point of more than {MAX_POINT} characters" for p in value if len(p) > MAX_POINT][:1]
-
-
-def path_problems(value, units=(), required=False):
-    if not isinstance(value, list) or not all(isinstance(p, str) and p.strip() for p in value):
-        return ["a list of paths"]
-    if required and not value:
-        return ["at least one path"]
-    out = []
-    for p in value:
-        parts = [s.lower() for s in re.split(r"[\\/]", p)]
-        if ABSOLUTE.match(p) or ".." in parts:
-            out.append(f"{p} is not a path inside the root (relative, no ..)")
-        elif ".git" in parts:
-            out.append(f"{p} is inside .git, which no plan edits")
-        elif any(mark in p for mark in "%, ") or ("/" not in p and "." not in p):
-            out.append(f"{p} is not a path: a folder with / or a file with an extension, no space, % or comma")
-    return out
-
-
-def overview_problems(value, units=()):
-    if not isinstance(value, dict) or set(value) != set(OVERVIEW):
-        return [f"an object of {', '.join(OVERVIEW)}"]
-    out = []
-    for k in OVERVIEW:
-        pts = strings(value[k])
-        if not pts:
-            out.append(f"{k} is needed")
-        elif len(pts) > MAX_OVERVIEW or any(len(x) > MAX_POINT for x in pts):
-            out.append(f"{k} is at most {MAX_OVERVIEW} points of at most {MAX_POINT} characters")
-    return out
-
-
-def code_problems(value, units=()):
-    if not isinstance(value, list):
-        return ["a list of {file, code, reason}"]
-    out = []
-    for c in value:
-        if not isinstance(c, dict) or set(c) != {"file", "code", "reason"}:
-            out.append("each is {file, code, reason}")
-            continue
-        out += path_problems([c["file"]]) if isinstance(c["file"], str) else ["file is a path"]
-        out += [f"{k} is text of at most {MAX_CODE} characters" for k in ("code", "reason")
-                if not isinstance(c[k], str) or not c[k].strip() or len(c[k]) > MAX_CODE]
-    return out
-
-
-def test_problems(value, units=()):
-    if not isinstance(value, list):
-        return ["a list of {file, name, expects, how, why, step?}"]
-    out = []
-    for t in value:
-        if not isinstance(t, dict) or not {"file", "name", "expects", "how", "why"} <= set(t) or set(t) - {
-                "file", "name", "expects", "how", "why", "step"}:
-            out.append("each is {file, name, expects, how, why, step?}")
-            continue
-        out += path_problems([t["file"]]) if isinstance(t["file"], str) else ["file is a path"]
-        if not isinstance(t["name"], str) or not BEHAVIOR_ID.match(t["name"]):
-            out.append(f"name {t['name']!r} is a behaviour id (a.b-c)")
-        if not isinstance(t["why"], str) or len(t["why"]) > MAX_POINT:
-            out.append(f"why is at most {MAX_POINT} characters")
-    return out
-
-
-def services_problems(value, units=()):
-    if not isinstance(value, list) or not value:
-        return ["a list of units, or none, or agent-code"]
-    if any(s in STANDALONE for s in value) and len(value) > 1:
-        return ["none and agent-code stand alone"]
-    return [f"{s} is no declared unit" for s in value if s not in STANDALONE and s not in units]
-
-
-def steps_problems(value, units=()):
-    if not isinstance(value, list) or not value:
-        return ["a list of {commit, points, files, tests, behaviors?}"]
-    out = []
-    for n, s in enumerate(value, 1):
-        if not isinstance(s, dict) or not {"commit", "points", "files"} <= set(s) or set(s) - {
-                "commit", "points", "files", "tests", "behaviors"}:
-            out.append(f"step {n} is {{commit, points, files, tests, behaviors?}}")
-            continue
-        if not isinstance(s["commit"], str) or not s["commit"].strip():
-            out.append(f"step {n}: commit is its message")
-        out += [f"step {n}: {p}" for p in points(s["points"]) + path_problems(s["files"], required=True)
-                + path_problems(s.get("tests", []))]
-    return out
-
-
-def behaviors_problems(value, units=()):
+    Returns:
+        The problems of every behaviour; [] when all are good.
+    """
     if not isinstance(value, list):
         return ["a list of {id, what, how, why, test?}"]
     out = []
@@ -256,7 +208,16 @@ def behaviors_problems(value, units=()):
     return out
 
 
-def network_problems(value, units=()):
+def network_problems(value: Any, units: Collection[str] = ()) -> list[str]:
+    """The problems of network: at most 20 {host, port, why}, a bare host name and a port 1-65535 each.
+
+    Args:
+        value: the item as given.
+        units: the declared units (not read).
+
+    Returns:
+        One problem for a bad list, else one per bad entry.
+    """
     if not isinstance(value, list) or len(value) > 20:
         return ["a list of at most 20 {host, port, why}"]
     return [f"{n.get('host') if isinstance(n, dict) else n!r}: a host name (no scheme, path or port), a port 1-65535 "
@@ -265,14 +226,16 @@ def network_problems(value, units=()):
                                              and 1 <= n["port"] <= 65535 and str(n.get("why") or "").strip())]
 
 
-def commands_problems(value, units=()):
-    if len(value) > 30:
-        return ["at most 30 lines"]
-    return [f"{c!r} is one twg line of at most 400 characters, no ; & | < > or backtick"
-            for c in value if len(c) > 400 or not COMMAND_RE.match(c)]
+def children_problems(value: Any, units: Collection[str] = ()) -> list[str]:
+    """The problems of children: each {name, unit, goal, ac, read, change, tests, actions}, one child per unit.
 
+    Args:
+        value: the item as given.
+        units: the declared units; a child's unit is one of them, none or agent-code.
 
-def children_problems(value, units=()):
+    Returns:
+        The problems of every child, each starting with its name; [] when all are good.
+    """
     if not isinstance(value, list):
         return ["a list of {name, unit, goal, ac, read, change, tests, actions}"]
     out, seen = [], set()
@@ -297,10 +260,6 @@ def children_problems(value, units=()):
         if set(c.get("actions", [])) - {"push"}:
             out.append(f"{c['name']}: the only action a child may take is push")
     return out
-
-
-def branch_problems(value, units=()):
-    return [] if isinstance(value, str) and BRANCH_RE.match(value) else [f"{value!r} is not a branch name"]
 
 
 CHECKS = {**{k: points for k in POINTS}, "overview": overview_problems, "code": code_problems,

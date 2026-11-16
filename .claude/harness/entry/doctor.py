@@ -1,5 +1,7 @@
 """The health of the harness: every problem of the tree as an ERROR line, then the count. Exit 1 when there is one,
 2 when the harness does not even load."""
+from __future__ import annotations
+
 import os
 import sys
 from pathlib import Path
@@ -8,7 +10,12 @@ CODE_DIR = Path(__file__).resolve().parent.parent.parent  # the code this entry 
 CLAUDE_DIR = Path(os.environ.get("HARNESS_HOME") or CODE_DIR)  # the home: state, config, skills (anchor.py)
 
 
-def main():
+def main() -> int:
+    """Print every problem of the tree as an ERROR line, then the count.
+
+    Returns:
+        The exit code: 0 no problem, 1 problems, 2 when the harness does not load.
+    """
     sys.stdout.reconfigure(encoding="utf-8")
     try:
         sys.path.insert(0, str(CODE_DIR))

@@ -1,14 +1,25 @@
 """Install the harness for every Claude Code session of this user: python3 .claude/harness/entry/install.py
 [--uninstall] [--user-dir DIR] [--claude-json FILE] [--python EXE] [--no-cli]. It only calls assemble (cli_install.py);
 exit 1 when it cannot, 2 when the harness does not load."""
+from __future__ import annotations
+
 import argparse
 import sys
 from pathlib import Path
+from typing import Optional
 
 CLAUDE_DIR = Path(__file__).resolve().parent.parent.parent  # the .claude folder of this clone
 
 
-def main(argv=None):
+def main(argv: Optional[list[str]] = None) -> int:
+    """Install or uninstall the harness for this user and print what was done.
+
+    Args:
+        argv: the command line; None reads sys.argv.
+
+    Returns:
+        The exit code: 0 done, 1 refused, 2 when the harness does not load.
+    """
     sys.stdout.reconfigure(encoding="utf-8")
     try:
         sys.path.insert(0, str(CLAUDE_DIR))

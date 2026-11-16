@@ -5,29 +5,54 @@
 - After the call (PostToolUse): the label the user chose for each question, read from tool_input.answers or an
   "answers" object in the response; from the response text '"<question>"="<label>"' only when no question or label
   holds '"="', and each question is found there once, at the start of the text or after ": " or ", "."""
+from __future__ import annotations
+
 import json
 import re
 
-from harness.utils.contracts import Translator
+from harness.utils.contracts import Event, Translator
+from harness.utils.shapes import Facts
 
 TOOL = "AskUserQuestion"
 FORGE = '"="'
 
 
-def shaped(event):
-    """Whether the call has the shape of a form: a list of question objects, each with a list of option objects."""
+def shaped(event: Event) -> bool:
+    """Whether the call has the shape of a form: a list of question objects, each with a list of option objects.
+
+    Args:
+        event: a call of AskUserQuestion (its input holds questions).
+
+    Returns:
+        True when questions is a list of objects, each with options a list of objects (or no options).
+    """
     qs = event.input.get("questions")
     return isinstance(qs, list) and all(
         isinstance(q, dict) and isinstance(q.get("options", []), list)
         and all(isinstance(o, dict) for o in q.get("options", [])) for q in qs)
 
 
-def questions(event):
+def questions(event: Event) -> list[str]:
+    """The questions of the form, in order.
+
+    Args:
+        event: a call of AskUserQuestion.
+
+    Returns:
+        The text of each question that has one; [] for a call not shaped as a form.
+    """
     return [str(q.get("question")) for q in event.input["questions"] if q.get("question")] if shaped(event) else []
 
 
-def texts(event):
-    """Every question and option label of the form: the words the model wrote into it."""
+def texts(event: Event) -> list[str]:
+    """Every question and option label of the form: the words the model wrote into it.
+
+    Args:
+        event: a call of AskUserQuestion.
+
+    Returns:
+        Each question followed by its option labels ("" for one missing); [] for a call not shaped as a form.
+    """
     out = []
     for q in event.input["questions"] if shaped(event) else []:
         out.append(str(q.get("question") or ""))
@@ -35,8 +60,16 @@ def texts(event):
     return out
 
 
-def given(event):
-    """{question: label} as the call or its response carries them; nothing for a call that is not shaped as a form."""
+def given(event: Event) -> dict[str, str]:
+    """{question: label} as the call or its response carries them; nothing for a call that is not shaped as a form.
+
+    Args:
+        event: a PostToolUse of AskUserQuestion: tool_input.answers and the tool's response.
+
+    Returns:
+        {question: the label the user chose}: from an answers object (JSON text or a dict), else from the response
+        text '"<question>"="<label>"' when no question or label holds '"="' and the question is found there once.
+    """
     if not shaped(event):
         return {}
     found, text = {}, ""
@@ -60,7 +93,11 @@ def given(event):
 
 
 class Answers(Translator):
-    def translate(self, event):
+    """The facts of an AskUserQuestion: prefilled or forged before it, the user's answers after it."""
+
+    def translate(self, event: Event) -> Facts:
+        """Give form_prefilled and form_forged before an AskUserQuestion, answers ({question: label}) after it;
+        else {}."""
         if event.tool != TOOL:
             return {}
         if event.kind == "PreToolUse":

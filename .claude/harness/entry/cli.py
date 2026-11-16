@@ -1,15 +1,26 @@
 """The harness from a terminal: python3 <core>/anchor.py cli <door> ... (verify, tool find|guide|run, add file, add
 test, add drop-file, add retire-test, behaviors add|list|check, live). It only calls assemble; exit 1 on a refusal, 2
 when the harness does not load."""
+from __future__ import annotations
+
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 CODE_DIR = Path(__file__).resolve().parent.parent.parent  # the code this entry belongs to (a release, or the work tree)
 CLAUDE_DIR = Path(os.environ.get("HARNESS_HOME") or CODE_DIR)  # the home: state, config, skills (anchor.py)
 
 
-def main(argv=None):
+def main(argv: Optional[list[str]] = None) -> int:
+    """Run one CLI door of the harness and print its text.
+
+    Args:
+        argv: the command line after cli; None reads sys.argv.
+
+    Returns:
+        The exit code: the door's (0 done, 1 refused), or 2 when the harness does not load.
+    """
     sys.stdout.reconfigure(encoding="utf-8")
     try:
         sys.path.insert(0, str(CODE_DIR))

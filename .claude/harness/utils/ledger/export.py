@@ -7,6 +7,8 @@ Copies with the same last part have the same schema. An older copy of the same s
 The copy goes to <the session's working folder>/.harness-export/: the Drive tool reads a file by reference only from
 the folders a session works in (a temp folder is refused). The folder ignores itself for git (its own .gitignore), so
 a copy is never committed with the work."""
+from __future__ import annotations
+
 import hashlib
 import re
 import sqlite3
@@ -14,16 +16,29 @@ from pathlib import Path
 
 from harness.utils.ledger.db import LedgerError, fingerprint, pinned
 from harness.utils.ledger.store import session_part
+from harness.utils.shapes import ExportCopy, StoreRecord
 
 FOLDER_ID = re.compile(r"^[A-Za-z0-9_-]{10,}$")
 MIME = "application/x-sqlite3"
 FOLDER = ".harness-export"
 
 
-def snapshot(db_path, out_dir, record):
+def snapshot(db_path: str | Path, out_dir: str | Path, record: StoreRecord) -> ExportCopy:
     """{path, title, sha256, size} of a new copy of the ledger db_path in out_dir, named by the store's record
     {title, session}; LedgerError when there is no ledger, or the copy's schema is not the pinned one (the copy is
-    then taken away)."""
+    then taken away).
+
+    Args:
+        db_path: the live ledger's file.
+        out_dir: the folder the copy goes to (made, with a .gitignore of "*", when missing).
+        record: the store's record of the copy (store.begin); its title and session are read.
+
+    Returns:
+        The copy (ExportCopy); an older copy of the same session in out_dir is taken away.
+
+    Raises:
+        LedgerError: there is no ledger, it cannot be copied, or the copy's schema is not the pinned one.
+    """
     db_path, out_dir = Path(db_path), Path(out_dir)
     if not db_path.is_file():
         raise LedgerError("there is no ledger yet: nothing to export")
@@ -56,8 +71,16 @@ def snapshot(db_path, out_dir, record):
             "size": len(data)}
 
 
-def upload_call(copy, folder):
-    """The words of the one Drive call that uploads a copy to the folder (a file reference: the app reads the file)."""
+def upload_call(copy: ExportCopy, folder: str) -> str:
+    """The words of the one Drive call that uploads a copy to the folder (a file reference: the app reads the file).
+
+    Args:
+        copy: the copy snapshot() made.
+        folder: the Drive folder's id.
+
+    Returns:
+        The text for the model: the create_file arguments to send, and what to do when it cannot.
+    """
     return (f"Exported the ledger: {copy['title']} ({copy['size']} bytes).\n"
             "Upload it now, once, with the Google Drive tool create_file, exactly:\n"
             f"  title: {copy['title']}\n  parentId: {folder}\n  contentMimeType: {MIME}\n"

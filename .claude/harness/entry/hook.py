@@ -14,6 +14,8 @@ Before the harness is even imported, this file (standard library only, entry_net
 - A grant and its trace are one transaction: no trace, no grant. A grant that reaches further than 120 minutes is no
   grant, and the state folder stays closed to the editing tools while the guards are off.
 - Output is UTF-8 bytes, whatever the console's code page."""
+from __future__ import annotations
+
 import json
 import os
 import re
@@ -22,6 +24,7 @@ import sys
 import time
 import uuid
 from pathlib import Path
+from typing import Any, Optional
 
 CODE_DIR = Path(__file__).resolve().parent.parent.parent  # the code this entry belongs to (a release, or the work tree)
 CLAUDE_DIR = Path(os.environ.get("HARNESS_HOME") or CODE_DIR)  # the home: state, config, skills (anchor.py)
@@ -38,9 +41,16 @@ FORGE = '"="'
 PREFILLED = "Only the user answers a form: call AskUserQuestion with the questions alone, none holding '\"=\"'."
 
 
-def ledger(create):
+def ledger(create: bool) -> Optional[sqlite3.Connection]:
     """The ledger, made from schema.sql as utils/ledger/db.py makes it when it has no table yet; None when it does not
-    exist and create is false (no ledger: no grant)."""
+    exist and create is false (no ledger: no grant).
+
+    Args:
+        create: whether to make the ledger when it does not exist.
+
+    Returns:
+        A connection in autocommit mode (the caller closes it), or None.
+    """
     if not create and not LEDGER.is_file():
         return None
     STATE.mkdir(parents=True, exist_ok=True)
@@ -54,16 +64,27 @@ def ledger(create):
     return con
 
 
-def trace(con, what, data):
+def trace(con: sqlite3.Connection, what: str, data: dict[str, Any]) -> None:
+    """Write the trace of a call in pl_logs: what happened, and the call's event, tool and session.
+
+    Args:
+        con: the ledger.
+        what: granted or passed.
+        data: the hook payload.
+    """
     body = {"what": what, "event": data.get("hook_event_name"), "tool": data.get("tool_name"),
             "session": data.get("session_id")}
     con.execute("INSERT INTO pl_logs (uid, body, at) VALUES (?, ?, ?)",
                 (uuid.uuid4().hex, json.dumps(body, ensure_ascii=False), int(time.time() * 1000)))
 
 
-def granted():
+def granted() -> Optional[sqlite3.Connection]:
     """The ledger while a grant lasts, or None. A grant that reaches further than the longest one allows is no grant
-    (only this file writes one, and never so long)."""
+    (only this file writes one, and never so long).
+
+    Returns:
+        The ledger's connection (the caller closes it), or None when no grant lasts.
+    """
     con = ledger(create=False)
     if con is None:
         return None
@@ -78,8 +99,15 @@ def granted():
     return None
 
 
-def into_state(data):
-    """Whether an editing tool writes into the state folder, which stays closed while the guards are off."""
+def into_state(data: dict[str, Any]) -> bool:
+    """Whether an editing tool writes into the state folder, which stays closed while the guards are off.
+
+    Args:
+        data: the hook payload (tool_input's file_path or notebook_path, cwd).
+
+    Returns:
+        True when the path is the state folder or inside it.
+    """
     tool_input = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
     path = tool_input.get("file_path") or tool_input.get("notebook_path")
     if not isinstance(path, str) or not path:
@@ -90,9 +118,16 @@ def into_state(data):
         os.path.normcase(full).startswith(os.path.normcase(state) + os.sep)
 
 
-def labels(data):
+def labels(data: dict[str, Any]) -> dict[str, str]:
     """{question: label} of an answered form, where Claude Code puts the answers (as harness/hooks/forms.py reads
-    them: the response text only when no question holds '"="' and each question is in it once)."""
+    them: the response text only when no question holds '"="' and each question is in it once).
+
+    Args:
+        data: the hook payload of AskUserQuestion (tool_input's answers, tool_response).
+
+    Returns:
+        {question: the label the user chose}.
+    """
     found, text = {}, ""
     for source in ((data.get("tool_input") or {}).get("answers"), data.get("tool_response")):
         if isinstance(source, str):
@@ -113,9 +148,16 @@ def labels(data):
     return found
 
 
-def form_of(data):
+def form_of(data: dict[str, Any]) -> Optional[list[dict[str, Any]]]:
     """The questions of the call, or None when it is not shaped as a form: a list of question objects, each with a
-    list of option objects."""
+    list of option objects.
+
+    Args:
+        data: the hook payload.
+
+    Returns:
+        The question objects of tool_input, or None.
+    """
     tool_input = data.get("tool_input")
     qs = tool_input.get("questions") if isinstance(tool_input, dict) else None
     shaped = isinstance(qs, list) and all(
@@ -124,12 +166,27 @@ def form_of(data):
     return qs if shaped else None
 
 
-def questions(data):
+def questions(data: dict[str, Any]) -> list[str]:
+    """The question texts of the form.
+
+    Args:
+        data: the hook payload.
+
+    Returns:
+        Each question's text; [] when the call is not shaped as a form.
+    """
     return [str(q.get("question")) for q in form_of(data) or []]
 
 
-def forged(data):
-    """A form not shaped as one, or whose question or option label holds '"="' (built to look like an answer)."""
+def forged(data: dict[str, Any]) -> bool:
+    """A form not shaped as one, or whose question or option label holds '"="' (built to look like an answer).
+
+    Args:
+        data: the hook payload.
+
+    Returns:
+        True when the form is misshapen or forged.
+    """
     qs = form_of(data)
     if qs is None:
         return True
@@ -138,9 +195,16 @@ def forged(data):
     return any(FORGE in w for w in words)
 
 
-def refused_form(data):
+def refused_form(data: dict[str, Any]) -> bool:
     """Whether a form must be refused before it runs: answers the model wrote, or a forged or misshapen form. Any
-    error while looking counts as a refusal."""
+    error while looking counts as a refusal.
+
+    Args:
+        data: the hook payload.
+
+    Returns:
+        True when the form must be refused.
+    """
     try:
         tool_input = data.get("tool_input")
         return forged(data) or not isinstance(tool_input, dict) or bool(tool_input.get("answers"))
@@ -148,8 +212,16 @@ def refused_form(data):
         return True
 
 
-def grant_from(data):
-    """The note of a grant the user approved in this form, or None. A form that would have been refused gives none."""
+def grant_from(data: dict[str, Any]) -> Optional[str]:
+    """The note of a grant the user approved in this form, or None. A form that would have been refused gives none.
+    The grant (a maint.grant note) and its trace are written in one transaction.
+
+    Args:
+        data: the PostToolUse payload of AskUserQuestion.
+
+    Returns:
+        The note for the model ("GATE: the user turned the guards off for N minutes: <why>. ..."), or None.
+    """
     if refused_form({**data, "tool_input": {**data["tool_input"], "answers": None}}
                     if isinstance(data.get("tool_input"), dict) else data):
         return None
@@ -172,12 +244,24 @@ def grant_from(data):
     return None
 
 
-def say(text):
-    """Write the reason of a block on stderr as UTF-8 bytes: a console code page must never turn a block into a crash."""
+def say(text: str) -> None:
+    """Write the reason of a block on stderr as UTF-8 bytes: a console code page must never turn a block into a crash.
+
+    Args:
+        text: the reason.
+    """
     sys.stderr.buffer.write((text + "\n").encode("utf-8", "replace"))
 
 
-def answer(context=None):
+def answer(context: Optional[str] = None) -> int:
+    """Answer a PostToolUse call, with context for the model when there is some.
+
+    Args:
+        context: the additional context written on stdout, or None to write nothing.
+
+    Returns:
+        0, the exit code.
+    """
     if context:
         out = json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": context}},
                          ensure_ascii=False)
@@ -185,7 +269,12 @@ def answer(context=None):
     return 0
 
 
-def main():
+def main() -> int:
+    """Answer one hook call: a form checked here, a grant kept or used, else the harness's own answer (run_hook).
+
+    Returns:
+        The exit code: 0 the call goes on (the answer on stdout), 2 it is blocked (the reason on stderr).
+    """
     raw, data, asking = "", {}, False
     try:
         raw = sys.stdin.buffer.read().decode("utf-8")

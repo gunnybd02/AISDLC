@@ -12,7 +12,7 @@ anchor.py       the one file Claude Code runs; it routes to an entry of the rele
     mcp/        what the model calls: server/ (stdio, tool base), tools/ (find, guide, run), skills/ (library) and
                 skill_docs/ (its texts, <name>/SKILL.md), actions/ (one file per block, ACTIONS = [...])
     assemble/   engine/ (loader, config, ports, runner, select, pipeline, build, wire_mcp, checks) and pipelines/
-    utils/      shared code with no policy: contracts, ledger/, plan/, shell/, git/
+    utils/      shared code with no policy: contracts, shapes (the named data), ledger/, plan/, shell/, git/
     nets/       the rules of the tree, checked by the doctor
     tests/      tests/<block>/test_<module>.py, plus nets/ and e2e/
   project.json  the values of the user (name, verify: the unit's test command, ledger: the real ledger)
@@ -119,10 +119,11 @@ What the gates refuse, so they always see what they judge:
 
 ## The shell reader
 A Bash or PowerShell call is read before it runs, so a write by the shell meets the same gate as Write/Edit.
-- `utils/shell/scan.py` splits the line as its shell does (bash, PowerShell, cmd): commands, quotes, escapes,
-  redirections, heredocs. `utils/shell/words.py` takes the wrappers off (`sudo`, `env`, `timeout`, `xargs`...) and reads
+- `utils/shell/scan.py` splits the line as its shell does (bash, PowerShell, cmd; the last two in `dialects.py`):
+  commands, quotes, escapes, redirections, heredocs, as the `Command` and `Word` of `command.py`. `utils/shell/words.py` takes the wrappers off (`sudo`, `env`, `timeout`, `xargs`...) and reads
   again the string a shell runs (`sh -c`, `eval`, `powershell -Command`, `cmd /c`, a shell fed a heredoc).
-- `utils/shell/place_ops.py` (git lines: `git_ops.py`) looks each real command up: a known read writes nothing; a known write names its files
+- `utils/shell/place_ops.py` (git lines: `git_ops.py`) looks each real command up (the bash and cmd table in
+  `write_ops.py`, PowerShell's in `cmdlets.py`): a known read writes nothing; a known write names its files
   (operands, redirections, the destination of a copy, the file of a download); after `cd X` a relative path is
   read from both folders. Text in quotes or in a heredoc body is no command.
 - What it cannot see whole is unread: an unknown command or script, a target the shell makes (`$F`, `*.py`, `~`),
@@ -181,6 +182,7 @@ Claude Code -> anchor.py -> harness/entry/hook.py   (standard library: the maint
 - A rule row names its test (`harness/tests/.../test_x.py#test_y`), and a row whose test does not exist does not load.
 - Each fact has one giver. Two that give the same fact are an error, never an overwrite.
 - Ports (`assemble/engine/ports.py`) read the world for the gears: the approved plan, and the state folder.
+  `LedgerPort` = `LedgerCore` + `DeskPort` + `TicketPort` (one file each); `utils/shapes.py` names it `PlanStore`.
 - `Act` (in `runner.py`) writes back: an approval from the form (`utils/plan/approval.py`), a delivered plan after a
   commit (`utils/plan/closing.py`), each finding as a rule decision.
 - A broken harness exits 2, which blocks the call.
@@ -279,18 +281,20 @@ The nets read the whole tree except two places, and only these: `state/` (the pr
 | `verdict` | outside `gear/decide/arbiter.py` and `utils/contracts.py`: no verdict word (allow, ask, refuse, deny), no `ALLOW`/`ASK`/`REFUSE`, no `Verdict` |
 | `config` | `project.json` is named only in `assemble/engine/config.py` |
 | `entry` | an entry script imports only the standard library at load time (in `try`, `if`... too); its `main()` catches `BaseException` |
+| `hints` | every parameter and return has a type hint, and every function and method a docstring (Args, Returns, Raises); a closure needs hints only. The data are named in `utils/shapes.py` |
 
 The nets read the code as written, not as it runs. A name built at run time (`getattr(m, "AL" + "LOW")`) gets past
 them. Review keeps that out, and no net claims to.
 
 A file that does not decode as UTF-8 is reported by `size`, and a file that does not parse by `imports`. No net
 crashes on it. An index or a skill that does not decode is also reported by the loader or the skill library, which
-need it. The nets read `harness/` (its tests only where a net names them), `entry/` and the anchor. A test file that does not parse is shown by the test run
-itself.
+need it. The nets read `harness/` (its tests only where a net names them), `entry/` and the anchor; the test run shows
+a test file that does not parse.
 
 ## How to add a thing
 1. Write the test first, in `harness/tests/<block>/test_<module>.py` (`harness/tests/nets/test_tests_layout.py` checks the name).
-2. Write the class in its block, a translator or a detector on the base classes of `utils/contracts.py`.
+2. Write the class in its block, a translator or a detector on the base classes of `utils/contracts.py`, with type
+   hints and docstrings (a dict that recurs gets a name in `utils/shapes.py`).
 3. Declare it with one line in the block's `ITEMS`.
 4. Name it in a pipeline (`assemble/pipelines/`), and give each finding it reports a rule row in `gear/rules/`, with its test.
 5. Run the tests and `harness/entry/doctor.py` until both are clean.

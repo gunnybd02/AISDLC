@@ -12,6 +12,8 @@ is installed for the user (harness/entry/install.py: the hooks of ~/.claude/sett
 one is the core and this call gives way: a hook does nothing (the core's own hook judges the call), the MCP server is
 the core's. So a clone of the harness being worked on is never a second harness with a second ledger; with no harness
 installed, the repository's own is the core."""
+from __future__ import annotations
+
 import json
 import os
 import re
@@ -19,6 +21,7 @@ import runpy
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 HOME = Path(__file__).resolve().parent / ".claude"
 ENTRIES = ("hook", "mcp_server", "doctor", "cli", "session_start")
@@ -27,8 +30,15 @@ PROJECT = "--project"  # how a repository's own wiring calls the anchor
 CORE_HOOK = re.compile(r'"([^"$%]+[\\/](?:anchor\.py|entry[\\/]boot\.py))" hook\b')
 
 
-def code_dir(home):
-    """The release in force, or the home itself when none is published."""
+def code_dir(home: Path) -> Path:
+    """The release in force, or the home itself when none is published.
+
+    Args:
+        home: the .claude folder beside this file.
+
+    Returns:
+        state/live/<sha> of the release in force when it holds a harness, else home.
+    """
     try:
         sha = (home / "state" / "live" / "current").read_text(encoding="utf-8").strip()
     except OSError:
@@ -37,15 +47,27 @@ def code_dir(home):
     return release if sha and (release / "harness").is_dir() else home
 
 
-def entry_file(code, name):
-    """The entry of a code folder: harness/entry/<name>.py; a release built before the entries moved keeps entry/."""
+def entry_file(code: Path, name: str) -> Path:
+    """The entry of a code folder: harness/entry/<name>.py; a release built before the entries moved keeps entry/.
+
+    Args:
+        code: the code folder (a release, or the home).
+        name: the entry (hook, mcp_server, doctor, cli, session_start).
+
+    Returns:
+        The path of the entry script.
+    """
     moved = code / "harness" / "entry" / f"{name}.py"
     return moved if moved.is_file() else code / "entry" / f"{name}.py"
 
 
-def installed_core():
+def installed_core() -> Optional[tuple[Path, Path]]:
     """(home, script) of the harness installed for this user: what a hook of the user's settings names, when that file
-    is there; else None (nothing installed, or settings that cannot be read: this copy then guards)."""
+    is there; else None (nothing installed, or settings that cannot be read: this copy then guards).
+
+    Returns:
+        (the installed harness's .claude folder, its anchor or legacy boot.py), or None.
+    """
     folder = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
     try:
         data = json.loads(Path(folder, "settings.json").read_text(encoding="utf-8"))
@@ -60,7 +82,12 @@ def installed_core():
     return None
 
 
-def main():
+def main() -> int:
+    """Route the call to the entry of the release in force (or give way to the installed core).
+
+    Returns:
+        The exit code: the entry's (its SystemExit code), 0 when it ends without one or gives way, 2 when it fails.
+    """
     try:
         name = sys.argv[1] if len(sys.argv) > 1 else ""
         if name not in ENTRIES:

@@ -4,29 +4,67 @@ in the question. No finding: allow.
 
 A rule row: {"finding": kind, "verdict": allow|ask|refuse, "why": the sentence shown, "test": "harness/tests/<file>.py#<test>"};
 a row whose test is not a test function under harness/tests/ does not load."""
+from __future__ import annotations
+
 import json
 import re
 from pathlib import Path
+from typing import Any, Optional, TypedDict
 
-from harness.utils.contracts import ALLOW, ASK, VERDICTS, Verdict
+from harness.utils.contracts import ALLOW, ASK, VERDICTS, Finding, Verdict
 
 RULES = ("harness", "gear", "rules")  # under the .claude folder
 FIELDS = ("finding", "verdict", "why", "test")
 TEST = re.compile(r"^harness/tests/(?:[A-Za-z_][\w]*/)*test_\w+\.py#test_\w+$")
 
 
+class RuleRow(TypedDict):
+    """One row of a rules file: the finding kind it judges, its verdict (allow, ask or refuse), the sentence shown,
+    and the test that proves it ("harness/tests/<file>.py#<test>")."""
+    finding: str
+    verdict: str
+    why: str
+    test: str
+
+
 class RuleError(Exception):
-    def __init__(self, problems):
+    """The rules files do not load; problems holds one line per bad file or row."""
+
+    def __init__(self, problems: list[str]) -> None:
+        """Keep the problems, one per line in the message.
+
+        Args:
+            problems: one line per problem: "<file> rule <n>: <why>" or "<file>: <why>".
+        """
         super().__init__("\n".join(problems))
         self.problems = problems
 
 
 class Decide:
-    def __init__(self, rules):
+    """The judge: turns the findings of a hook call into one verdict by the rule rows."""
+
+    def __init__(self, rules: dict[str, RuleRow]) -> None:
+        """Keep the rule rows.
+
+        Args:
+            rules: {finding kind: its rule row}.
+        """
         self.rules = rules  # {finding kind: row}
 
     @classmethod
-    def load(cls, claude_dir, rules_dir=None):
+    def load(cls, claude_dir: str | Path, rules_dir: Optional[str | Path] = None) -> Decide:
+        """Load every rules file (*.json) of the rules folder into a judge.
+
+        Args:
+            claude_dir: the .claude folder; the rows' tests are looked up under it.
+            rules_dir: the folder of the rules files; None for <claude_dir>/harness/gear/rules.
+
+        Returns:
+            A Decide holding every row, by finding kind.
+
+        Raises:
+            RuleError: a file that is not a rules file, a bad row, or two rows for the same finding.
+        """
         rules, problems = {}, []
         for path in sorted(Path(rules_dir or Path(claude_dir).joinpath(*RULES)).glob("*.json")):
             try:
@@ -50,7 +88,17 @@ class Decide:
         return cls(rules)
 
     @staticmethod
-    def row_problem(row, claude_dir):
+    def row_problem(row: Any, claude_dir: Path) -> str:
+        """What is wrong with one row of a rules file, or "".
+
+        Args:
+            row: the row as read from the JSON file (any JSON value; a good one is a RuleRow).
+            claude_dir: the .claude folder the row's test path is read from.
+
+        Returns:
+            "" for a good row; else why it does not load: wrong fields, an unknown verdict, or a test that is not a
+            test function of a file under harness/tests/.
+        """
         if not isinstance(row, dict) or sorted(row) != sorted(FIELDS) or not all(isinstance(v, str) for v in row.values()):
             return f"fields are exactly {', '.join(FIELDS)}, each a string"
         if row["verdict"] not in VERDICTS:
@@ -64,7 +112,16 @@ class Decide:
             found = False
         return "" if found else f"the test {row['test']} is not a test function of a file under harness/tests/"
 
-    def decide(self, findings):
+    def decide(self, findings: list[Finding]) -> Verdict:
+        """The verdict on the findings of one hook call.
+
+        Args:
+            findings: what the detectors reported.
+
+        Returns:
+            allow with no reason when there is no finding; else the strongest verdict of the findings, the reasons of
+            the findings that gave it (joined by "; ", each once) and every finding.
+        """
         if not findings:
             return Verdict(ALLOW)
         judged = [self.judge(f) for f in findings]
@@ -72,7 +129,16 @@ class Decide:
         reason = "; ".join(dict.fromkeys(why for v, why in judged if v == decision))
         return Verdict(decision, reason, tuple(findings))
 
-    def judge(self, finding):
+    def judge(self, finding: Finding) -> tuple[str, str]:
+        """The verdict word and the reason for one finding.
+
+        Args:
+            finding: one finding of a detector.
+
+        Returns:
+            (verdict word, why): its rule row's verdict and sentence with the finding's detail in brackets; ask with a
+            question naming the finding when no row names it.
+        """
         detail = f" ({finding.detail})" if finding.detail else ""
         row = self.rules.get(finding.kind)
         if row is None:

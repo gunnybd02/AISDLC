@@ -11,13 +11,22 @@ kept as rows of pl_notes, so the schema stays the pinned one and every copy carr
 The mark counts what must not be lost: commits, plan events (approved, delivered, dropped), pushes and merge requests.
 Work is unsaved while the mark is ahead of the mark of the newest copy the store holds. Small rows (verify receipts,
 logs) wait for the next copy. The folder's id is the environment variable HARNESS_DRIVE_FOLDER: never in the tree."""
+from __future__ import annotations
+
 import json
 import os
 import re
+import sqlite3
 import time
 import uuid
+from typing import TYPE_CHECKING, Optional
 
 from harness.utils.ledger.db import pinned
+from harness.utils.shapes import PlanStore, SavedCopy, StoreRecord
+
+if TYPE_CHECKING:
+    from harness.utils.contracts import Event
+    from harness.utils.ledger.recorder import Recorder
 
 ENV = "HARNESS_DRIVE_FOLDER"
 REASONS = ("manual", "push", "plan-close", "turn-end")
@@ -29,33 +38,86 @@ NEWEST = "SELECT key, target, text, at FROM pl_notes WHERE kind = ? ORDER BY at 
 FILE_ID = re.compile(r'\\*"id\\*"\s*:\s*\\*"([A-Za-z0-9_-]{10,})')
 
 
-def folder():
+def folder() -> str:
+    """The store's Drive folder id, from the environment.
+
+    Returns:
+        HARNESS_DRIVE_FOLDER without spaces around it, "" when it is not set.
+    """
     return os.environ.get(ENV, "").strip()
 
 
-def session_part(sid):
+def session_part(sid: Optional[str]) -> str:
+    """The session id as a part of a copy's file name.
+
+    Args:
+        sid: the Claude Code session id, or None.
+
+    Returns:
+        The id with every character but letters, digits and "-" made "-", trimmed; "nosession" when nothing is left.
+    """
     return re.sub(r"[^A-Za-z0-9-]", "-", str(sid or "")).strip("-") or "nosession"
 
 
-def note(con, kind, target, key, text, sid, at):
+def note(con: sqlite3.Connection, kind: str, target: str, key: str | int, text: str, sid: Optional[str],
+         at: int) -> None:
+    """Insert one row of pl_notes (a store row) with a new uid and no why.
+
+    Args:
+        con: the connection of the transaction.
+        kind: the row's kind (LEDGER, EXPORT, UPLOADED or ASKED).
+        target: what the row is about (a file name, "ledger", "turn").
+        key: the row's key (the ledger's id, a copy's number, a mark as JSON); kept as text.
+        text: the row's text (a record as JSON, a Drive file id, "").
+        sid: the Claude Code session id, or None.
+        at: the time in ms.
+    """
     con.execute("INSERT INTO pl_notes (uid, kind, target, key, text, why, sid, at) VALUES (?, ?, ?, ?, ?, '', ?, ?)",
                 (uuid.uuid4().hex, kind, target, str(key), text, str(sid or ""), at))
 
 
-def mark_of(con):
+def mark_of(con: sqlite3.Connection) -> list[int]:
+    """The mark of the ledger, read on a connection.
+
+    Args:
+        con: an open connection to the ledger.
+
+    Returns:
+        [commits, plan events, pushes and merge requests], in the order of COUNTED.
+    """
     return [con.execute(sql).fetchone()[0] for _, sql in COUNTED]
 
 
-def mark(port):
+def mark(port: PlanStore) -> list[int]:
+    """The mark of the ledger, read through the port.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+
+    Returns:
+        [commits, plan events, pushes and merge requests], in the order of COUNTED; zeros with no ledger yet.
+    """
     return [(port.rows(sql) or [{"n": 0}])[0]["n"] for _, sql in COUNTED]
 
 
-def begin(port, sid, reason, where=None, now=None):
-    """Keep the record of a new copy (and the ledger's id, the first time) and answer it: {ledger, seq, title, ...}."""
+def begin(port: PlanStore, sid: str, reason: str, where: Optional[dict[str, str]] = None,
+          now: Optional[float] = None) -> StoreRecord:
+    """Keep the record of a new copy (and the ledger's id, the first time) and answer it: {ledger, seq, title, ...}.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id that asks for the copy.
+        reason: why the copy is made, one of REASONS.
+        where: {repo, branch} the copy is asked from, added to the record; None or {} outside a repository.
+        now: the time in seconds since the epoch; None for the clock.
+
+    Returns:
+        The record kept in pl_notes (StoreRecord): its title is the copy's file name.
+    """
     seconds = time.time() if now is None else now
     at, stamp = int(seconds * 1000), time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(seconds))
 
-    def change(con, rec):
+    def change(con: sqlite3.Connection, rec: Recorder) -> StoreRecord:
         row = con.execute("SELECT key FROM pl_notes WHERE kind = ? ORDER BY at, rowid LIMIT 1", (LEDGER,)).fetchone()
         ledger = row[0] if row else uuid.uuid4().hex[:12]
         if not row:
@@ -72,8 +134,15 @@ def begin(port, sid, reason, where=None, now=None):
     return port.write(change)
 
 
-def saved(port):
-    """{seq, title, file_id, mark, at} of the newest copy the store holds, or None."""
+def saved(port: PlanStore) -> Optional[SavedCopy]:
+    """{seq, title, file_id, mark, at} of the newest copy the store holds, or None.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+
+    Returns:
+        The newest uploaded copy (SavedCopy), its mark from its export record (zeros when lost); None when none is.
+    """
     for row in port.rows(NEWEST, (UPLOADED,)):
         made = port.rows("SELECT text FROM pl_notes WHERE kind = ? AND key = ? ORDER BY at DESC, rowid DESC LIMIT 1",
                          (EXPORT, row["key"]))
@@ -83,14 +152,28 @@ def saved(port):
     return None
 
 
-def unsaved(port):
-    """What the store does not hold yet, in words: ['2 commit(s)', '1 plan event(s)']; [] when nothing waits."""
+def unsaved(port: PlanStore) -> list[str]:
+    """What the store does not hold yet, in words: ['2 commit(s)', '1 plan event(s)']; [] when nothing waits.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+
+    Returns:
+        One "<n> <name>(s)" per count of the mark that is ahead of the newest saved copy's.
+    """
     held = (saved(port) or {}).get("mark") or [0] * len(COUNTED)
     return [f"{now - then} {name}(s)" for (name, _), now, then in zip(COUNTED, mark(port), held) if now > then]
 
 
-def owed(port):
-    """What a turn's end is held for: the unsaved work, unless a turn was already held for exactly this work."""
+def owed(port: PlanStore) -> list[str]:
+    """What a turn's end is held for: the unsaved work, unless a turn was already held for exactly this work.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+
+    Returns:
+        The words of unsaved(), or [] when nothing waits or the newest store.asked row holds the mark of now.
+    """
     words = unsaved(port)
     if not words:
         return []
@@ -98,17 +181,30 @@ def owed(port):
     return [] if asked and asked[0]["key"] == json.dumps(mark(port)) else words
 
 
-def asked(port, sid):
-    """A turn was held for the work the ledger holds now."""
+def asked(port: PlanStore, sid: str) -> None:
+    """A turn was held for the work the ledger holds now: keep a store.asked row with the mark of now.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id whose turn was held.
+    """
     key = json.dumps(mark(port))
     port.write(lambda con, rec: note(con, ASKED, "turn", key, "", sid, int(time.time() * 1000)))
 
 
-def uploaded(port, event):
+def uploaded(port: PlanStore, event: Event) -> list[str]:
     """Keep that the store holds a copy, when an MCP tool's create_file answered with a file of a copy's name; the
     note for the model. Anything else (another file, an answer without the file) keeps nothing. The server is not
     told by its name: Claude Code names a connector's tools by its name (mcp__Google_Drive__create_file) or by an id
-    (mcp__caaed075-...__create_file); a copy's name is its own, so the name of the file is what tells."""
+    (mcp__caaed075-...__create_file); a copy's name is its own, so the name of the file is what tells.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        event: the PostToolUse hook call; its tool, input title and response are read.
+
+    Returns:
+        ["The store holds copy <seq> of this ledger: <title>."] when the answer holds a copy's file; else [].
+    """
     parts = str(event.tool or "").split("__")
     if len(parts) < 3 or parts[0] != "mcp" or parts[-1] != "create_file":
         return []
@@ -125,8 +221,15 @@ def uploaded(port, event):
     return [f"The store holds copy {seq} of this ledger: {title}."]
 
 
-def status(port):
-    """The store as the ledger knows it, a line each: the folder, the ledger, the newest copy, what waits."""
+def status(port: PlanStore) -> str:
+    """The store as the ledger knows it, a line each: the folder, the ledger, the newest copy, what waits.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+
+    Returns:
+        Five lines of text for the model.
+    """
     ledger = port.rows("SELECT key FROM pl_notes WHERE kind = ? ORDER BY at, rowid LIMIT 1", (LEDGER,))
     made, held, waits = port.rows(NEWEST, (EXPORT,)), saved(port), unsaved(port)
     return "\n".join([

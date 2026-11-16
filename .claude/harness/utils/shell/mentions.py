@@ -6,10 +6,14 @@ expanded against the disk; a word the shell makes from a variable ($HOME/x) cann
 The harness's own commands (python <core>/anchor.py, python <claude>/harness/entry/<x>.py, python -m entry.<x>) name
 nothing here: they open the harness's data themselves, which is how it is meant to be opened. A line the reader cannot see whole is read word by
 word, so a path in it is still found."""
+from __future__ import annotations
+
 import glob
 import os
 import re
+from collections.abc import Sequence
 
+from harness.utils.shell.command import Command
 from harness.utils.shell.paths import absolute
 from harness.utils.shell.words import program, read
 
@@ -19,9 +23,16 @@ WILD = re.compile(r"[*?\[]")
 MADE = re.compile(r"[$`]|%\w+%")
 
 
-def harness_own(command):
+def harness_own(command: Command) -> bool:
     """Whether the command runs the harness itself: python <...>/anchor.py, python <...>/entry/<x>.py, or python -m
-    entry.<x> / harness.entry.<x>."""
+    entry.<x> / harness.entry.<x>.
+
+    Args:
+        command: a command that really runs.
+
+    Returns:
+        True for the harness's own command.
+    """
     if program(command.name) not in PYTHONS:
         return False
     args = [w.text for w in command.args]
@@ -30,27 +41,59 @@ def harness_own(command):
     return bool(args) and re.search(r"(^|[\\/])(entry[\\/]\w+|anchor)\.py$", args[0]) is not None
 
 
-def harness_runs(command_line, dialect="bash"):
-    """The words of each command of a shell line that runs the harness itself (python ... anchor.py ..., python ... entry/<x>.py ...)."""
+def harness_runs(command_line: str, dialect: str = "bash") -> list[list[str]]:
+    """The words of each command of a shell line that runs the harness itself (python ... anchor.py ..., python ... entry/<x>.py ...).
+
+    Args:
+        command_line: the shell line.
+        dialect: "bash", "powershell" or "cmd".
+
+    Returns:
+        The words after python of each such command; [] when none (or the line cannot be read whole).
+    """
     return [[w.text for w in c.args] for c in read(command_line, dialect).commands
             if c.words and not c.words[0].dynamic and harness_own(c)]
 
 
-def runs_harness(command_line, dialect="bash"):
+def runs_harness(command_line: str, dialect: str = "bash") -> bool:
     """Whether a shell line runs the harness itself in one of its commands (the session's link to the harness's CLI,
-    as a call of its MCP tools is)."""
+    as a call of its MCP tools is).
+
+    Args:
+        command_line: the shell line.
+        dialect: "bash", "powershell" or "cmd".
+
+    Returns:
+        True when one of its commands is the harness's own.
+    """
     return bool(harness_runs(command_line, dialect))
 
 
-def runs_session_start(command_line, dialect="bash"):
+def runs_session_start(command_line: str, dialect: str = "bash") -> bool:
     """Whether a shell line runs the harness's SessionStart entry (anchor.py session_start, entry/session_start.py),
-    which only Claude Code runs, when a session begins."""
+    which only Claude Code runs, when a session begins.
+
+    Args:
+        command_line: the shell line.
+        dialect: "bash", "powershell" or "cmd".
+
+    Returns:
+        True when one of its harness commands is session_start.
+    """
     return any("session_start" in args[1:2] or re.search(r"session_start\.py$", args[0] if args else "")
                for args in harness_runs(command_line, dialect))
 
 
-def texts(command):
-    """The texts of the words that may name a place, options' values split off."""
+def texts(command: Command) -> list[str]:
+    """The texts of the words that may name a place, options' values split off.
+
+    Args:
+        command: a command that really runs.
+
+    Returns:
+        The texts of its arguments, assignment values and redirection targets (and the value of each --opt=value),
+        without options and words a variable makes.
+    """
     out = []
     for text in [w.text for w in command.args if not w.dynamic or not MADE.search(w.text)] + \
             [e.split("=", 1)[1] for e in command.env if "=" in e] + [w.text for _, w in command.redirects]:
@@ -60,7 +103,17 @@ def texts(command):
     return [t for t in out if t and not t.startswith("-") and not MADE.search(t)]
 
 
-def places(text, cwds, dialect):
+def places(text: str, cwds: Sequence[str], dialect: str) -> list[str]:
+    """The absolute paths a text names from each folder the line may be in; a wildcard is expanded on the disk.
+
+    Args:
+        text: a word's text.
+        cwds: the folders the command may run in.
+        dialect: the command's dialect.
+
+    Returns:
+        The paths with forward slashes (a wildcard that matches nothing gives nothing).
+    """
     out = []
     for cwd in cwds:
         path = absolute(text, cwd, dialect)
@@ -68,7 +121,17 @@ def places(text, cwds, dialect):
     return out
 
 
-def mentioned(command_line, dialect, cwd):
+def mentioned(command_line: str, dialect: str, cwd: str) -> list[str]:
+    """Every place a shell line names, read or written; a line not seen whole is read word by word too.
+
+    Args:
+        command_line: the shell line.
+        dialect: "bash", "powershell" or "cmd".
+        cwd: the folder the line starts in.
+
+    Returns:
+        The absolute paths with forward slashes, sorted, each once.
+    """
     line = read(command_line, dialect)
     found, cwds = [], [cwd]
     for command in line.commands:

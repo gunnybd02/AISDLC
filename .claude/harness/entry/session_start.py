@@ -2,6 +2,8 @@
 the newest main of its clone and put it in force when its doctor is clean (assemble/engine/cli_live.py session_update). A cloud
 machine is prepared ahead of time, so the setup script's harness can be hours old by then. It never blocks: whatever
 fails, the session starts on the harness it has and reads why. A session cannot run it itself (agent.session_start)."""
+from __future__ import annotations
+
 import json
 import os
 import sys
@@ -11,7 +13,12 @@ CODE_DIR = Path(__file__).resolve().parent.parent.parent  # the code this entry 
 CLAUDE_DIR = Path(os.environ.get("HARNESS_HOME") or CODE_DIR)  # the home: state, config, skills (anchor.py)
 
 
-def main():
+def main() -> int:
+    """Bring the harness up to date as a session starts and tell the session what runs (on stdout, as hook JSON).
+
+    Returns:
+        0, always: a session start is never blocked.
+    """
     try:
         sys.stdin.read()  # the hook payload: nothing in it changes what is done
         sys.path.insert(0, str(CODE_DIR))

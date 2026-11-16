@@ -2,12 +2,16 @@
 step_done then adopts the commit), git.push pushes the plan's branch of a unit in deliver, git.mr_open opens its merge
 request after the user's Yes on the full text. Each is refused with a code and why; push and merge request are kept in
 pl_git_audit (chained)."""
+from __future__ import annotations
+
 import hashlib
 import json
 import os
 import re
 import time
 import uuid
+from collections.abc import Iterable
+from typing import Optional
 
 from harness.utils.contracts import asked, refused
 from harness.utils.git.asks import take
@@ -20,6 +24,7 @@ from harness.utils.git.run import GitError, git, run_git
 from harness.utils.plan.files import allows
 from harness.utils.plan.stop import is_code
 from harness.utils.plan.tickets import DELIVER, approved_plan
+from harness.utils.shapes import ApprovedPlan, CommitJudge, GitJudge, PlanStore, Ticket
 
 ALLOW_LABEL, NO_LABEL = "Cho ph\u00e9p", "Kh\u00f4ng"
 MR_HEAD = "M\u1edf MR"
@@ -27,10 +32,22 @@ MR_RE = re.compile("^M\u1edf MR .+ \\[(?P<code>m[0-9a-f]{12})\\]\\?")
 
 
 class ShipError(ValueError):
-    pass
+    """git.commit, git.push or git.mr_open refuses; the message starts with the refusal's code where it has one."""
 
 
-def in_force(port, sid):
+def in_force(port: PlanStore, sid: str) -> tuple[Ticket, ApprovedPlan]:
+    """The session's ticket and its plan in force.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id.
+
+    Returns:
+        (the ticket, its plan with its grants).
+
+    Raises:
+        ShipError: no plan in force in the session.
+    """
     ticket = port.ticket(sid) if sid else None
     plan = approved_plan(ticket)
     if plan is None:
@@ -38,8 +55,24 @@ def in_force(port, sid):
     return ticket, {**plan, "grants": port.grants(plan)}
 
 
-def git_commit(port, sid, files, message, judge):
-    """Commit the named files (paths from the plan's root) of the session's plan."""
+def git_commit(port: PlanStore, sid: str, files: list[str], message: Optional[str], judge: CommitJudge) -> str:
+    """Commit the named files (paths from the plan's root) of the session's plan.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id.
+        files: the files to commit, from the plan's root (never ., a folder or outside it).
+        message: the commit message.
+        judge: judge(repo, files, message) -> the rules' verdict on the commit.
+
+    Returns:
+        The text for the model: "Committed <sha> (<files>). ..."; the commit is noted for step_done.
+
+    Raises:
+        ShipError: bad files or message, no plan, a protected branch, a file outside the plan, a code file no green
+            verify saw, or a rule stops it.
+        GitError: git fails while committing.
+    """
     if not isinstance(files, list) or not files or not all(isinstance(f, str) and f.strip() for f in files):
         raise ShipError("files is a list of paths from the plan's root")
     text = str(message or "").strip()
@@ -73,7 +106,20 @@ def git_commit(port, sid, files, message, judge):
     return f"Committed {sha[:12]} ({', '.join(rels)}). The step does not move: call step_done to end it."
 
 
-def git_push(port, sid, judge):
+def git_push(port: PlanStore, sid: str, judge: GitJudge) -> str:
+    """Push the branch of the session's unit plan to origin.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id whose plan is pushed.
+        judge: judge(repo, words) -> the rules' verdict on `git <words>` in repo.
+
+    Returns:
+        The text for the model: "Pushed <branch> (<sha>) to origin." plus git's output.
+
+    Raises:
+        ShipError: not in deliver, the home repo, a protected branch, a rule stops it, or git fails.
+    """
     ticket, plan = in_force(port, sid)
     repo = top(plan["root"])
     if not repo:
@@ -95,11 +141,42 @@ def git_push(port, sid, judge):
     return f"Pushed {branch} ({head(repo)[:12]}) to origin.\n{out.strip()[-1000:]}"
 
 
-def mr_code(repo, branch, target, title, description):
+def mr_code(repo: str, branch: str, target: str, title: str, description: str) -> str:
+    """The code of exactly one merge request text.
+
+    Args:
+        repo: the repository's root.
+        branch: the source branch.
+        target: the target branch.
+        title: the merge request's title.
+        description: its description.
+
+    Returns:
+        "m" and 12 hex characters of the sha256 of all five.
+    """
     return "m" + hashlib.sha256(json.dumps([str(repo), branch, target, title, description]).encode()).hexdigest()[:12]
 
 
-def mr_open(port, sid, title, description, target, banned=()):
+def mr_open(port: PlanStore, sid: str, title: Optional[str], description: Optional[str], target: str,
+            banned: Iterable[str] = ()) -> str:
+    """Open the merge request of the session's pushed plan branch, once the user allowed exactly its text.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id.
+        title: the merge request's title, one line of at most 200 characters.
+        description: its description.
+        target: the branch to merge into.
+        banned: the project's banned words.
+
+    Returns:
+        The text for the model: the form question to ask when the one-use pass is missing, else
+        "Merge request !<iid> opened: <url>".
+
+    Raises:
+        ShipError: no plan, a bad title or description, an AI mark or banned word, the branch not pushed, or GitLab
+            fails.
+    """
     ticket, plan = in_force(port, sid)
     repo = top(plan["root"])
     title, description = str(title or "").strip(), str(description or "").strip()
@@ -130,8 +207,16 @@ def mr_open(port, sid, title, description, target, banned=()):
     return f"Merge request !{mr.get('iid')} opened: {mr.get('web_url')}"
 
 
-def mr_accepts(port, answers):
-    """Keep the user's Yes to a merge request form as a one-use pass of exactly that text (its code)."""
+def mr_accepts(port: PlanStore, answers: dict[str, str]) -> list[str]:
+    """Keep the user's Yes to a merge request form as a one-use pass of exactly that text (its code).
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        answers: {form question: the label the user chose} of an AskUserQuestion call.
+
+    Returns:
+        One GATE note per merge request question answered Cho ph\u00e9p; [] when none was.
+    """
     notes = []
     for q, label in (answers or {}).items():
         m = MR_RE.match(str(q))
@@ -142,7 +227,20 @@ def mr_accepts(port, answers):
     return notes
 
 
-def audit(port, sid, ticket, kind, repo, branch, sha, remote_ref=None):
+def audit(port: PlanStore, sid: str, ticket: Ticket, kind: str, repo: str, branch: str, sha: Optional[str],
+          remote_ref: Optional[str] = None) -> None:
+    """Keep a push or a merge request in pl_git_audit (a chained row).
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id.
+        ticket: the ticket of the plan.
+        kind: "push" or "mr".
+        repo: the repository's root.
+        branch: the local branch.
+        sha: the commit pushed (HEAD).
+        remote_ref: the remote ref, or the merge request's URL; None for the branch.
+    """
     port.write(lambda con, rec: rec.insert(con, "pl_git_audit", {
         "uid": uuid.uuid4().hex, "sid": sid, "kind": kind, "tickets": json.dumps([ticket["id"]]), "repo": repo,
         "local_ref": branch, "base": ticket["plan"].get("base"), "source": "mcp", "sha": sha, "remote": "origin",

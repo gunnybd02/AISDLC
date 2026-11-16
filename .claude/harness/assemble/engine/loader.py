@@ -4,11 +4,14 @@ The actions of mcp are read from their own files (mcp/actions/*.py): each holds 
 ACTIONS = [("block.name", "Class"), ...] naming classes it defines (a block is only a name prefix, and a file may hold
 several); action_files() reads them without importing, actions() imports one file's.
 This is the one module allowed to import dynamically (imports_net)."""
+from __future__ import annotations
+
 import ast
 import importlib
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Optional
 
 KINDS = {"hooks": ("hook", "translator"), "mcp": ("server", "tool", "source", "table"),
          "gear": ("translator", "detector", "rule")}
@@ -34,31 +37,70 @@ class Item:
 
 
 class LoaderError(Exception):
-    def __init__(self, problems):
+    """The indexes or action files are not plain declarations; problems says how, one line each."""
+
+    def __init__(self, problems: list[str]) -> None:
+        """Keep the problems; the message is them, one per line.
+
+        Args:
+            problems: what is wrong, one line each.
+        """
         super().__init__("\n".join(problems))
         self.problems = problems
 
 
 class Loader:
-    def __init__(self, claude_dir):
+    """The items of the blocks and the action files of mcp, read from the code folder without importing them."""
+
+    def __init__(self, claude_dir: str | Path) -> None:
+        """Keep the code folder read.
+
+        Args:
+            claude_dir: the .claude folder of the code (a release, or the work tree).
+        """
         self.root = Path(claude_dir)
 
-    def problems(self):
+    def problems(self) -> list[str]:
+        """What is wrong with the indexes and the action files.
+
+        Returns:
+            One line per problem; [] when they all declare cleanly.
+        """
         return self.read()[1] + self.read_actions()[1]
 
-    def action_files(self):
+    def action_files(self) -> list[ActionFile]:
+        """What each action file of mcp/actions/ declares.
+
+        Returns:
+            The ActionFiles, by file name.
+
+        Raises:
+            LoaderError: a file does not declare cleanly, or declares an action twice.
+        """
         files, problems = self.read_actions()
         if problems:
             raise LoaderError(problems)
         return files
 
     @staticmethod
-    def actions(action_file):
-        """(block, name, class) of each entry of the file."""
+    def actions(action_file: ActionFile) -> list[tuple[str, str, Any]]:
+        """(block, name, class) of each entry of the file.
+
+        Args:
+            action_file: what the file declares (action_files); its module is imported.
+
+        Returns:
+            (block, name, the object the module holds under the class name: normally an McpAction class).
+        """
         module = importlib.import_module(action_file.module)
         return [(block, name, getattr(module, cls)) for block, name, cls in action_file.entries]
 
-    def read_actions(self):
+    def read_actions(self) -> tuple[list[ActionFile], list[str]]:
+        """The action files of mcp/actions/ (but __init__.py and table.py), read without importing them.
+
+        Returns:
+            (the files that declare cleanly, the problems of the others and of actions declared twice).
+        """
         files, problems, seen = [], [], {}
         folder = self.root.joinpath(*ACTIONS_DIR)
         for path in sorted(folder.glob("*.py")) if folder.is_dir() else []:
@@ -78,8 +120,16 @@ class Loader:
         return files, problems
 
     @staticmethod
-    def action_file(path, rel):
-        """What an action file declares, read from its syntax tree, or why it does not declare it."""
+    def action_file(path: Path, rel: str) -> tuple[Optional[ActionFile], str]:
+        """What an action file declares, read from its syntax tree, or why it does not declare it.
+
+        Args:
+            path: the file.
+            rel: its path from the code folder (harness/mcp/actions/<x>.py), which gives its module.
+
+        Returns:
+            (the ActionFile, "") or (None, why it does not declare cleanly).
+        """
         try:
             body = ast.parse(path.read_text(encoding="utf-8-sig")).body
         except (SyntaxError, UnicodeDecodeError, ValueError) as e:
@@ -107,18 +157,39 @@ class Loader:
             entries.append((m.group(1), m.group(2), cls))
         return ActionFile(rel[:-3].replace("/", "."), tuple(entries)), ""
 
-    def items(self):
+    def items(self) -> list[Item]:
+        """The items of the hooks, mcp and gear indexes.
+
+        Returns:
+            Every Item, block by block, in the order declared.
+
+        Raises:
+            LoaderError: an index is missing or not a plain declaration, or an item is wrong or declared twice.
+        """
         items, problems = self.read()
         if problems:
             raise LoaderError(problems)
         return items
 
     @staticmethod
-    def resolve(item):
+    def resolve(item: Item) -> Any:
+        """The object an item's ref names, its module imported.
+
+        Args:
+            item: the item; its ref is harness.<block>.<module>:<Name>.
+
+        Returns:
+            The object: a class or a function of the block, whatever the item is.
+        """
         module, _, attr = item.ref.partition(":")
         return getattr(importlib.import_module(module), attr)
 
-    def read(self):
+    def read(self) -> tuple[list[Item], list[str]]:
+        """The items of the block indexes, read without importing them.
+
+        Returns:
+            (the items that are right, the problems of the rest).
+        """
         items, problems, seen = [], [], {}
         for block, kinds in KINDS.items():
             rel = f"harness/{block}/__init__.py"
@@ -147,8 +218,15 @@ class Loader:
         return items, problems
 
     @staticmethod
-    def entries_of(text):
-        """The literal list of ITEMS, or why the index is not only a declaration."""
+    def entries_of(text: str) -> tuple[list[Any], str]:
+        """The literal list of ITEMS, or why the index is not only a declaration.
+
+        Args:
+            text: the source of a block's __init__.py.
+
+        Returns:
+            (the entries as written, "") or ([], why); each entry is checked by item_of.
+        """
         only = "an index only declares: a docstring and one literal ITEMS = [...]"
         try:
             body = ast.parse(text).body
@@ -166,7 +244,17 @@ class Loader:
             return [], only
         return entries, ""
 
-    def item_of(self, block, kinds, entry):
+    def item_of(self, block: str, kinds: tuple[str, ...], entry: Any) -> tuple[Optional[Item], str]:
+        """One entry of an index as an Item, or why it is not one.
+
+        Args:
+            block: the block of the index (hooks, mcp, gear).
+            kinds: the kinds that block holds.
+            entry: the entry as written; a dict of exactly kind, name and ref (strings) is right.
+
+        Returns:
+            (the Item, "") or (None, why).
+        """
         if not isinstance(entry, dict) or sorted(entry) != sorted(FIELDS) or not all(isinstance(v, str) for v in entry.values()):
             return None, f"fields are exactly {', '.join(FIELDS)}, each a string"
         item = Item(block, entry["kind"], entry["name"], entry["ref"])
@@ -177,6 +265,15 @@ class Loader:
         return (item, "") if self.ref_ok(block, item.ref) else \
             (None, f"ref '{item.ref}' is not harness.{block}.<module>:<Name> of a file of the block")
 
-    def ref_ok(self, block, ref):
+    def ref_ok(self, block: str, ref: str) -> bool:
+        """Whether a ref is harness.<block>.<module>:<Name> of a file of the block.
+
+        Args:
+            block: the block of the item.
+            ref: the item's ref.
+
+        Returns:
+            True when the ref is so shaped and its module's file exists.
+        """
         m = re.match(rf"^harness\.{block}\.([a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*):[A-Za-z_]\w*$", ref)
         return bool(m) and (self.root / "harness" / block / (m.group(1).replace(".", "/") + ".py")).is_file()

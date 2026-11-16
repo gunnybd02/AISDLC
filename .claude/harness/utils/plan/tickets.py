@@ -7,11 +7,16 @@ its ticket. A ticket runs a plan from its approval to its close:
   step, commits, skips, doneSteps, priorCommits, spentPlan   the work done, and what a superseded ticket carried over
 approved_plan(body) is the one rule for "a plan is in force". The functions take the open sqlite connection of a write
 (or of a read), so a ticket changes in the same transaction as the rows around it."""
+from __future__ import annotations
+
 import itertools
 import json
+import sqlite3
 import time
+from typing import Any, Optional
 
 from harness.utils.contracts import DELIVER, EXECUTE, PHASES, PREPARE
+from harness.utils.shapes import ApprovedPlan, PlanItems, Step, Ticket
 
 OPEN, CLOSED = "open", "closed"
 DELIVERED, ABANDONED, SUPERSEDED = "delivered", "abandoned", "superseded"
@@ -20,11 +25,24 @@ DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
 _count = itertools.count()
 
 
-def now():
+def now() -> int:
+    """The time now in ms.
+
+    Returns:
+        Milliseconds since the epoch.
+    """
     return int(time.time() * 1000)
 
 
-def base36(n):
+def base36(n: int) -> str:
+    """A whole number in base 36 (0-9, a-z).
+
+    Args:
+        n: a number, 0 or more.
+
+    Returns:
+        Its digits, "0" for 0.
+    """
     out = ""
     while True:
         n, r = divmod(n, 36)
@@ -33,30 +51,67 @@ def base36(n):
             return out
 
 
-def new_id():
+def new_id() -> str:
+    """A new ticket id, unique in this process.
+
+    Returns:
+        "t-<the time in ms, base 36>-<a counter>".
+    """
     return f"t-{base36(now())}-{next(_count)}"
 
 
-def blank(sid):
+def blank(sid: str) -> Ticket:
+    """A new ticket of a session: open, in prepare, with no plan and no work.
+
+    Args:
+        sid: the Claude Code session id.
+
+    Returns:
+        The ticket body, not saved.
+    """
     return {"id": new_id(), "sid": sid, "state": OPEN, "phase": PREPARE, "plan": None, "draft": None, "rootId": None,
             "step": 0, "commits": [], "skips": 0, "doneSteps": [], "priorCommits": [], "closeReason": None}
 
 
-def approved_plan(body):
-    """The plan in force under a ticket: open, in execute or deliver, with an ApprovedPlan. None otherwise."""
+def approved_plan(body: Optional[Ticket]) -> Optional[ApprovedPlan]:
+    """The plan in force under a ticket: open, in execute or deliver, with an ApprovedPlan. None otherwise.
+
+    Args:
+        body: a ticket, or None.
+
+    Returns:
+        The ticket's plan when it is in force, else None.
+    """
     if not body or body.get("state") != OPEN or body.get("phase") not in PHASES:
         return None
     plan = body.get("plan")
     return plan if isinstance(plan, dict) and plan.get("type") == APPROVED_PLAN else None
 
 
-def latest(con, sid):
+def latest(con: sqlite3.Connection, sid: str) -> Optional[Ticket]:
+    """The newest ticket of a session.
+
+    Args:
+        con: an open connection to the ledger.
+        sid: the Claude Code session id.
+
+    Returns:
+        The ticket of the highest seq, or None when the session has none.
+    """
     row = con.execute("SELECT body FROM pl_tickets WHERE sid = ? ORDER BY seq DESC LIMIT 1", (sid,)).fetchone()
     return json.loads(row[0]) if row else None
 
 
-def open_with_draft(con, draft):
-    """The open ticket whose plan is the desk plan draft (pd-...), whatever its session."""
+def open_with_draft(con: sqlite3.Connection, draft: str) -> Optional[Ticket]:
+    """The open ticket whose plan is the desk plan draft (pd-...), whatever its session.
+
+    Args:
+        con: an open connection to the ledger.
+        draft: the desk id (pd-...).
+
+    Returns:
+        The newest open ticket of that draft with a plan in force, or None.
+    """
     for (body,) in con.execute("SELECT body FROM pl_tickets WHERE state = ? ORDER BY seq DESC", (OPEN,)).fetchall():
         ticket = json.loads(body)
         if ticket.get("draft") == draft and approved_plan(ticket):
@@ -64,8 +119,16 @@ def open_with_draft(con, draft):
     return None
 
 
-def save(con, body):
-    """Write the ticket: its own row changes in place; a new ticket takes the next seq of its session."""
+def save(con: sqlite3.Connection, body: Ticket) -> Ticket:
+    """Write the ticket: its own row changes in place; a new ticket takes the next seq of its session.
+
+    Args:
+        con: the connection of the transaction.
+        body: the ticket; its id, sid and state are needed.
+
+    Returns:
+        The same body.
+    """
     row = con.execute("SELECT seq FROM pl_tickets WHERE id = ?", (body["id"],)).fetchone()
     seq = row[0] if row else 1 + (con.execute("SELECT MAX(seq) FROM pl_tickets WHERE sid = ?", (body["sid"],))
                                   .fetchone()[0] or 0)
@@ -75,12 +138,21 @@ def save(con, body):
     return body
 
 
-def open_plan(con, sid, plan):
+def open_plan(con: sqlite3.Connection, sid: str, plan: dict[str, Any]) -> Ticket:
     """The ticket of a plan the user just approved in session sid:
     - an open ticket with no plan is reused;
     - an open ticket of the same desk plan (a revision) keeps its id, rootId and work, and takes the new plan;
     - an open ticket of another plan closes superseded, and the new ticket carries its done steps and commits;
-    - else a new ticket. The ticket is in execute."""
+    - else a new ticket. The ticket is in execute.
+
+    Args:
+        con: the connection of the transaction.
+        sid: the Claude Code session id.
+        plan: the plan's items with id (plan number), plan_id, rev, base and sha; type is set here.
+
+    Returns:
+        The ticket saved, in execute, holding the plan.
+    """
     plan = {**plan, "type": APPROVED_PLAN}
     old = latest(con, sid)
     if old and old["state"] == OPEN and old.get("plan") and old.get("draft") == plan["plan_id"]:
@@ -98,29 +170,69 @@ def open_plan(con, sid, plan):
                       "freshApproval": True})
 
 
-def deliver(con, ticket, sha):
-    """The plan's change is committed: its last step is done. A home plan closes delivered at once (no form)."""
+def deliver(con: sqlite3.Connection, ticket: Ticket, sha: str) -> Ticket:
+    """The plan's change is committed: its last step is done. A home plan closes delivered at once (no form).
+
+    Args:
+        con: the connection of the transaction.
+        ticket: the open ticket of the plan.
+        sha: the commit that delivers it.
+
+    Returns:
+        The ticket saved: closed delivered, with the commit added.
+    """
     done = {**ticket, "commits": ticket["commits"] + [sha], "phase": DELIVER}
     return save(con, {**done, "state": CLOSED, "closeReason": DELIVERED})
 
 
-def close(con, ticket, reason):
+def close(con: sqlite3.Connection, ticket: Ticket, reason: str) -> Ticket:
+    """Close a ticket.
+
+    Args:
+        con: the connection of the transaction.
+        ticket: the ticket.
+        reason: its closeReason (delivered, abandoned, superseded).
+
+    Returns:
+        The ticket saved, closed.
+    """
     return save(con, {**ticket, "state": CLOSED, "closeReason": reason})
 
 
-def steps_of(plan):
-    """The plan's steps; a plan with none is one step of all its files and tests."""
+def steps_of(plan: PlanItems) -> list[Step]:
+    """The plan's steps; a plan with none is one step of all its files and tests.
+
+    Args:
+        plan: a plan's items (an ApprovedPlan too).
+
+    Returns:
+        Its steps, or [one step of its commit, files and tests, with no points].
+    """
     return plan.get("steps") or [{"commit": plan.get("commit") or "", "files": plan.get("files", []),
                                   "tests": plan.get("tests", []), "points": []}]
 
 
-def move(ticket):
+def move(ticket: Ticket) -> Ticket:
     """After the current step's commit or skip: the next step opens in execute; after the last, the ticket is in
-    deliver."""
+    deliver.
+
+    Args:
+        ticket: a ticket with a plan.
+
+    Returns:
+        A new body (not saved): step + 1 in execute, or the same step in deliver.
+    """
     last = ticket["step"] >= len(steps_of(ticket["plan"])) - 1
     return {**ticket, "phase": DELIVER} if last else {**ticket, "step": ticket["step"] + 1, "phase": EXECUTE}
 
 
-def back_to_execute(ticket):
-    """A write to a plan file while the ticket is in deliver: the change goes back to execute, for a fix commit."""
+def back_to_execute(ticket: Ticket) -> Ticket:
+    """A write to a plan file while the ticket is in deliver: the change goes back to execute, for a fix commit.
+
+    Args:
+        ticket: a ticket in deliver.
+
+    Returns:
+        A new body (not saved) in execute, backs counted up and backTold False.
+    """
     return {**ticket, "phase": EXECUTE, "backs": ticket.get("backs", 0) + 1, "backTold": False}

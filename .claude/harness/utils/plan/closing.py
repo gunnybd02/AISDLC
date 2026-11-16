@@ -2,32 +2,67 @@
 parent is the commit the repository stood on at the approval, and what it changes must be files of the plan, each with
 the content the plan's passing verify saw. A HEAD that moved any other way is not the plan's commit: nothing is
 delivered, and the model is told."""
+from __future__ import annotations
+
 import os
 import re
+from collections.abc import Sequence
+from typing import Optional, TypeVar
 
 from harness.utils.git.facts import committed, head, parent, top
 from harness.utils.git.run import GitError, git
 from harness.utils.plan.files import allows, is_pattern
 from harness.utils.plan.tickets import approved_plan
+from harness.utils.shapes import ApprovedPlan, GitCommit, PlanStore, Ticket
+
+V = TypeVar("V")
 
 DELIVERED = "GATE: commit {sha} of plan {plan} is kept; the plan is delivered. A new change needs a new plan."
 NOT_DELIVERED = "GATE: HEAD {sha} is not the verified change of plan {plan} ({why}); the plan is not delivered."
 FILE_MODES = ("100644", "100755")  # a plain file, as the verify saw it; not a link, a submodule or a type change
 
 
-def git_path(path):
-    """A path as git names it in a tree: forward slashes, no . or .., case kept (a tree is case-sensitive)."""
+def git_path(path: str) -> str:
+    """A path as git names it in a tree: forward slashes, no . or .., case kept (a tree is case-sensitive).
+
+    Args:
+        path: a relative path.
+
+    Returns:
+        The path normalised, with forward slashes.
+    """
     return os.path.normpath(path).replace("\\", "/")
 
 
-def from_repo(repo, root, paths):
-    """{path from the repository root: value} for {path from the plan's root: value}."""
+def from_repo(repo: str, root: str, paths: dict[str, V]) -> dict[str, V]:
+    """{path from the repository root: value} for {path from the plan's root: value}.
+
+    Args:
+        repo: the repository's root.
+        root: the plan's root (in the repository).
+        paths: {path from the plan's root: value} (a receipt's files).
+
+    Returns:
+        The same values keyed by git_path from the repository root.
+    """
     prefix = os.path.relpath(os.path.realpath(root), os.path.realpath(repo))
     return {git_path(os.path.join(prefix, p)): v for p, v in paths.items()}
 
 
-def delivery(port, session, commit, plan):
-    """The note of a git command in the plan's own repository: delivered, not delivered (why), or nothing."""
+def delivery(port: PlanStore, session: str, commit: Optional[GitCommit],
+             plan: Optional[ApprovedPlan]) -> list[str]:
+    """The note of a git command in the plan's own repository: delivered, not delivered (why), or nothing.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        session: the Claude Code session id of the hook call.
+        commit: the git_commit fact of the shell line ({repo, unsafe}), or None when it made no commit.
+        plan: the session's approved plan, or None.
+
+    Returns:
+        [DELIVERED] when HEAD is the plan's verified change (it is kept and the ticket closes), [NOT_DELIVERED] with
+        why when it is another new commit, else [] (no commit, a plan of steps, HEAD not moved or already kept).
+    """
     if plan and plan.get("steps"):  # a plan of steps is committed by step_done only, step by step
         return []
     repo = top(plan["root"]) if commit and plan else None
@@ -41,8 +76,21 @@ def delivery(port, session, commit, plan):
     return [DELIVERED.format(sha=sha[:12], plan=plan["plan_id"])]
 
 
-def not_the_plans(port, repo, sha, plan):
-    """Why the commit sha is not the plan's verified change, or ""."""
+def not_the_plans(port: PlanStore, repo: str, sha: str, plan: ApprovedPlan) -> str:
+    """Why the commit sha is not the plan's verified change, or "".
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        repo: the repository's root.
+        sha: the new HEAD.
+        plan: the approved plan; its base, root and receipt are read.
+
+    Returns:
+        The reason in words, or "" when the commit is exactly what the passing verify saw.
+
+    Raises:
+        GitError: git diff fails.
+    """
     if not plan.get("base"):
         return "the repository had no commit at the approval: make a first commit, then a new plan"
     if parent(repo, sha) != plan["base"]:
@@ -76,8 +124,17 @@ KEPT = "GATE: the user keeps plan {draft} open ({label})."
 LONGEST = 200
 
 
-def close_facts(port, ticket, plan):
-    """The lines of the close form, from the ledger and git only."""
+def close_facts(port: PlanStore, ticket: Ticket, plan: ApprovedPlan) -> list[str]:
+    """The lines of the close form, from the ledger and git only.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        ticket: the open ticket; its commits are read.
+        plan: its plan with its grants.
+
+    Returns:
+        "Commit: ...", "Files vs plan: ...", "Verify: ..." and, when some behaviours were skipped, "SKIPPED: ...".
+    """
     repo = top(plan["root"])
     changed = []
     for sha in ticket["commits"]:
@@ -95,15 +152,39 @@ def close_facts(port, ticket, plan):
     return lines + ([f"SKIPPED: {', '.join(skipped)}"] if skipped else [])
 
 
-def git_names(repo, sha):
+def git_names(repo: str, sha: str) -> list[str]:
+    """The paths a commit changes.
+
+    Args:
+        repo: the repository's root.
+        sha: the commit.
+
+    Returns:
+        The paths from the repository root; [] when git fails.
+    """
     try:
         return [n for n in git(repo, "show", "--name-only", "--format=", sha).splitlines() if n.strip()]
     except GitError:
         return []
 
 
-def close_question(port, sid, summary=None, exceptions=None):
-    """What the model asks to close the session's plan; raises ValueError with why it cannot be asked."""
+def close_question(port: PlanStore, sid: str, summary: Optional[str] = None,
+                   exceptions: Optional[Sequence[str]] = None) -> str:
+    """What the model asks to close the session's plan; raises ValueError with why it cannot be asked.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id.
+        summary: one line the model adds, or None.
+        exceptions: lines of what went otherwise than planned, or None.
+
+    Returns:
+        The text for the model: the close form question with its facts and its three options.
+
+    Raises:
+        ValueError: a summary or exception is not one line of at most LONGEST characters, no open ticket, or no plan
+            in force.
+    """
     for text in [summary] + list(exceptions or []):
         if text is not None and (not isinstance(text, str) or "\n" in text or len(text) > LONGEST):
             raise ValueError(f"a summary or an exception is one line of at most {LONGEST} characters")
@@ -120,8 +201,17 @@ def close_question(port, sid, summary=None, exceptions=None):
             f"\"{ABANDON_LABEL}\", \"{KEEP_LABEL}\". Never fill in the answer.")
 
 
-def close_answers(port, sid, answers):
-    """Close the session's ticket on the user's answer to its close form; the notes for the model."""
+def close_answers(port: PlanStore, sid: str, answers: dict[str, str]) -> list[str]:
+    """Close the session's ticket on the user's answer to its close form; the notes for the model.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id.
+        answers: {form question: the label the user chose} of an AskUserQuestion call.
+
+    Returns:
+        A CLOSED note per close question answered delivered or abandoned, a KEPT note for any other answer.
+    """
     notes = []
     for q, label in (answers or {}).items():
         m = CLOSE_RE.match(str(q))
