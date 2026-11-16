@@ -14,7 +14,8 @@ def found(tool, given=None, kind="PreToolUse"):
 
 class DriveTest(unittest.TestCase):
     def test_trashing_a_drive_file_asks_the_user(self):
-        for tool in ("mcp__Google_Drive__trash_file", "mcp__gdrive__delete_file", "mcp__claude_ai_Google_Drive__trash_file"):
+        for tool in ("mcp__Google_Drive__trash_file", "mcp__gdrive__delete_file", "mcp__claude_ai_Google_Drive__trash_file",
+                     "mcp__caaed075-fab9-4852-ba97-a638e8eac9e4__trash_file"):  # a connector named by its id
             with self.subTest(tool=tool):
                 self.assertEqual(found(tool, {"fileId": "f1"}), [("drive.remove", "f1")])
         self.assertEqual(Decide.load(CLAUDE_DIR).rules["drive.remove"]["verdict"], "ask")
@@ -23,6 +24,9 @@ class DriveTest(unittest.TestCase):
         self.assertEqual(found("mcp__Google_Drive__update_file", {"fileId": "f1", "title": "x.db"}), [("drive.move", "f1")])
         self.assertEqual(found("mcp__Google_Drive__update_file", {"fileId": "f1", "parentId": "p"}), [("drive.move", "f1")])
         self.assertEqual(found("mcp__Google_Drive__update_file", {"fileId": "f1", "starred": True}), [])
+        by_id = "mcp__caaed075-fab9-4852-ba97-a638e8eac9e4__update_file"  # a connector named by its id
+        self.assertEqual(found(by_id, {"fileId": "f1", "title": "x.db"}), [("drive.move", "f1")])
+        self.assertEqual(found(by_id, {"fileId": "f1", "description": "d"}), [])
         self.assertEqual(Decide.load(CLAUDE_DIR).rules["drive.move"]["verdict"], "ask")
 
     def test_uploading_reading_and_other_tools_are_free(self):
@@ -31,6 +35,9 @@ class DriveTest(unittest.TestCase):
                             ("mcp__Google_Drive__download_file_content", {"fileId": "f1"}),
                             ("mcp__harness__run", {"block": "ledger", "action": "export"}),
                             ("mcp__Google_Docs__update_doc", {"title": "x"}), ("Bash", {"command": "rm drive"}),
+                            ("mcp__caaed075-fab9-4852-ba97-a638e8eac9e4__create_file", {"title": "a.db"}),
+                            ("mcp__files__delete_file", {"path": "/tmp/x"}),  # another server's own files
+                            ("mcp__1a59c906-04da-521d-bda7-7f71b9f9e01c__delete", {"id": "d1"}),
                             ("trash_file", {"fileId": "f1"})):
             with self.subTest(tool=tool):
                 self.assertEqual(found(tool, given), [])

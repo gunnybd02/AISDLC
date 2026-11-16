@@ -22,7 +22,8 @@ One upload covers everything before it: at most one per checkpoint, never one pe
 1. `run("ledger", "export", {"reason": "<reason>"})`. The harness keeps the copy's record in the ledger, copies the
    whole ledger into `.harness-export/` of the folder the call is made from (git ignores it), checks that its schema
    is exactly the harness's, and answers with one Drive call.
-2. Make that call with the Google Drive tool `create_file`, with exactly the values of the answer:
+2. Make that call with the Google Drive tool `create_file` (its name may show the connector's id in place of
+   `Google_Drive`), with exactly the values of the answer:
    | Field | Value |
    |---|---|
    | `title` | the name the answer gives |

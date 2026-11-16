@@ -5,7 +5,7 @@ kept as rows of pl_notes, so the schema stays the pinned one and every copy carr
   store.export    key = the copy's number, target = its file name, text = who and when (ledger, seq, session, reason,
                   at, commit, repo, branch, harness, mark); written before the copy is made, so the copy holds it
   store.uploaded  key = the copy's number, target = its file name, text = the Drive file's id; written when the
-                  hook sees the Drive tool answer with that file
+                  hook sees an MCP tool's create_file answer with that file
   store.asked     key = the mark a turn was held for, so a turn is held once for the same work
 
 The mark counts what must not be lost: commits, plan events (approved, delivered, dropped), pushes and merge requests.
@@ -105,10 +105,12 @@ def asked(port, sid):
 
 
 def uploaded(port, event):
-    """Keep that the store holds a copy, when a Drive tool's create_file answered with a file of a copy's name; the
-    note for the model. Anything else (another file, an answer without the file) keeps nothing."""
+    """Keep that the store holds a copy, when an MCP tool's create_file answered with a file of a copy's name; the
+    note for the model. Anything else (another file, an answer without the file) keeps nothing. The server is not
+    told by its name: Claude Code names a connector's tools by its name (mcp__Google_Drive__create_file) or by an id
+    (mcp__caaed075-...__create_file); a copy's name is its own, so the name of the file is what tells."""
     parts = str(event.tool or "").split("__")
-    if len(parts) < 3 or parts[0] != "mcp" or "drive" not in parts[1].lower() or parts[-1] != "create_file":
+    if len(parts) < 3 or parts[0] != "mcp" or parts[-1] != "create_file":
         return []
     title = str((event.input or {}).get("title") or "")
     made = port.rows("SELECT key FROM pl_notes WHERE kind = ? AND target = ?", (EXPORT, title)) if title else []
