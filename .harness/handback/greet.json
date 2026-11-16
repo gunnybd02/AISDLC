@@ -1,0 +1,78 @@
+{
+ "at": 1794823096230,
+ "base": "cd1653f27f372db7b06d29009cee29532d2ff782",
+ "behaviours": {
+  "p1.greet.ac1": {
+   "status": "active",
+   "tests": [
+    "orch-play/test_greet.py"
+   ],
+   "what": "AC1: greet('Ann') returns 'Good day, Ann.'"
+  },
+  "p1.greet.ac2": {
+   "status": "active",
+   "tests": [
+    "orch-play/test_greet.py"
+   ],
+   "what": "AC2: greet with an empty name raises ValueError"
+  }
+ },
+ "branch": "orch/p1/greet",
+ "cardPlan": 1,
+ "commits": [
+  {
+   "files": [
+    "orch-play/greet.py",
+    "orch-play/test_greet.py"
+   ],
+   "sha": "410151b28e69ca74583e470ea59e9d7652563f45"
+  }
+ ],
+ "draft": "pd-mwj3adri-4c8d09",
+ "name": "greet",
+ "parent": "session_01EXL6xY5uGx26YMuQyXbhjh",
+ "plan": 1,
+ "refused": [],
+ "report": {
+  "added": [],
+  "changed": [
+   "orch-play/greet.py: new greet(name) returning 'Good day, <name>.' and raising ValueError on an empty name"
+  ],
+  "checked": [
+   "AC1 via test_ac1_greets_by_name",
+   "AC2 via test_ac2_empty_name_raises",
+   "verify green: 2 tests, 2 behaviours proven"
+  ],
+  "faults": [],
+  "notChecked": [
+   "None and non-string names: they are not in the card; None raises ValueError, other types are formatted as-is"
+  ],
+  "risks": [
+   "A whitespace-only name such as ' ' is accepted, since the card only covers an empty name"
+  ],
+  "testsChanged": [
+   {
+    "test": "orch-play/test_greet.py",
+    "why": "new file, one test per AC"
+   }
+  ]
+ },
+ "uncommitted": [],
+ "unit": {
+  "base": "orch-sandbox",
+  "name": "sandbox",
+  "path": ".",
+  "repo": "https://github.com/gunnybd02/AISDLC",
+  "verify": [
+   "{python}",
+   "-m",
+   "unittest",
+   "discover",
+   "-s",
+   "orch-play",
+   "-t",
+   "orch-play"
+  ]
+ },
+ "verify": "ok"
+}
