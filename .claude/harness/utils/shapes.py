@@ -15,6 +15,7 @@ types and their documentation only.
 | Behaviour | an entry of the behaviour registry of a plan | utils/plan/grants.py |
 | Receipt | the result of one verify run | utils/plan/verify.py |
 | StoreRecord, ExportCopy, SavedCopy | a ledger copy for the store, and what the store holds | utils/ledger/store.py |
+| GitCommit, GitFacts | the facts git_commit and git_view of a hook call | gear/translate/git.py, assemble |
 | GitJudge, CommitJudge | the rules' verdict on a git command, on a commit | assemble/engine/wire_mcp.py |
 | PlanStore | the ledger port; its parts and their methods are in shapes_store.py | assemble/engine/ports.py |
 """
@@ -217,6 +218,59 @@ class SavedCopy(TypedDict):
     file_id: str
     mark: list[int]
     at: int
+
+
+class GitCommit(TypedDict):
+    """A shell line that may commit (the fact git_commit, gear/translate/git.py): repo the repository (forward
+    slashes), unsafe why the gate cannot see the whole commit ("" for one plain safe commit)."""
+    repo: str
+    unsafe: str
+
+
+class GitFacts(Protocol):
+    """The git facts of a hook call (the fact git_view; assemble/engine/ports.py GitView), each read only when called."""
+
+    def branch_of(self, repo: str) -> str:
+        """The branch the repository is on.
+
+        Args:
+            repo: the repository's folder.
+
+        Returns:
+            The branch name; "" when repo is not a folder.
+        """
+
+    def protected(self, branch: str) -> bool:
+        """Whether the branch is protected (project.json protected; main and master by default).
+
+        Args:
+            branch: a branch name.
+
+        Returns:
+            True for a protected branch.
+        """
+
+    def unpushed(self, repo: str, remote: str, source: str) -> list[str]:
+        """The files of the commits a push of source to remote would send.
+
+        Args:
+            repo: the repository's folder.
+            remote: the remote's name or URL.
+            source: the local ref the push sends.
+
+        Returns:
+            The paths those commits change.
+        """
+
+    def is_home(self, repo: str) -> bool:
+        """Whether repo is the repository that holds the harness.
+
+        Args:
+            repo: a repository's folder.
+
+        Returns:
+            True for the home.
+        """
 
 
 class GitJudge(Protocol):

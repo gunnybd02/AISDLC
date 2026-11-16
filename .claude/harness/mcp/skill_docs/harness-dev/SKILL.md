@@ -40,6 +40,11 @@ session: a change there is the user's.
 ## 3. Build
 Write the test first: `harness/tests/<block>/test_<module>.py`, named after the module it tests.
 
+Every function says what it takes and gives (the `hints` net): a type hint on each parameter and return, and a
+docstring with a first line, `Args:`, `Returns:` and `Raises:`. Name the data with `utils/shapes.py` (`ApprovedPlan`,
+`Ticket`, `Receipt`, `PlanStore`...); a dict that recurs gets a new name there. Start each module with
+`from __future__ import annotations`.
+
 **A rule** (the harness refuses, asks about or sees a kind of tool call)
 1. The fact, when no translator gives it yet: a class on `Translator` (`utils/contracts.py`) in
    `gear/translate/`. `translate(event)` returns a dict of facts. Each fact has one giver.
@@ -100,6 +105,7 @@ From `.claude/`: `python3 -m unittest discover -s . -t .` passes and `python3 ha
 | `verdict` | the verdict words appear only in `gear/decide/arbiter.py` and `utils/contracts.py` |
 | `config` | `project.json` is named only in `assemble/engine/config.py` |
 | `bridges`, `entry` | no file only passes names on; an entry script imports only the standard library at load time |
+| `hints` | every parameter and return has a type hint; every function and method a docstring |
 
 ## 5. Pull request
 1. Commit each step with `step_done` (the `work` skill).

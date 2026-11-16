@@ -17,10 +17,10 @@ The git facts it needs come from the port's git_view (the branch a repository is
 home), read only when a command needs them."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional, Protocol
+from typing import TYPE_CHECKING, Optional
 
 from harness.utils.contracts import Detector, Event, Finding
-from harness.utils.shapes import Facts
+from harness.utils.shapes import Facts, GitFacts
 
 if TYPE_CHECKING:
     from harness.gear.translate.git_cli import GitAction
@@ -31,26 +31,6 @@ BRANCH_WRITES = {"merge", "rebase", "cherry-pick", "revert", "am", "pull", "rese
 BRANCH_CHANGES = {"-d", "-D", "--delete", "-f", "--force", "-m", "-M", "--move"}
 PUSH_VALUES = {"--repo", "-o", "--push-option", "--receive-pack", "--exec"}
 FORCE = {"--force", "--force-with-lease", "--force-if-includes", "--mirror"}
-
-
-class GitView(Protocol):
-    """The git facts of the port (the fact git_view; assemble/engine/ports.py GitView), each read only when called."""
-
-    def branch_of(self, repo: str) -> str:
-        """The branch the repository is on ("" when it is not a folder)."""
-        ...
-
-    def protected(self, branch: str) -> bool:
-        """Whether the branch is protected (project.json protected, default main and master)."""
-        ...
-
-    def unpushed(self, repo: str, remote: str, source: str) -> list[str]:
-        """The files of the commits a push of source to remote would send."""
-        ...
-
-    def is_home(self, repo: str) -> bool:
-        """Whether repo is the repository that holds the harness."""
-        ...
 
 
 def agent_file(path: str) -> bool:
@@ -119,7 +99,7 @@ class GitRules(Detector):
                 out += self.check(action, view)
         return out
 
-    def check(self, action: GitAction, view: Optional[GitView]) -> list[Finding]:
+    def check(self, action: GitAction, view: Optional[GitFacts]) -> list[Finding]:
         """The findings of one git command; none unless it touches a protected branch.
 
         Args:
@@ -157,7 +137,7 @@ class GitRules(Detector):
         return out
 
     @staticmethod
-    def touches_protected(sub: str, args: list[str], repo: str, view: GitView) -> bool:
+    def touches_protected(sub: str, args: list[str], repo: str, view: GitFacts) -> bool:
         """Whether a git command touches a protected branch: the repository is on one, a push names one (or --all,
         --mirror), or a branch command names one.
 
@@ -179,7 +159,7 @@ class GitRules(Detector):
                                                                     for d in dsts)
         return sub == "branch" and any(not a.startswith("-") and view.protected(a) for a in args)
 
-    def push(self, args: list[str], repo: str, view: Optional[GitView]) -> list[Finding]:
+    def push(self, args: list[str], repo: str, view: Optional[GitFacts]) -> list[Finding]:
         """The findings of one git push.
 
         Args:

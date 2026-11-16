@@ -21,11 +21,11 @@ from __future__ import annotations
 
 import os
 import re
-from typing import Optional, TypedDict
+from typing import Optional
 
 from harness.gear.translate.git_cli import git_actions
 from harness.utils.contracts import Event, Translator
-from harness.utils.shapes import Facts
+from harness.utils.shapes import Facts, GitCommit
 from harness.utils.shell.words import program, read as read_shell
 
 GIT = re.compile(r"(?<![\w.-])git(?:\.exe)?(?![\w.-])", re.I)
@@ -39,13 +39,6 @@ VALUE_SHORT = set("mF")
 SAFE_LONG = {"--quiet", "--signoff", "--verbose", "--allow-empty"}
 VALUE_LONG = {"--message", "--file"}
 SHELL_TOOLS = {"Bash": "bash", "PowerShell": "powershell", "HarnessGit": "bash"}  # HarnessGit: the git block's own
-
-
-class GitCommit(TypedDict):
-    """A shell line that may commit (the fact git_commit): repo the repository (forward slashes), unsafe why the
-    gate cannot see the whole commit ("" for one plain safe commit)."""
-    repo: str
-    unsafe: str
 
 
 def commit_flags(args: list[str]) -> str:

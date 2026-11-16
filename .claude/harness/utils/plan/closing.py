@@ -13,7 +13,7 @@ from harness.utils.git.facts import committed, head, parent, top
 from harness.utils.git.run import GitError, git
 from harness.utils.plan.files import allows, is_pattern
 from harness.utils.plan.tickets import approved_plan
-from harness.utils.shapes import ApprovedPlan, PlanStore, Ticket
+from harness.utils.shapes import ApprovedPlan, GitCommit, PlanStore, Ticket
 
 V = TypeVar("V")
 
@@ -49,7 +49,7 @@ def from_repo(repo: str, root: str, paths: dict[str, V]) -> dict[str, V]:
     return {git_path(os.path.join(prefix, p)): v for p, v in paths.items()}
 
 
-def delivery(port: PlanStore, session: str, commit: Optional[dict[str, str]],
+def delivery(port: PlanStore, session: str, commit: Optional[GitCommit],
              plan: Optional[ApprovedPlan]) -> list[str]:
     """The note of a git command in the plan's own repository: delivered, not delivered (why), or nothing.
 

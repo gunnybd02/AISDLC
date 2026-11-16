@@ -45,8 +45,9 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #22 | The ledger's copy goes to `.harness-export/` of the session's working folder (git ignores it): the Drive tool reads a file by reference only from a session's own folders, a temp folder is refused (found by the live check of #21) |
 | #23 | The store's lifecycle (`utils/ledger/store.py`, rows of `pl_notes`): a copy has a record inside the ledger and a name that say ledger, number, session, reason, time and commit; a copy is due at a checkpoint (after a push or merge request, when a plan closes, or when the end of a turn is held: `store.unsaved`, once for the same work), no longer after each commit; the hook keeps that the store holds a copy when the Drive tool answers with its file; `run("ledger", "store_status")`. Also mends `git.commit`, whose answer failed after the commit was made (a name not imported, from #21) |
 | #24 | A Drive call is known by what it is, not by its server's name: a cloud session can name a connector's tools by an id (`mcp__caaed075-...__create_file`), so the upload was not kept and the Drive guard did not see a trash or a move (found by the live check of #23) |
+| #25 | Every function says what it takes and gives: type hints on all 555 functions, docstrings with Args, Returns and Raises; the data named in `utils/shapes.py` (`ApprovedPlan`, `Ticket`, `Receipt`, `PlanStore`...); the `hints` net keeps it. Files split to stay under 400 lines: `ports.py` (LedgerCore, DeskPort, TicketPort), `desk.py` (`item_checks.py`), `place_ops.py` (`write_ops.py`, `cmdlets.py`), `scan.py` (`command.py`, `dialects.py`) |
 
-395 tests pass (1 skipped, Windows only); doctor: 0 errors.
+399 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 ## The cloud, as it runs now
 
