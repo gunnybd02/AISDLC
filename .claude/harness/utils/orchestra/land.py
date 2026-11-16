@@ -9,6 +9,7 @@ import fnmatch
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -23,6 +24,7 @@ from harness.utils.orchestra.review import ReviewError, now, set_entry
 from harness.utils.shapes import Card, PlanStore, Ticket
 
 MERGED = "merged"
+TRIES, WAIT = 10, 3  # how often and how long apart land asks GitHub whether a pull request can merge
 
 
 def covers(card: Card, path: str) -> bool:
@@ -78,6 +80,25 @@ def conflicts(repo: str, base: str, ref: str) -> list[str]:
     return [line.strip() for line in p.stdout.splitlines()[1:] if line.strip()][:20]
 
 
+def merges_cleanly(repo: str, base: str, ref: str) -> bool:
+    """Whether ref merges into base without a conflict, tried locally (git merge-tree).
+
+    Args:
+        repo: the parent's repository root.
+        base: the base branch.
+        ref: the child's branch.
+
+    Returns:
+        True when the merge is clean here; False on a conflict or when git cannot tell.
+    """
+    try:
+        git(repo, "fetch", "-q", "origin", base, ref, timeout=300)
+        git(repo, "merge-tree", "--write-tree", "--name-only", "--no-messages", f"origin/{base}", f"origin/{ref}")
+        return True
+    except GitError:
+        return False
+
+
 def merge_one(github: Callable[..., Any], name: str, pr: dict[str, Any]) -> str:
     """Merge one pull request, or find it merged already.
 
@@ -93,9 +114,13 @@ def merge_one(github: Callable[..., Any], name: str, pr: dict[str, Any]) -> str:
         GitHubError: GitHub refuses (a conflict, a check, a protection).
     """
     path = f"repos/{pr['repo']}/pulls/{pr['number']}"
-    seen = github("GET", path)
-    if seen.get("merged"):
-        return str(seen.get("merge_commit_sha") or "")
+    for _ in range(TRIES):  # right after a push GitHub has not decided yet (mergeable null)
+        seen = github("GET", path)
+        if seen.get("merged"):
+            return str(seen.get("merge_commit_sha") or "")
+        if seen.get("mergeable") is not None:
+            break
+        time.sleep(WAIT)
     done = github("PUT", f"{path}/merge", {"merge_method": "merge",
                                           "commit_title": f"Merge {name} (pull request #{pr['number']})"})
     return str(done.get("sha") or "")
@@ -169,6 +194,12 @@ def land(port: PlanStore, sid: str, units: dict[str, Any], verify: list[str], gi
         except GitHubError as e:
             files = conflicts(repo, pr.get("base", "main"), ref) if repo and same_repo(unit_spec(card, units), repo) \
                 else []
+            clean = not files and repo and same_repo(unit_spec(card, units), repo) and merges_cleanly(
+                repo, pr.get("base", "main"), ref)
+            if clean:
+                return "\n".join(lines + [f"Pull request #{pr['number']} of {card['name']} merges cleanly here, but "
+                                           f"GitHub refused it ({str(e)[-200:]}): it may not have finished checking it. "
+                                           "Run('orchestra', 'land', {}) again in a minute."])
             return "\n".join(lines + [conflict_text(card["name"], pr, ref, files, str(e))])
         set_entry(port, sid, card["name"], card, {MERGED: {"sha": sha, "at": now()}}, MERGED)
         lines.append(f"Merged #{pr['number']} of {card['name']} into {pr.get('base', 'main')} ({sha[:12]}).")

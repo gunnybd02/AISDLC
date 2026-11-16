@@ -46,7 +46,10 @@ class FakeGitHub:
             self.head, self.base = fields["head"], fields["base"]
             return {"number": 5, "html_url": f"{URL}/pull/5"}
         if method == "GET":
-            return {"merged": self.merged}
+            self.gets = getattr(self, "gets", 0) + 1
+            if self.gets == 1 and not self.conflict:
+                return {"merged": False, "mergeable": None}  # GitHub has not decided yet, right after a push
+            return {"merged": self.merged, "mergeable": not self.conflict}
         if self.conflict:
             raise GitHubError("gh api PUT: Pull Request is not mergeable (HTTP 405)")
         git(self.repo, "fetch", "-q", "origin", self.head)

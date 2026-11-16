@@ -314,6 +314,7 @@ def handback(port: PlanStore, sid: str, report: dict[str, Any], commit_judge: Co
     if git(repo, "branch", "--show-current").strip() != role["branch"]:
         raise WorkError(f"stand on your branch {role['branch']} to hand back")
     body = {"name": role["name"], "plan": role["plan"], "draft": role["draft"], "parent": role["parent"],
+            "session": sid,  # the child's own id as its harness knows it (its store copies are named by it)
             "branch": role["branch"], "unit": {"name": role["card"].get("unit"), **role.get("unit", {})},
             "cardPlan": plan["id"], "at": now(),
             "report": {k: report.get(k, []) for k in LISTS + tuple(PAIRS)}, **facts(port, ticket, role, repo)}
