@@ -31,6 +31,7 @@ from harness.utils.plan import grants, stop, tickets
 from harness.utils.plan.verify import dirty
 from harness.utils.plan.files import key, relative
 from harness.utils.ledger import store
+from harness.utils.orchestra import child
 from harness.utils.ledger.recorder import Recorder
 from harness.utils.shapes import ApprovedPlan, Behaviour, Facts, Grant, PlanStore, Receipt, Ticket
 
@@ -333,7 +334,9 @@ class PlanState(Port):
 
     def read(self, event: Event) -> Facts:
         """The facts of the event's session: plan (ApprovedPlan or None), state_dir, git_view (GitView), stop_owed
-        (plan -> code files no green verify saw), banned, store_owed (() -> the unsaved work of the store)."""
+        (plan -> code files no green verify saw), banned, store_owed (() -> the unsaved work of the store), child_role
+        (() -> the session's ChildRole when it is a child of a delegated plan, else None)."""
         return {"plan": self.port.approved(event.session), "state_dir": str(self.port.path.parent).replace("\\", "/"),
                 "git_view": self.git, "stop_owed": lambda plan: stop.unverified(self.port, plan), "banned": self.banned,
-                "store_owed": lambda: store.owed(self.port) if store.folder() else []}
+                "store_owed": lambda: store.owed(self.port) if store.folder() else [],
+                "child_role": lambda: child.role_of(self.port.ticket(event.session)) if event.session else None}

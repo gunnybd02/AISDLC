@@ -4,8 +4,9 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from harness.utils.contracts import READ, ActionContext, McpAction
+from harness.utils.contracts import READ, ActionContext, ActionError, McpAction
 from harness.utils.maint.grant import active, question
+from harness.utils.orchestra import child
 
 ACTIONS = [("maint.grant", "Grant"), ("maint.status", "Status")]
 
@@ -17,8 +18,15 @@ class Grant(McpAction):
     args_schema = {"type": "object", "properties": {"minutes": {"type": "integer"}, "why": {"type": "string"}},
                    "required": ["minutes", "why"]}
 
+    needs = ("plans", "session")
+
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Answer the form question that asks the user to turn the guards off for minutes, with why."""
+        """Answer the form question that asks the user to turn the guards off for minutes, with why. ActionError in a
+        child session: nobody could answer it."""
+        sid = ctx.ports["session"]()
+        refused = child.refusal(ctx.ports["plans"].ticket(sid), "never asks to turn the guards off") if sid else ""
+        if refused:
+            raise ActionError(refused)
         return question(args["minutes"], args["why"])
 
 

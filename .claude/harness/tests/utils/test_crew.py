@@ -135,6 +135,14 @@ class CrewTest(unittest.TestCase):
         with self.assertRaisesRegex(ActionError, "3 children run already"):
             Spawn().run(self.ctx, {"name": "c4"})
 
+    def test_a_cloud_child_needs_change_paths(self):
+        items = {**desk.normalize(desk.clean({**PLAN, "children": [{k: v for k, v in GOOD.items() if k != "change"}]})),
+                 "root": str(self.repo)}
+        _, _, q = self.port.present(items, sid="s1")
+        approvals(self.port, "s1", {q: YES})
+        with self.assertRaisesRegex(ActionError, "names no files to change"):
+            Spawn().run(self.ctx, {"name": "api"})
+
     def test_spawn_needs_an_approved_delegated_plan_and_a_child_of_it(self):
         with self.assertRaisesRegex(ActionError, "no delegated plan"):
             Spawn().run(self.ctx, {"name": "c1"})

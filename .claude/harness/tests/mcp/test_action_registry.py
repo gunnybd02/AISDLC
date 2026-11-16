@@ -16,7 +16,8 @@ PINNED = {
     "plan.step_done": WRITE, "plan.step_skip": WRITE, "plan.plan_close": READ,
     "verify.run": WRITE,
     "git.run": WRITE, "git.commit": WRITE, "git.push": WRITE, "git.mr_open": WRITE,
-    "orchestra.spawn": READ, "orchestra.started": WRITE, "orchestra.status": READ,
+    "orchestra.spawn": READ, "orchestra.started": WRITE, "orchestra.status": READ, "orchestra.take": WRITE,
+    "orchestra.push": WRITE, "orchestra.question": WRITE, "orchestra.handback": WRITE,
 }
 
 

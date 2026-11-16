@@ -121,7 +121,7 @@ class DeskPort(LedgerCore):
         return [{**w, "question": question(w["items"], w["plan_id"], w["rev"])}
                 for w in self.read(revisions.waiting) or []]
 
-    def approve(self, sid: str, waiting: Revision) -> int:
+    def approve(self, sid: str, waiting: Revision, by: str = "") -> int:
         """The user approved this waiting revision in the session sid: open it in one transaction
         (utils/plan/opening.py). base is the commit its repository stands on now, which a delivered commit must come
         from.
@@ -129,13 +129,14 @@ class DeskPort(LedgerCore):
         Args:
             sid: the session the user approved it in.
             waiting: the waiting Revision approved (plan_id, rev, items with their root, sha).
+            by: "" for the user's form; else what approved it (a child's card plan: the grant of its parent).
 
         Returns:
             The plan number in rec_plans of the plan now in force.
         """
         repo = top(waiting["items"]["root"])
         base = head(repo) if repo else None
-        return self.write(lambda con, rec: opening.open_plan(con, rec, sid, waiting, base))
+        return self.write(lambda con, rec: opening.open_plan(con, rec, sid, waiting, base, by))
 
     def prompt(self, sid: str, text: str) -> Optional[Revision]:
         """Keep the user's prompt; the plan a bare agreement word would wrongly approve, or None.

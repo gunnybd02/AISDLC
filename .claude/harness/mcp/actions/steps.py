@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from harness.utils.contracts import READ, WRITE, ActionContext, ActionError, McpAction
+from harness.utils.orchestra import child
 from harness.utils.plan.closing import close_question
 from harness.utils.plan.steps import step_done, step_skip
 
@@ -66,5 +67,10 @@ class PlanClose(McpAction):
     needs = ("plans", "session")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Answer the close form of the session's plan with the facts of the ledger (utils/plan/closing)."""
-        return close_question(ctx.ports["plans"], session_of(ctx), args.get("summary"), args.get("exceptions"))
+        """Answer the close form of the session's plan with the facts of the ledger (utils/plan/closing). ActionError
+        in a child session: nobody could answer the form."""
+        sid = session_of(ctx)
+        refused = child.refusal(ctx.ports["plans"].ticket(sid), "never closes its plan")
+        if refused:
+            raise ActionError(refused)
+        return close_question(ctx.ports["plans"], sid, args.get("summary"), args.get("exceptions"))

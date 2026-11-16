@@ -272,12 +272,13 @@ class DeskStore(Protocol):
             Each waiting Revision, with its question set.
         """
 
-    def approve(self, sid: str, waiting: Revision) -> int:
+    def approve(self, sid: str, waiting: Revision, by: str = "") -> int:
         """Open an approved revision in the session; its plan number.
 
         Args:
             sid: the Claude Code session the user approved it in.
             waiting: the waiting Revision approved.
+            by: "" for the user's form; else what approved it (a child's card plan: the grant of its parent).
 
         Returns:
             The plan number in rec_plans.

@@ -18,7 +18,7 @@ types and their documentation only.
 | GitCommit, GitFacts | the facts git_commit and git_view of a hook call | gear/translate/git.py, assemble |
 | GitJudge, CommitJudge | the rules' verdict on a git command, on a commit | assemble/engine/wire_mcp.py |
 | PlanStore | the ledger port; its parts and their methods are in shapes_store.py | assemble/engine/ports.py |
-| Card, ChildGrant, CrewEntry | a child of a delegated plan, what the user grants them, a started child | utils/orchestra |
+| Card, ChildGrant, CrewEntry, ChildRole | a child of a plan, the grant, a started child, a child's own role | utils/orchestra |
 """
 from __future__ import annotations
 
@@ -92,6 +92,19 @@ class ChildGrant(TypedDict):
     count: int
     cards: list[Card]
     actions: dict[str, list[str]]
+
+
+class ChildRole(TypedDict):
+    """What makes a session a child (utils/orchestra/child.py): its brief, its first prompt, named the child and the
+    parent plan's number; draft the parent plan's desk id; parent the parent's session; branch the one it works and
+    pushes on (orch/p<plan>/<name>); its card; the behaviour id of each criterion (p<plan>.<name>.ac<n>)."""
+    name: str
+    plan: int
+    draft: str
+    parent: str
+    branch: str
+    card: Card
+    behaviours: list[str]
 
 
 class CrewEntry(TypedDict, total=False):
@@ -178,7 +191,8 @@ class Ticket(TypedDict, total=False):
     steps; noted (commits git.commit made, waiting for step_done); stepCommits by step; closeReason (delivered,
     abandoned, superseded); what a superseded ticket carried over (priorCommits, spentPlan); backs how many times a
     write sent it back from deliver to execute, and backTold, set False each time it goes back. A delegated ticket
-    (a plan with children) also holds the grant and its crew, the started children by name (utils/orchestra)."""
+    (a plan with children) also holds the grant and its crew, the started children by name; a child's ticket holds
+    its role (child), the questions it asked (asks) and its last handback ({sha, at}) (utils/orchestra)."""
     id: str
     sid: str
     seq: int
@@ -202,6 +216,9 @@ class Ticket(TypedDict, total=False):
     backTold: bool
     grant: ChildGrant
     crew: dict[str, CrewEntry]
+    child: ChildRole
+    asks: list[dict[str, Any]]
+    handback: dict[str, Any]
 
 
 class Behaviour(TypedDict, total=False):

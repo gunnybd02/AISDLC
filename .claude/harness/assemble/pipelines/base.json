@@ -19,6 +19,7 @@
     "mark_scan",
     "agent_files",
     "drive_guard",
-    "store_guard"
+    "store_guard",
+    "child_guard"
   ]
 }

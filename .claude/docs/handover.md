@@ -47,8 +47,10 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #24 | A Drive call is known by what it is, not by its server's name: a cloud session can name a connector's tools by an id (`mcp__caaed075-...__create_file`), so the upload was not kept and the Drive guard did not see a trash or a move (found by the live check of #23) |
 | #25 | Every function says what it takes and gives: type hints on all 555 functions, docstrings with Args, Returns and Raises; the data named in `utils/shapes.py` (`ApprovedPlan`, `Ticket`, `Receipt`, `PlanStore`...); the `hints` net keeps it. Files split to stay under 400 lines: `ports.py` (LedgerCore, DeskPort, TicketPort), `desk.py` (`item_checks.py`), `place_ops.py` (`write_ops.py`, `cmdlets.py`), `scan.py` (`command.py`, `dialects.py`) |
 | #26 | Orchestra, part 1 (`docs/05b-orchestra-cloud.md`): the user's full spec 05 saved in four files; the card rules of spec 5.1 (`utils/orchestra/card.py`; several children may share a unit in the cloud); a plan with children opens a delegated ticket (grant, crew, a pending row per child) and no other plan opens beside it; block `orchestra`: `spawn` (the brief and the `create_session` call), `started`, `status`; `git ls-remote` is read-only |
+| #27 | The shell reader knows `git ls-remote` reads only (found by the live check of #26) |
+| #28 | Orchestra, part 2: a brief as a session's first prompt makes it a child; `take` opens its card plan by the parent's grant (no form) on `orch/p<plan>/<name>`; `push`, `question`, `handback` (the receipt `.harness/handback/<name>.json` committed and pushed); a child never asks the user, presents or closes a plan, asks for the maint grant, merges or pushes another branch (`child_guard`) |
 
-413 tests pass (1 skipped, Windows only); doctor: 0 errors.
+425 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 ## The cloud, as it runs now
 
@@ -91,8 +93,7 @@ forwarders in `.claude/entry/`.
    verify on a plan without tests and wrote `docs/05b-orchestra-cloud.md`; what it left open is item 5.
 2. **Orchestra in the cloud** (`docs/05b-orchestra-cloud.md`, decided by the user on 2026-11-16: children are cloud
    sessions, the card rides in the brief and the receipt on the child's branch, at most 3 run). A live probe showed a
-   child acts on a parent's send-back only because its brief says so. Part 1 is built (#26). Next: part 2, the child
-   (binding on its first prompt, `take`, its branch, the child refusals, `ask`, `handback` and its receipt); part 3,
+   child acts on a parent's send-back only because its brief says so. Parts 1 and 2 are built (#26, #28). Next: part 3,
    the parent (`check`, `accept`, `reject`, `answer`, `land`, `forget`, `release`, `read`, the close); part 4,
    `remove`, the scheduled check-in, the `orchestrate` skill and a full live run.
 3. **Spec 05 for the PC** (`docs/05-orchestra.md` to `05-orchestra-4.md`, worktrees and `claude --bg`): set aside for

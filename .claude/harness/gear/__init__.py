@@ -17,4 +17,5 @@ ITEMS = [
     {"kind": "detector", "name": "write_action", "ref": "harness.gear.detect.action:WriteAction"},
     {"kind": "detector", "name": "drive_guard", "ref": "harness.gear.detect.drive:DriveGuard"},
     {"kind": "detector", "name": "store_guard", "ref": "harness.gear.detect.store:StoreGuard"},
+    {"kind": "detector", "name": "child_guard", "ref": "harness.gear.detect.child:ChildGuard"},
 ]

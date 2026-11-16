@@ -6,7 +6,13 @@ says). The user approved the plan with its children once, in the form; these act
 - started {name, sid, model?}: the child's session is open; from now on it runs (the cap is 3).
 - status: the children of the delegated plan in force and their states.
 
-What a child does (take, ask, handback) and the parent's check, accept and reject come in the next parts."""
+A child (a session opened from a brief, utils/orchestra/child.py) runs the rest (utils/orchestra/work.py):
+- take: its card plan opens, approved by the parent's grant, on its branch orch/p<plan>/<name>;
+- push: its own branch, after every step;
+- question {question}: kept, then sent to the parent with send_message;
+- handback {changed, checked, notChecked, risks, testsChanged, added?, faults?}: the receipt on its branch, pushed.
+
+The parent's check, accept and reject come in part 3."""
 from __future__ import annotations
 
 import json
@@ -18,10 +24,12 @@ from harness.utils.contracts import READ, WRITE, ActionContext, ActionError, Mcp
 from harness.utils.git.facts import top
 from harness.utils.git.run import GitError, git
 from harness.utils.orchestra import brief as briefs
-from harness.utils.orchestra import crew
+from harness.utils.orchestra import crew, work
 from harness.utils.shapes import PlanStore
 
-ACTIONS = [("orchestra.spawn", "Spawn"), ("orchestra.started", "Started"), ("orchestra.status", "Status")]
+ACTIONS = [("orchestra.spawn", "Spawn"), ("orchestra.started", "Started"), ("orchestra.status", "Status"),
+           ("orchestra.take", "Take"), ("orchestra.push", "Push"), ("orchestra.question", "Question"),
+           ("orchestra.handback", "Handback")]
 SESSION_ID = re.compile(r"^session_[A-Za-z0-9]{8,64}$")
 NO_SESSION = "no session: the harness has not seen this session's prompt yet"
 NAME_ARG = {"type": "string", "description": "the child's name, as its card names it"}
@@ -98,9 +106,12 @@ class Spawn(McpAction):
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """The brief and the create_session call of the named child; nothing is written until started. ActionError
         when no approved delegated plan is in force, the name is no child of it, it has started, CAP children run, or
-        its card names an open session to adopt."""
+        its card names no change paths or an open session to adopt."""
         sid = session_of(ctx)
         plan, draft, card = room(ctx.ports["plans"], sid, args["name"])
+        if not card.get("change"):
+            raise ActionError(f"{card['name']}'s card names no files to change: a cloud child's plan is made from its "
+                              "change paths; revise the card with change")
         if card.get("session"):
             raise ActionError(f"{card['name']}'s card names the session {card['session']!r} to adopt; adopting an open "
                               "session is not built yet: revise the card without session, or start it by hand")
@@ -153,3 +164,85 @@ class Status(McpAction):
         """The status of the session's delegated plan (utils/orchestra/crew.status)."""
         return crew.status(ctx.ports["plans"].ticket(session_of(ctx)))
 
+
+
+def child_run(step: Any) -> str:
+    """Run one step of a child's work, its refusal turned into the action's error.
+
+    Args:
+        step: a callable with no argument that returns the answer (utils/orchestra/work.py).
+
+    Returns:
+        The step's answer.
+
+    Raises:
+        ActionError: the step refused (WorkError), or git failed.
+    """
+    try:
+        return step()
+    except (work.WorkError, GitError) as e:
+        raise ActionError(str(e)) from e
+
+
+class Take(McpAction):
+    """orchestra.take: a child opens its card plan."""
+    block, name, effect = "orchestra", "take", WRITE
+    summary = ("A child's first call: its card plan opens, approved by the grant of the parent plan (no form), on its "
+               "branch orch/p<plan>/<name>")
+    args_schema = {"type": "object", "properties": {}}
+    needs = ("plans", "session")
+
+    def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
+        """Open the child's card plan in the server's folder (utils/orchestra/work.take). ActionError for a session that
+        is no child, a card without change paths, another plan in force, or git refusing the branch."""
+        sid = session_of(ctx)
+        return child_run(lambda: work.take(ctx.ports["plans"], sid, os.getcwd()))
+
+
+class Push(McpAction):
+    """orchestra.push: a child pushes its own branch."""
+    block, name, effect = "orchestra", "push", WRITE
+    summary = "A child pushes its own branch to origin, after every step (its machine is temporary)"
+    args_schema = {"type": "object", "properties": {}}
+    needs = ("plans", "session", "git_judge")
+
+    def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
+        """Push the child's branch (utils/orchestra/work.push). ActionError for a session that is no child, no card
+        plan, another branch checked out, a git rule that stops it, or git failing."""
+        sid = session_of(ctx)
+        return child_run(lambda: work.push(ctx.ports["plans"], sid, ctx.ports["git_judge"]))
+
+
+class Question(McpAction):
+    """orchestra.question: a child's question for its parent."""
+    block, name, effect = "orchestra", "question", WRITE
+    summary = "A child's question outside its card: kept, and the answer says what to send the parent with send_message"
+    args_schema = {"type": "object", "properties": {"question": {"type": "string"}}, "required": ["question"]}
+    needs = ("plans", "session")
+
+    def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
+        """Keep the question on the child's ticket (utils/orchestra/work.ask). ActionError for a session that is no
+        child, or a question empty or longer than 400 characters."""
+        sid = session_of(ctx)
+        return child_run(lambda: work.ask(ctx.ports["plans"], sid, args["question"]))
+
+
+class Handback(McpAction):
+    """orchestra.handback: a child's report, kept as a receipt on its branch."""
+    block, name, effect = "orchestra", "handback", WRITE
+    summary = ("A child's last call: its report (changed, checked, notChecked, risks, testsChanged, added?, faults?) "
+               "and what the harness reads (commits, verify, behaviours) written on its branch and pushed")
+    points = {"type": "array", "items": {"type": "string"}}
+    pairs = {"type": "array", "items": {"type": "object"}}
+    args_schema = {"type": "object", "properties": {"changed": points, "checked": points, "notChecked": points,
+                                                    "risks": points, "testsChanged": pairs, "added": pairs,
+                                                    "faults": pairs},
+                   "required": ["changed", "checked", "notChecked", "risks", "testsChanged"]}
+    needs = ("plans", "session", "commit_judge", "git_judge")
+
+    def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
+        """Write, commit and push the child's receipt (utils/orchestra/work.handback). ActionError for a bad report, a
+        session that is no child, no card plan, another branch, or a rule that stops the commit or the push."""
+        sid = session_of(ctx)
+        return child_run(lambda: work.handback(ctx.ports["plans"], sid, args, ctx.ports["commit_judge"],
+                                               ctx.ports["git_judge"]))

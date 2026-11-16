@@ -77,6 +77,12 @@ all; then, per child, `run("orchestra", "spawn", {"name"})` gives the brief and 
 `run("orchestra", "started", {"name", "sid"})` records it (3 run at most; `run("orchestra", "status", {})`). While it
 runs no other plan opens in the session; revise it instead.
 
+**A child session** (its first prompt is a brief: `You are child session ...`): nobody is at its keyboard.
+`run("orchestra", "take", {})` first (its card plan opens, on its branch), then the loop of part 3, and
+`run("orchestra", "push", {})` after every step. A question: `run("orchestra", "question", {"question"})`, then
+send it with `send_message`. Last: `run("orchestra", "handback", {"changed", "checked", "notChecked", "risks",
+"testsChanged"})`, send the one line it gives, and stop. Never AskUserQuestion, a plan of its own, a merge or a close.
+
 ## 3. Build each step
 1. Edit only the files the plan names; any other file is refused.
 2. Write the step's tests: each behaviour of the step needs its test file to exist.
