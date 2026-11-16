@@ -76,8 +76,9 @@ class WorkTest(unittest.TestCase):
         with self.assertRaisesRegex(work.WorkError, "changed names at least one point"):
             work.handback(self.port, "c1", {**REPORT, "changed": []}, lambda *a: ALLOW, lambda *a: ALLOW)
         (self.repo / "scratch.txt").write_text("left over\n", encoding="utf-8")
-        text = work.handback(self.port, "c1", REPORT, lambda *a: ALLOW, lambda *a: ALLOW)
+        text = work.handback(self.port, "c1", REPORT, lambda *a: ALLOW, lambda *a: ALLOW, store_on=True)
         self.assertIn('"handed back orch/p7/api', text)
+        self.assertIn("Save your ledger to the store first: run('ledger', 'export', {reason: 'handback'})", text)
         receipt = json.loads(git(self.origin, "show", "orch/p7/api:.harness/handback/api.json"))
         self.assertEqual((receipt["name"], receipt["plan"], receipt["parent"], receipt["verify"]),
                          ("api", 7, "session_p1", "missing"))

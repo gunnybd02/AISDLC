@@ -244,11 +244,11 @@ class Handback(McpAction):
                                                     "risks": points, "testsChanged": pairs, "added": pairs,
                                                     "faults": pairs},
                    "required": ["changed", "checked", "notChecked", "risks", "testsChanged"]}
-    needs = ("plans", "session", "commit_judge", "git_judge")
+    needs = ("plans", "session", "commit_judge", "git_judge", "store")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Write, commit and push the child's receipt (utils/orchestra/work.handback). ActionError for a bad report, a
         session that is no child, no card plan, another branch, or a rule that stops the commit or the push."""
         sid = session_of(ctx)
         return child_run(lambda: work.handback(ctx.ports["plans"], sid, args, ctx.ports["commit_judge"],
-                                               ctx.ports["git_judge"]))
+                                               ctx.ports["git_judge"], bool(ctx.ports.get("store", str)())))

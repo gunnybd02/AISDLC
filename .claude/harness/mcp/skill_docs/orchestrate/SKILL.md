@@ -66,12 +66,19 @@ When every child has ended (accepted, forgotten or released): `run("orchestra", 
   again. Or send the child back (`reject`), then check and accept it again: its pull request stays the same.
 - After the merges, each unit's tests run on its merged base. Red: fix it through a new plan.
 - Your own files: commit them with `step_done` (before or after the merges), then land again.
-- Green and nothing left: the plan is delivered. Delete the check-in.
+- **The children's databases.** With a store folder set (`HARNESS_DRIVE_FOLDER`), the plan is done only when every
+  child that ended has its database in the store. Each child uploads its own at handback (named
+  `...__orch.<plan id>.<child>__...db`). When land says "Not synced yet": search the store folder with the Drive tool
+  as it says; the harness reads Drive's answer itself and land again. A child with no copy: send it the message land
+  gives. Only for a child whose session can never upload, ask the user the "Close plan ... without the database"
+  form.
+- Green and nothing left: the plan is delivered. Delete the check-in, and save your own ledger as the answer says.
 
 ## 6. Remove the sessions, then report
 1. `run("orchestra", "remove", {})` gives one checklist. Ask it exactly as given; the user ticks.
-2. `run("orchestra", "remove", {})` again: it removes exactly the ticked children and gives each
-   `archive_session` call. Make them.
+2. `run("orchestra", "remove", {})` again: it removes exactly the ticked children whose databases are in the store
+   and gives each `archive_session` call. Make them. A ticked child not in the store yet waits (search, then remove
+   again).
 3. Report to the user: each child, its pull request, what was checked, what was sent back and why, what was not
    checked (from the receipts), and the merged branches left for the user to delete.
 

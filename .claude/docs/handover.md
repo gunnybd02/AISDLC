@@ -54,8 +54,9 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #32 | Orchestra, part 3, the parent: `check` (the receipt on the child's branch, the AC behaviours, the tests rerun by the parent), `accept` (one pull request into the unit's base, through `gh api`), `reject` (3 rounds), `answer`, `forget`, `read`, and `land`, the final route (merge every pull request, a conflict stops it for the parent to resolve or reject, each unit's tests on the merged base, the plan closes delivered) |
 | #34 | Orchestra, part 4: `release`, `remove` (one checklist the user ticks, then the `archive_session` calls), `digest`; the check-in for a child that dies silently; receipts kept out of the base (accept takes the file off the branch, the ledger keeps it); the skill `orchestrate`; the test leftovers `orch-probe/` and `.harness/handback/` removed from main |
 | #37 | Orchestra fixes from the two-child live run: `accept` takes the receipt off the child's branch with a git commit and a branch push (the cloud's proxy refuses GitHub's file API); `take` starts a child's branch from its unit's base |
+| #38 | A delegated plan is done only when every child's database is in the Drive store: copies carry the plan marker `orch.<plan id>.<child or parent>`; a child uploads at handback; the hook reads Drive's own search answer to verify each child's copy; `land` delivers and `remove` archives only verified children (a dead child only with the user's Allow) |
 
-443 tests pass (1 skipped, Windows only); doctor: 0 errors.
+449 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 ## The cloud, as it runs now
 

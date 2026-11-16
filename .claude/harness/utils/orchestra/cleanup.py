@@ -15,7 +15,7 @@ import sqlite3
 import time
 from typing import TYPE_CHECKING, Any
 
-from harness.utils.orchestra import crew
+from harness.utils.orchestra import crew, synced
 from harness.utils.orchestra.review import ReviewError, child_of, set_entry
 from harness.utils.shapes import PlanStore, Ticket
 
@@ -123,12 +123,14 @@ def removal_accepts(port: PlanStore, answers: dict[str, str]) -> list[str]:
     return notes
 
 
-def remove(port: PlanStore, sid: str) -> str:
+def remove(port: PlanStore, sid: str, folder: str = "") -> str:
     """Remove the children the user ticked; with no tick yet, answer the checklist form to ask.
 
     Args:
         port: the ledger port.
         sid: the parent's session.
+        folder: the store's Drive folder; when set, a ticked child is archived only once its database is in the store
+            (utils/orchestra/synced.py); its tick waits until then.
 
     Returns:
         The checklist to ask, or the children removed and the archive_session call of each.
@@ -145,23 +147,32 @@ def remove(port: PlanStore, sid: str) -> str:
     keys = {n: f"{code_of(plan, names[i - i % PER_QUESTION:i - i % PER_QUESTION + PER_QUESTION])}:{n}"
             for i, n in enumerate(names)}
 
-    def take(con: sqlite3.Connection, rec: Recorder) -> list[str]:
+    waiting = {n: synced.synced(port, ticket, n) for n in names} if folder else {}
+
+    def take(con: sqlite3.Connection, rec: Recorder) -> tuple[list[str], list[str]]:
         ticked = [n for n, k in keys.items()
                   if con.execute("SELECT 1 FROM pl_asks WHERE sid = '' AND key = ? AND used = 0", (k,)).fetchone()]
-        for n in ticked:
+        ready = [n for n in ticked if not waiting.get(n)]
+        for n in ready:
             con.execute("UPDATE pl_asks SET used = 1 WHERE sid = '' AND key = ?", (keys[n],))
-        return ticked
-    ticked = port.write(take)
+        return ticked, ready
+    ticked, ready = port.write(take)
+    if ticked and not ready:
+        return ("The ticked children are not archived yet: their databases must be in the store first.\n"
+                + synced.ask_text(ticket, folder, [(n, waiting[n]) for n in ticked]))
     if not ticked:
         form = json.dumps({"questions": checklist(ticket)}, ensure_ascii=False)
         return ("Which child sessions are archived is the user's word. Ask now with AskUserQuestion exactly this, "
                 f"and never fill in the answer: {form}. Then run('orchestra', 'remove', {{}}) again.")
     team, lines = ticket["crew"], []
-    for name in ticked:
+    later = [n for n in ticked if n not in ready]
+    for name in ready:
         card = next(c for c in ticket["plan"]["children"] if c["name"] == name)
         set_entry(port, sid, name, card, {"state": crew.REMOVED}, crew.REMOVED)
         lines.append(f"- {name}: mcp__claude-code-remote__archive_session {{\"session_id\": \"{team[name]['sid']}\"}}")
-    return "Removed; archive each session now:\n" + "\n".join(lines)
+    wait = ("\nWaiting for their databases before archive: " + ", ".join(later) + ". "
+            + synced.ask_text(ticket, folder, [(n, waiting[n]) for n in later])) if later else ""
+    return "Removed; archive each session now:\n" + "\n".join(lines) + wait
 
 
 def digest(port: PlanStore, sid: str) -> str:

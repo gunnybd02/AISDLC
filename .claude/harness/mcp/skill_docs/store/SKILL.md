@@ -15,6 +15,7 @@ A commit does not upload. A copy is due at a checkpoint:
 | a plan is closed | you closed it (`plan_close`, or the last `step_done` of a plan) | `plan-close` |
 | the end of a turn is held | the turn does not end: `store.unsaved` (commits, plan events or pushes are in no copy) | `turn-end` |
 | the user asks to save or back up | their words | `manual` |
+| a child of an orchestra run hands back | its handback answer says so | `handback` |
 
 One upload covers everything before it: at most one per checkpoint, never one per commit.
 
@@ -57,3 +58,9 @@ One upload covers everything before it: at most one per checkpoint, never one pe
 - The end of a turn is held once for the same work: when the upload cannot be done, say so and end the turn.
 - Never upload the live ledger file, and never read `.claude/state/`.
 - The folder id is the user's own: never write it into a file of a repository, a commit or a pull request.
+
+## Copies of an orchestra run
+A session of a delegated plan adds its plan marker to every copy's name: `...__orch.<plan id>.<child name>__...db`
+for a child, `...__orch.<plan id>.parent__...db` for the parent; the record says it too (`plan`). One Drive search,
+name contains `orch.<plan id>.`, lists every database of that run. The parent's plan is delivered, and a child's
+session archived, only once that child's copy is in the store (`guide("orchestrate", "skills")`).

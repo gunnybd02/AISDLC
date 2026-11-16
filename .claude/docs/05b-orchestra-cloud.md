@@ -206,6 +206,17 @@ merge.
 pull request into a base that is not the default branch holds only the child's commits; a base not on origin starts
 it from HEAD, and the answer says which.
 
+**The children's databases are in the store before the plan is done** (decided by the user on 2026-11-16;
+`utils/orchestra/synced.py`). Every copy of a run's session carries its plan marker, `orch.<plan id>.<child>` or
+`orch.<plan id>.parent` (`crew.store_tag`, `store.begin`). A child uploads its ledger at handback (reason `handback`).
+Harness code cannot call Drive, but the hook reads Drive's own answer: when the parent's model searches the store
+folder, every file named as a copy of this plan's run whose session is that child's is kept on its crew entry
+(`stored`). With a store folder set, `land` delivers only when every child that ended has a copy no older than its
+handback, and `remove` archives only such children (a ticked child waits); a child whose session can never upload
+passes only with the user's "Allow" in the form "Close plan <id> without the database of <name>?". At delivery the
+parent saves its own ledger (`orch.<plan id>.parent`). The harness proves a copy is in the store, from Drive's
+answer; the model only runs the search.
+
 ## 9. Limits
 
 | Limit | Value | Why |
