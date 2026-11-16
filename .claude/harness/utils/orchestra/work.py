@@ -67,15 +67,17 @@ def mine(port: PlanStore, sid: str) -> tuple[Ticket, ChildRole]:
     return ticket, role
 
 
-def switch(repo: str, name: str) -> str:
-    """Stand on the branch name: the local one, else the remote one tracked, else a new one from HEAD.
+def switch(repo: str, name: str, base: str = "") -> str:
+    """Stand on the branch name: the local one, else the remote one tracked, else a new one from origin/<base> (the
+    unit's base, so its pull request holds only the child's commits), else a new one from HEAD.
 
     Args:
         repo: the repository's root.
         name: the branch.
+        base: the unit's base branch; "" for HEAD.
 
     Returns:
-        "on", "tracked" or "new": how the branch was reached.
+        How the branch was reached: "on", "tracked", "new from origin/<base>" or "new from HEAD".
 
     Raises:
         GitError: git refuses (uncommitted changes in the way, among others).
@@ -91,8 +93,15 @@ def switch(repo: str, name: str) -> str:
         git(repo, "fetch", "-q", "origin", name)
         git(repo, "switch", "-q", "-c", name, "--track", f"origin/{name}")
         return "tracked"
+    if base:
+        try:
+            git(repo, "fetch", "-q", "origin", base, timeout=300)
+            git(repo, "switch", "-q", "-c", name, "FETCH_HEAD")
+            return f"new from origin/{base}"
+        except GitError:
+            pass  # the base is not on origin: the branch starts here
     git(repo, "switch", "-q", "-c", name)
-    return "new"
+    return "new from HEAD"
 
 
 def stopped(verdict: Any) -> bool:
@@ -133,7 +142,7 @@ def take(port: PlanStore, sid: str, root: str) -> str:
     if not repo:
         raise WorkError(f"{root} is in no git repository: stand in the clone of the plan's repository")
     try:
-        how = switch(repo, role["branch"])
+        how = switch(repo, role["branch"], role.get("unit", {}).get("base", ""))
     except GitError as e:
         raise WorkError(f"git cannot stand on {role['branch']}: {e}") from e
     folder = child.unit_root(role, repo)

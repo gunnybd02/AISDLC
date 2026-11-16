@@ -119,6 +119,20 @@ class WorkTest(unittest.TestCase):
         with self.assertRaisesRegex(work.WorkError, "folder nowhere is not in this clone"):
             work.take(self.port, "u2", str(repo))
 
+    def test_a_new_branch_starts_from_the_units_base(self):
+        """A child's pull request into a base that is not the default branch holds only the child's commits."""
+        git(self.repo, "switch", "-q", "-c", "release")
+        (self.repo / "r.txt").write_text("on release only\n")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "release work")
+        git(self.repo, "push", "-q", "origin", "release")
+        git(self.repo, "switch", "-q", "work")
+        self.assertEqual(work.switch(str(self.repo), "orch/p7/x", "release"), "new from origin/release")
+        self.assertTrue((self.repo / "r.txt").is_file())
+        git(self.repo, "switch", "-q", "work")
+        self.assertEqual(work.switch(str(self.repo), "orch/p7/y", "nowhere"), "new from HEAD")
+        self.assertFalse((self.repo / "r.txt").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()
