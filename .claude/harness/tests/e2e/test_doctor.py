@@ -69,7 +69,7 @@ class DoctorEntryTest(unittest.TestCase):
     def test_the_mcp_server_serves_the_doctor_too(self):
         line = '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"run","arguments":' \
                '{"block":"health","action":"doctor"}}}\n'
-        code, out, _ = run(entry_of(CLAUDE_DIR, "mcp_server"), line)
+        code, out, _ = run(entry_of(copy_tree(self), "mcp_server"), line)  # a copy: its span is not the real ledger's
         self.assertEqual(code, 0)
         self.assertIn("0 errors", out)
 

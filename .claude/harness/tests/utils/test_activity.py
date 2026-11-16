@@ -50,6 +50,17 @@ class ActivityTest(unittest.TestCase):
         self.assertEqual(activity.arg_names({"plan": "secret value", "a": 1}), ["a", "plan"])
         self.assertEqual(activity.arg_names("not an object"), [])
 
+    def test_a_write_judged_inside_the_server_keeps_its_gate_span_and_no_second_tool_call_row(self):
+        hooked = {"block": "plan", "action": "plan_drop", "args": {}}
+        self.run_event("PreToolUse", activity.RUN_TOOL, hooked)  # the hook sees Claude Code's call
+        self.run_event("PreToolUse", activity.RUN_TOOL, {**hooked, "effect": "write"})  # the server judges the same call
+        self.run_event("PreToolUse", "HarnessCommit", {"message": "m", "files": []})  # the harness judges its own commit
+        self.assertEqual(self.rows("SELECT sid, tool FROM act_tool_calls"), [("s1", "plan.plan_drop")])  # counted once
+        self.assertEqual(self.rows("SELECT name, kind FROM pl_spans ORDER BY rowid"),
+                         [("plan.plan_drop", "gate"), ("plan.plan_drop", "gate"), ("HarnessCommit", "gate")])
+        self.assertTrue(activity.inner(Event("PreToolUse", "HarnessGit", {"command": "git push"}, "", "/w")))
+        self.assertFalse(activity.inner(Event("PreToolUse", "Bash", {"command": "ls"}, "s1", "/w")))
+
     def test_a_call_is_recorded_whole_or_not_at_all_and_a_fault_never_blocks_it(self):
         err = io.StringIO()
         with mock.patch.object(activity, "span", side_effect=sqlite3.OperationalError("disk I/O error")), \

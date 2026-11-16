@@ -102,6 +102,16 @@ class SpanTest(unittest.TestCase):
                                  ("s1", "tool", "error", "t.nothere", '{"args": []}')])
         self.assertNotIn("hunter2", str(port.rows("SELECT attrs FROM pl_spans")))
 
+    def test_a_write_is_judged_for_the_session_that_calls(self):
+        seen = []
+
+        def judge(event):
+            seen.append((event.session, event.input["action"], event.input["effect"]))
+            return Verdict(ALLOW, "", (Finding("action.t.change"),))
+        self.assertEqual(call(run_with(judge=judge, session=lambda: "s7"), "change").text, "changed")
+        self.assertEqual(call(run_with(judge=judge), "change").text, "changed")  # a server with no session port
+        self.assertEqual(seen, [("s7", "change", WRITE), ("", "change", WRITE)])
+
     def test_a_span_that_cannot_be_kept_never_changes_the_answer(self):
         class Broken:
             def span(self, *args):

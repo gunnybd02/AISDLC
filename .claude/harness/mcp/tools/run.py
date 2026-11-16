@@ -87,8 +87,9 @@ class Run(Tool):
         judge = self.ports.get("judge")
         if judge is None:
             return f"{block}.{name} is a write and this server has no judge: it does not run"
-        event = Event("PreToolUse", TOOL, {"block": block, "action": name, "args": given, "effect": WRITE}, "",
-                      os.getcwd())
+        session = self.ports.get("session")
+        event = Event("PreToolUse", TOOL, {"block": block, "action": name, "args": given, "effect": WRITE},
+                      session() if callable(session) else "", os.getcwd())  # judged for the session that calls
         try:
             verdict = judge(event)
         except Exception as e:

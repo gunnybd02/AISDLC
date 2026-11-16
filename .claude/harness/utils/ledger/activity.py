@@ -3,7 +3,8 @@ transaction, so a call is recorded whole or not at all.
 - a turn (pl_turns): opened by a prompt, closed when the reply ends; its number places everything else;
 - a prompt (pl_prompts): under its turn's number, secrets masked, cut at 64 KB, marked when another session sent it;
 - a judged tool or shell event: one act_tool_calls row, one gate span (pl_spans), and one act_rule_decisions row per
-  finding with the word Claude Code was given;
+  finding with the word Claude Code was given; the harness judging a write from inside (the server's gate, its commit)
+  keeps its gate span and findings and no second tool-call row;
 - a run of a harness action: one tool span with the names of its arguments, never their values;
 - a session (sessions): its row when first met, with the project and the release it runs; its epoch rises by one
   when its context is compacted or cleared;
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
 PROMPT_MOST = 65536
 PEER = "<cross-session-message"  # how the host wraps a message another session sent
 RUN_TOOL = "mcp__harness__run"
+INNER_TOOLS = ("HarnessCommit", "HarnessGit")  # events the harness builds to judge its own commit or git line
 SKILL_FILE = re.compile(r"[\\/](?:skill_docs|skills)[\\/]([A-Za-z0-9_.-]+)[\\/]SKILL\.md$")
 SLASH = re.compile(r"^/([A-Za-z0-9_.:-]+)(?:\s|$)")
 ANNOTATED = ("span", "turn", "session", "plan")  # what a judgment is about
@@ -134,6 +136,20 @@ def tool_of(event: Event) -> str:
     return event.tool or ""
 
 
+def inner(event: Event) -> bool:
+    """Whether an event is the harness judging a call from inside (the server's write gate, its commit or git line),
+    not a call Claude Code makes: such an event keeps its gate span and findings and no tool-call row of its own.
+
+    Args:
+        event: the event judged.
+
+    Returns:
+        True for an event of INNER_TOOLS, or a run of a harness action that names its effect (the server's gate).
+    """
+    given = event.input if isinstance(event.input, dict) else {}
+    return event.tool in INNER_TOOLS or (event.tool == RUN_TOOL and "effect" in given)
+
+
 def arg_names(given: Any) -> list[str]:
     """The names of the arguments of a call, never their values.
 
@@ -162,8 +178,9 @@ def record_call(con: sqlite3.Connection, rec: Recorder, event: Event, plan: Opti
     sid, findings = event.session or "", list(findings)
     if event.kind == "PreToolUse":
         name = tool_of(event)
-        con.execute("INSERT INTO act_tool_calls (sid, agent, tool, service, at, plan_id, uid) VALUES (?, '', ?, '', ?, "
-                    "?, ?)", (sid, name, now(), plan["id"] if plan else 0, uuid.uuid4().hex))
+        if not inner(event):  # one tool-call row per call: the hook's, or the tool span when no hook runs
+            con.execute("INSERT INTO act_tool_calls (sid, agent, tool, service, at, plan_id, uid) VALUES (?, '', ?, '', "
+                        "?, ?, ?)", (sid, name, now(), plan["id"] if plan else 0, uuid.uuid4().hex))
         span(con, sid, "gate", "denied" if word in CLAUDE_DECISION.values() else "ok", name,
              {"decision": word, "rules": sorted({f.kind for f in findings})})
     for finding in findings:

@@ -98,6 +98,11 @@ Notes:
   What a session knows now is what it loaded in its current epoch.
 - A call of a harness action is recorded under `<block>.<action>`, by the hook (its gate span) and by the tool
   itself (its tool span).
+- When the server judges a write from inside (its write gate, its commit or git line), that judging keeps its gate
+  span and findings, with the calling session, and no second tool-call row: a call is counted once.
+- Verify gives the tests a copy of the ledger in `HARNESS_DB`, but nothing reads that variable: the ledger is always
+  `state/harness.db` of the home that runs. So a test that records must run a copy of the tree (`copy_tree`), never the
+  real home.
 - Cost in the retro views is tokens times `pl_prices`: a conversion at list prices, not a bill. A model with no
   price costs 0 there.
 - A peer's prompt is recognised by the host's wrapper `<cross-session-message`; this was not checked in a live
