@@ -2,7 +2,6 @@
 the classes of the ACTIONS literals of mcp/actions/*.py; the ports are SERVER_PORTS (engine/ports.py), built here, and
 run hands each action only those it names in needs. The judge port is the hook's own runner: a write action is judged
 by the same rules as a tool call."""
-import os
 import shlex
 from pathlib import Path
 
@@ -12,9 +11,9 @@ from harness.assemble.engine.config import Config
 from harness.assemble.engine.loader import Loader
 from harness.assemble.engine.ports import SERVER_PORTS, LedgerPort
 from harness.utils.contracts import Event
+from harness.utils.ledger import store
 
 SERVER = ("harness", "0.1")
-STORE_ENV = "HARNESS_DRIVE_FOLDER"  # the id of the Google Drive folder the ledger copies go to; never kept in the tree
 
 
 def git_event(repo, words):
@@ -40,7 +39,7 @@ def ports_of(items, claude_dir):
              "commit_judge": lambda repo, files, message: build_runner(claude_dir, items).run(
                  commit_event(repo, files, message)).verdict,
              "banned": lambda: Config.load(claude_dir).banned,
-             "store": lambda: os.environ.get(STORE_ENV, "").strip(),
+             "store": store.folder,
              "judge": lambda event: build_runner(claude_dir, items).run(event).verdict}
     assert tuple(ports) == SERVER_PORTS, "ports_of builds exactly SERVER_PORTS"
     return ports

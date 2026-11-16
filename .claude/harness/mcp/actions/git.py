@@ -4,6 +4,7 @@ in SQL; the next run of exactly that command uses it up. Refused (git commit: st
 kept in pl_git_runs."""
 from pathlib import Path
 
+from harness.mcp.actions.ledger import store_note
 from harness.utils.contracts import WRITE, ActionError, McpAction, asked, refused
 from harness.utils.git.asks import code_of, keep_run, question, take
 from harness.utils.git.run import run_git
@@ -52,18 +53,17 @@ class Commit(McpAction):
                "plan allows, code verified green, judged by the commit guards; then step_done ends the step")
     args_schema = {"type": "object", "properties": {"files": {"type": "array"}, "message": {"type": "string"}},
                    "required": ["files", "message"]}
-    needs = ("plans", "session", "commit_judge", "store")
+    needs = ("plans", "session", "commit_judge")
 
     def run(self, ctx, args):
-        return (git_commit(ctx.ports["plans"], session_of(ctx), args["files"], args["message"],
-                           ctx.ports["commit_judge"]) + store_note(ctx))
+        return git_commit(ctx.ports["plans"], session_of(ctx), args["files"], args["message"], ctx.ports["commit_judge"])
 
 
 class Push(McpAction):
     block, name, effect = "git", "push", WRITE
     summary = ("Push the branch of the session's unit plan to origin, in Deliver: never the home, never a protected "
                "branch; judged like git push in a shell and kept in pl_git_audit")
-    needs = ("plans", "session", "git_judge")
+    needs = ("plans", "session", "git_judge", "store")
 
     def run(self, ctx, args):
-        return git_push(ctx.ports["plans"], session_of(ctx), ctx.ports["git_judge"])
+        return git_push(ctx.ports["plans"], session_of(ctx), ctx.ports["git_judge"]) + store_note(ctx)

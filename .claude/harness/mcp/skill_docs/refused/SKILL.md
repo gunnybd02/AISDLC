@@ -50,6 +50,9 @@ wildcard, inline code that may write. Simple commands with plain paths pass with
 the ledger store on Drive only grows (`guide("store", "skills")`). Uploading and reading are free.
 
 ## The end of a turn
+`store.unsaved`: commits, plan events or pushes of this session are in no copy of the store. Export and upload one
+(`guide("store", "skills")`); when that cannot be done, say so and the turn ends.
+
 `stop.unverified`: code files of the plan changed since the last green verify. Run
 `python3 <core>/anchor.py cli verify` (or `run("verify", "run", {"plan": "<pd-id>"})`) and fix what is red.
 

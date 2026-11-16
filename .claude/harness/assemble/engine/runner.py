@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from harness.utils.contracts import CLAUDE_DECISION, Port
 from harness.utils.git.asks import accepts
+from harness.utils.ledger import store
 from harness.utils.plan.files import allows, relative
 from harness.utils.plan.approval import approvals
 from harness.utils.plan.closing import close_answers, delivery
@@ -71,10 +72,13 @@ class Act:
             notes += mr_accepts(self.port, facts.get("answers") or {})
             notes += release_accepts(self.port, facts.get("answers") or {})
             notes += delivery(self.port, event.session, facts.get("git_commit"), facts.get("plan"))
+            notes += store.uploaded(self.port, event)  # a Drive tool answered with a copy of the ledger
             plan = facts.get("plan")
             if plan and any(relative(path, plan["root"]) is not None and allows(plan, relative(path, plan["root"]))
                             for path in facts.get("writes", [])):
                 self.port.back(event.session)  # a write to a plan file in deliver goes back to execute
+        if event.kind == "Stop" and any(f.kind == "store.unsaved" for f in verdict.findings):
+            store.asked(self.port, event.session)  # a turn is held once for the same unsaved work
         for finding in verdict.findings:
             self.port.decision(event, facts.get("plan"), finding, CLAUDE_DECISION.get(verdict.decision, verdict.decision))
         return notes
