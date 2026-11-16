@@ -92,7 +92,8 @@ def sandbox(ledger_path: str | Path, folder: str | Path) -> Optional[Path]:
 def run(port: PlanStore, plan: ApprovedPlan, command: Sequence[str], timeout: float = VERIFY_TIMEOUT,
         cwd: Optional[str | Path] = None) -> tuple[bool, int, list[str], list[str]]:
     """Run command (a list of words, no shell, stdin closed) for the approved plan under the verify lock, with
-    HARNESS_DB set to a copy of the live ledger; keep the receipt. (ok, exit code, last lines, changed files).
+    HARNESS_DB set to a copy of the live ledger and without the harness's own variables (project_env); keep the
+    receipt (ok, exit code, last lines, changed files).
     Exit 124: the timeout ended it; 127: it could not start. A file that changed while it ran makes it red.
 
     Args:
@@ -116,7 +117,7 @@ def run(port: PlanStore, plan: ApprovedPlan, command: Sequence[str], timeout: fl
     with VerifyLock(folder), tempfile.TemporaryDirectory(prefix="harness-verify-") as tmp:
         files, changed = blobs(plan), dirty(plan)
         copy = sandbox(port.path, tmp)
-        env = {**os.environ, **({"HARNESS_DB": str(copy)} if copy else {})}
+        env = {**project_env(), **({"HARNESS_DB": str(copy)} if copy else {})}
         try:
             p = subprocess.run(list(command), cwd=folder, capture_output=True, timeout=timeout, env=env,
                                stdin=subprocess.DEVNULL)
@@ -134,6 +135,21 @@ def run(port: PlanStore, plan: ApprovedPlan, command: Sequence[str], timeout: fl
                             "why": (tail[-1] if tail else "")[-500:] if not ok else "",
                             "ms": int((time.monotonic() - started) * 1000)})
     return ok, code, tail, changed
+
+
+
+HARNESS_ENV = ("HARNESS_HOME", "HARNESS_CODE", "HARNESS_SESSION")
+
+
+def project_env() -> dict[str, str]:
+    """The environment a project's tests run with: this process's, without the variables that point at the harness
+    in force (its home, its release, its session). With them, a test that starts a harness entry would write to the
+    live home's ledger (found by orchestra's live run: a child's verify left test plans in its live ledger).
+
+    Returns:
+        A copy of os.environ without HARNESS_ENV.
+    """
+    return {k: v for k, v in os.environ.items() if k not in HARNESS_ENV}
 
 
 def verify(port: PlanStore, command: Sequence[str], plan_id: str) -> str:
