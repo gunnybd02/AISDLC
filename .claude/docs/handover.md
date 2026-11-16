@@ -50,8 +50,9 @@ session cannot read the old chat; it reads this file. Details not here are in `d
 | #27 | The shell reader knows `git ls-remote` reads only (found by the live check of #26) |
 | #28 | Orchestra, part 2: a brief as a session's first prompt makes it a child; `take` opens its card plan by the parent's grant (no form) on `orch/p<plan>/<name>`; `push`, `question`, `handback` (the receipt `.harness/handback/<name>.json` committed and pushed); a child never asks the user, presents or closes a plan, asks for the maint grant, merges or pushes another branch (`child_guard`) |
 | #29 | A project's tests never see the harness in force: `verify` and the test package drop `HARNESS_HOME`, `HARNESS_CODE`, `HARNESS_SESSION` (and the tests `CLAUDE_PROJECT_DIR`); before, the harness's own suite failed 22 tests in a governed session and wrote test plans into the live ledger (found by orchestra's live run with one child) |
+| #31 | Units in `project.json` (`repo`, `path`, `verify`, `base`: any repository, or a folder of a shared one); orchestra gives a child its unit (clone, folder, test command, PR target); fixes from the live run: a child is never asked (the arbiter turns a question into a refusal with "go on", `child.no_keyboard`), its card plan waits for its handback, it keeps its role on a new ticket, the brief says to verify from the shell |
 
-426 tests pass (1 skipped, Windows only); doctor: 0 errors.
+431 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 ## The cloud, as it runs now
 

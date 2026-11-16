@@ -15,7 +15,7 @@ anchor.py       the one file Claude Code runs; it routes to an entry of the rele
     utils/      shared code with no policy: contracts, shapes (the named data), ledger/, plan/, orchestra/, shell/, git/
     nets/       the rules of the tree, checked by the doctor
     tests/      tests/<block>/test_<module>.py, plus nets/ and e2e/
-  project.json  the values of the user (name, verify: the unit's test command, ledger: the real ledger)
+  project.json  the user's values: name, verify (the test command), ledger, units (repo, path, verify, base)
   docs/         this file, transfer.md, migration-map.md (not part of a release)
   state/        private, not in git: harness.db, the ledger, the one store of the harness's data
 ```

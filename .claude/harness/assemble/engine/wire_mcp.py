@@ -73,7 +73,8 @@ def ports_of(items: dict[str, Item], claude_dir: str | Path) -> dict[str, Any]:
 
     Returns:
         {port name: port}, in the order of SERVER_PORTS: the LedgerPort (plans, ledger), the items, and callables
-        (verify_command, doctor, git_judge: GitJudge, session, commit_judge: CommitJudge, banned, store, judge).
+        (verify_command, doctor, git_judge: GitJudge, session, commit_judge: CommitJudge, banned, store, units: the
+        declared units by name as {repo, path, verify, base}, judge).
     """
     ledger = LedgerPort(claude_dir)
     ports = {"plans": ledger, "ledger": ledger, "verify_command": lambda: Config.load(claude_dir).verify,
@@ -84,6 +85,7 @@ def ports_of(items: dict[str, Item], claude_dir: str | Path) -> dict[str, Any]:
                  commit_event(repo, files, message)).verdict,
              "banned": lambda: Config.load(claude_dir).banned,
              "store": store.folder,
+             "units": lambda: {name: unit.spec() for name, unit in Config.load(claude_dir).units},
              "judge": lambda event: build_runner(claude_dir, items).run(event).verdict}
     assert tuple(ports) == SERVER_PORTS, "ports_of builds exactly SERVER_PORTS"
     return ports

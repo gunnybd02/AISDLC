@@ -140,8 +140,25 @@ Whoever opens a session writes its first prompt: the user or one of their sessio
 
 **Child refusals.** `plan_present`, `plan_close` and `maint grant` refuse in a child. The detector `child_guard`
 refuses `child.ask_user` (AskUserQuestion), `child.merge` (git merge, pull, rebase) and `child.push_other` (a push to
-another branch, `--all`, `--mirror`, `--tags`). Not refused yet: leaving its branch by `git switch`; Claude Code's
-own permission prompts in a child are not denied.
+another branch, `--all`, `--mirror`, `--tags`). **Nobody is asked in a child** (spec 11.2; found by the live run,
+where a child hung on `python3 -m unittest` and on `git push`): `child_guard` reports `child.no_keyboard` on each call
+of a child, and the arbiter counts it only when the call would ask (`IN_PLACE_OF_ASK`); then the call is refused with
+"go on, name it under notChecked", the question's reason after it. Each such step is kept (`act_rule_decisions`, the
+tool and the first word only) and listed under `refused` in the receipt. Not refused yet: leaving its branch by
+`git switch`.
+
+**Fixed by the live run.** A child's card plan no longer closes itself after its last `step_done` (a plan of the home
+did): it waits in deliver for `push` and `handback`. A child keeps its role and questions on any new ticket of its
+session (`tickets.CARRIED`). The brief says to run verify from the shell (`python3 <core>/anchor.py cli verify`):
+through the MCP tool it stops at 60 s, and a suite can take longer.
+
+**Units, for any repository** (`project.json` `units`, `assemble/engine/config.py Unit`). A unit is a project the
+plans and children work on: its repository (`repo`, an https URL; none: the home's own), its folder in it (`path`;
+several units may share one repository, each with its own folder), its test command (`verify`; default the config's)
+and the branch its pull requests target (`base`; default `main`). A card's unit must be declared, or `home`. `spawn`
+puts the unit in the card block (a child's harness runs with its own config, not the parent project's) and opens the
+child on the unit's repository; `take` roots the card plan in the unit's folder and gives it the unit's verify
+(`plan["verify"]`, set by the server, never by the model; `utils/plan/verify.command_of`); the receipt names the unit.
 
 **A limit of the cloud.** The harness's home there is the installed copy (`/root/.harness`), so a clone of this
 repository is a unit: a child that changes files under `.claude/` is refused at commit (`commit.agent_files`).
@@ -158,14 +175,19 @@ a test); rerun those tests in a temporary checkout of the branch against a copy 
 rerun them at the base (green there is a warning, as spec 14.6). Green only with no AC missing, nothing red, nothing
 uncommitted.
 
-**`accept`.** A handback, a green verify in the receipt, a green check this round; merge the branch into the base,
-run the configured tests on the result, push; end the child (its crew state, a story row), and close the parent
-when every child has ended and nothing is uncovered (spec 16). The branch is listed for the user to delete.
+**`accept`** (decided by the user on 2026-11-16). A handback, a green verify in the receipt, a green check this
+round; then the parent opens **one pull request** from the child's branch `orch/p<plan>/<name>` into its unit's
+`base`, and records it on the crew entry. Accept merges nothing.
+
+**The final route** (`land`). When every child is accepted, the parent merges the pull requests one by one, in the
+plan's order, runs each unit's tests on the result, and **resolves the conflicts there itself**, or sends the child
+whose branch no longer merges back (`reject`). The delegated plan closes delivered when every pull request is merged
+and nothing planned is left uncovered (spec 16). Merged branches are listed for the user to delete.
 
 **`reject` / `answer`.** Round n of 3, then the user decides. The text goes out with `send_message`; the child acts
 on it because its brief said so.
 
-**`land`, `forget`, `release`, `read`, digest.** As spec 17 and 18, with "stop the session" read as "the parent's
+**`forget`, `release`, `read`, digest.** As spec 17 and 18, with "stop the session" read as "the parent's
 model archives it". The digest is built on request from the crew and the fetched receipts.
 
 **Cleanup (part 4).** `remove` with no name returns one checklist of the children that no longer run; the user ticks;

@@ -56,6 +56,7 @@ the ledger store on Drive only grows (`guide("store", "skills")`). Uploading and
 | `no delegated plan is in force` | spawn needs a plan with children the user approved | present it, ask the form |
 | `3 children run already` | the cap | wait until one is accepted or forgotten |
 | `has started already`, `one session is one child` | the crew has it | `run("orchestra", "status", {})` |
+| `child.no_keyboard`: a step that would ask a person | this session is a child: nobody answers, so it is refused | do not retry it; go on, and name it under notChecked in `handback` |
 | `child.ask_user`, `child.merge`, `child.push_other`; `a child session never ...` | this session is a child: nobody answers it, only the orchestrator merges | `run("orchestra", "question", {"question"})`, or name it under notChecked in `handback` |
 | `this session is no child` | take, push, question and handback are a child's | a parent uses spawn and started |
 

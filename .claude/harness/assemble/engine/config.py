@@ -4,7 +4,12 @@
   banned   (optional) words commit and merge request text never hold
   protected (optional) the protected branches, names or fnmatch patterns; main and master when not given
   ledger   (optional) the absolute path of the real ledger, whose schema the doctor compares read only; a Windows
-           path (C:/...) is absolute on every system, and on one that is not Windows it names no ledger here"""
+           path (C:/...) is absolute on every system, and on one that is not Windows it names no ledger here
+  units    (optional) the projects a plan or a child of a delegated plan works on, by name (a-z, 0-9, -):
+           {"api": {"repo": "https://github.com/me/shop", "path": "services/api", "verify": [...], "base": "main"}}
+           repo its repository (https; "" or none: the home's own), path its folder in it (default "."), verify its
+           test command run in that folder (default: verify above), base the branch its pull requests target
+           (default "main"). Several units may share one repository, each with its own path (a repo of many units)."""
 from __future__ import annotations
 
 import json
@@ -13,6 +18,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 from harness.utils.git.branches import DEFAULT_PROTECTED
 
@@ -20,11 +26,66 @@ FILE = "project.json"
 DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
 REQUIRED = ("name",)
 GONE = {"recipe": "the pipeline is picked by the state of the session (assemble/engine/select.py)"}
-OPTIONAL = ("verify", "ledger", "protected", "banned")
+OPTIONAL = ("verify", "ledger", "protected", "banned", "units")
+UNIT_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+RESERVED = ("home", "none", "agent-code")
+UNIT_KEYS = ("repo", "path", "verify", "base")
 
 
 class ConfigError(ValueError):
     """The config cannot be read, or holds a value it may not."""
+
+
+@dataclass(frozen=True)
+class Unit:
+    """A project the plans and children work on (units in project.json): its repository URL ("" for the home's own),
+    its folder in it, its test command (words; "{python}" kept, filled where it runs) and the branch its pull
+    requests target."""
+    repo: str = ""
+    path: str = "."
+    verify: tuple = ()
+    base: str = "main"
+
+    def spec(self) -> dict[str, object]:
+        """The unit as a card carries it to a child: {repo, path, verify, base}.
+
+        Returns:
+            The plain dict, verify as a list.
+        """
+        return {"repo": self.repo, "path": self.path, "verify": list(self.verify), "base": self.base}
+
+
+def unit_of(name: str, value: object, verify: tuple) -> Unit:
+    """Check one entry of units and make its Unit.
+
+    Args:
+        name: the unit's name.
+        value: its entry in project.json.
+        verify: the config's own verify, the unit's when it names none.
+
+    Returns:
+        The Unit.
+
+    Raises:
+        ConfigError: a bad name or a value not of its shape.
+    """
+    where = f"{FILE}: units.{name}"
+    if not UNIT_NAME.match(name) or name in RESERVED:
+        raise ConfigError(f"{where}: a unit's name is a-z, 0-9 and -, not {', '.join(RESERVED)}")
+    if not isinstance(value, dict) or set(value) - set(UNIT_KEYS):
+        raise ConfigError(f"{where} holds only {', '.join(UNIT_KEYS)}")
+    repo, path, base = value.get("repo", ""), value.get("path", "."), value.get("base", "main")
+    if not isinstance(repo, str) or (repo and not re.match(r"^https://[^\s@]+$", repo)):
+        raise ConfigError(f"{where}: repo is the https URL of its repository, or \"\" for the home's own")
+    parts = re.split(r"[\\/]", path) if isinstance(path, str) else [".."]
+    if not path or ".." in parts or Path(path).is_absolute() or DRIVE.match(path):
+        raise ConfigError(f"{where}: path is a folder inside its repository (no .., not absolute)")
+    words = value.get("verify", list(verify))
+    if not isinstance(words, list) or not all(isinstance(w, str) for w in words) or ("verify" in value and not words):
+        raise ConfigError(f"{where}: verify is a list of words, its test command")
+    if not isinstance(base, str) or not re.match(r"^[A-Za-z0-9._/-]+$", base):
+        raise ConfigError(f"{where}: base is a branch name")
+    return Unit(repo, path.replace("\\", "/").strip("/") or ".", tuple(words), base)
 
 
 @dataclass(frozen=True)
@@ -34,6 +95,7 @@ class Config:
     ledger: str = ""
     protected: tuple = DEFAULT_PROTECTED
     banned: tuple = ()
+    units: tuple = ()  # ((name, Unit), ...), in the file's order
 
     @property
     def ledger_here(self) -> str:
@@ -80,4 +142,20 @@ class Config:
         banned = data.get("banned", [])
         if not isinstance(banned, list) or not all(isinstance(w, str) and w.strip() for w in banned):
             raise ConfigError(f"{FILE}: banned is a list of words commit and merge request text never hold")
-        return cls(data["name"], tuple(sys.executable if w == "{python}" else w for w in verify), ledger, tuple(protected), tuple(w.strip() for w in banned))
+        units = data.get("units", {})
+        if not isinstance(units, dict):
+            raise ConfigError(f"{FILE}: units is an object of units by name")
+        made = tuple((name, unit_of(name, value, tuple(verify))) for name, value in units.items())
+        return cls(data["name"], tuple(sys.executable if w == "{python}" else w for w in verify), ledger,
+                   tuple(protected), tuple(w.strip() for w in banned), made)
+
+    def unit(self, name: str) -> Optional[Unit]:
+        """A declared unit by its name.
+
+        Args:
+            name: the unit's name.
+
+        Returns:
+            The Unit, or None when the config declares none of that name.
+        """
+        return dict(self.units).get(name)
