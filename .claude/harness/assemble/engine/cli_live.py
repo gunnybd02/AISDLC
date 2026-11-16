@@ -13,6 +13,7 @@ code that runs then is the one the machine was prepared with: when it put a newe
 how to reach the tools and which skill to read (its door live hint), so the session never reads of a thing it lacks."""
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -137,6 +138,26 @@ def release_hint(home: str | Path) -> str:
     except (OSError, ValueError, subprocess.SubprocessError):
         pass
     return tools_hint(home)
+
+
+def session_began(home: str | Path, payload: str) -> None:
+    """Record that a session began: its row in the ledger, and a higher epoch when its context was compacted or
+    cleared; then the ledger's upkeep. It never raises: a start is never blocked.
+
+    Args:
+        home: the home, the .claude folder.
+        payload: the SessionStart hook's JSON ({session_id, source}); anything else records nothing.
+    """
+    try:
+        data = json.loads(payload or "{}")
+        sid = str(data.get("session_id") or "") if isinstance(data, dict) else ""
+        if sid:
+            from harness.assemble.engine.ports import LedgerPort  # the port reads this module's siblings
+            port = LedgerPort(home)
+            port.session_started(sid, str(data.get("source") or ""))
+            port.upkeep()  # roll up, prune, back up: once a day in effect
+    except Exception as e:
+        sys.stderr.write(f"harness: the session start was not recorded ({type(e).__name__}: {e})\n")
 
 
 def session_update(home: str | Path) -> str:

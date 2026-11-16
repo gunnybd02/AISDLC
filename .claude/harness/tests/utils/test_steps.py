@@ -89,6 +89,20 @@ class StepsTest(unittest.TestCase):
         self.verify()
         self.refused("has no test")
 
+    def test_a_step_does_not_owe_the_unwritten_test_of_a_later_step(self):
+        later = {"commit": "Set B", "points": ["b"], "files": ["lib/*.py"], "tests": ["lib/test_b.py"], "behaviors": [
+            {"id": "sets-b", "what": "b is 2", "how": "unit test", "why": "w", "test": "lib/test_b.py"}]}
+        self.approve({**STEPS, "steps": [STEPS["steps"][0], later]})
+        self.write("a.py", "X = 2\n")
+        self.verify()
+        self.assertIn("step 2 of 2 is open", step_done(self.port, "s1", "Set A"))  # lib/test_b.py is not written yet
+        self.write("lib/b.py", "B = 2\n")
+        self.verify()
+        self.refused("its test lib/test_b.py is not written yet", "Set B")  # its own step still owes it
+        self.write("lib/test_b.py", TEST)
+        self.verify()
+        self.assertIn("plan is delivered", step_done(self.port, "s1", "Set B"))
+
     def test_no_commit_without_a_green_verify_of_the_current_files(self):
         self.approve(LIGHT)
         self.write("a.py", "X = 2\n")

@@ -84,5 +84,50 @@ class RunTest(unittest.TestCase):
         self.assertEqual((result.text, result.is_error), ("not this", True))
 
 
+class SpanTest(unittest.TestCase):
+    def test_each_run_leaves_one_span_with_the_argument_names_never_their_values(self):
+        from harness.assemble.engine.ports import LedgerPort
+        from harness.tests import tree
+        port = LedgerPort(tree(self, {}))
+        port.touch_session("s1")
+        run = run_with(plans=port, session=lambda: "s1", seen=1)
+        self.assertEqual(run.call({"block": "t", "action": "look", "args": {"password": "hunter2", "a": 1}}).text[:5], "look(")
+        self.assertFalse(call(run, "look").is_error)
+        self.assertTrue(call(run, "fail").is_error)
+        self.assertTrue(call(run, "nothere").is_error)
+        spans = [tuple(r[k] for k in r.keys()) for r in port.rows("SELECT sid, kind, status, name, attrs FROM pl_spans ORDER BY rowid")]
+        self.assertEqual(spans, [("s1", "tool", "error", "t.look", '{"args": ["a", "password"]}'),
+                                 ("s1", "tool", "ok", "t.look", '{"args": []}'),
+                                 ("s1", "tool", "error", "t.fail", '{"args": []}'),
+                                 ("s1", "tool", "error", "t.nothere", '{"args": []}')])
+        self.assertNotIn("hunter2", str(port.rows("SELECT attrs FROM pl_spans")))
+
+    def test_a_write_is_judged_for_the_session_that_calls(self):
+        seen = []
+
+        def judge(event):
+            seen.append((event.session, event.input["action"], event.input["effect"]))
+            return Verdict(ALLOW, "", (Finding("action.t.change"),))
+        self.assertEqual(call(run_with(judge=judge, session=lambda: "s7"), "change").text, "changed")
+        self.assertEqual(call(run_with(judge=judge), "change").text, "changed")  # a server with no session port
+        self.assertEqual(seen, [("s7", "change", WRITE), ("", "change", WRITE)])
+
+    def test_a_span_that_cannot_be_kept_never_changes_the_answer(self):
+        class Broken:
+            def span(self, *args):
+                raise AssertionError("the tool must not reach a port that is no ledger port")
+        self.assertEqual(call(run_with(seen=1), "look").text, "ports ['seen']")  # a server with no ledger: no span
+        from harness.assemble.engine.record_port import RecordPort
+        from harness.tests import tree
+        port = RecordPort(tree(self, {}) / "nowhere")
+        port.write = lambda change: (_ for _ in ()).throw(OSError("no ledger"))
+        import contextlib
+        import io
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(call(run_with(plans=port, seen=1), "look").text, "ports ['seen']")
+        self.assertIn("not recorded in the ledger (t.look): OSError: no ledger", err.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

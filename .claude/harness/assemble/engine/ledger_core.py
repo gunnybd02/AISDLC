@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Callable, Optional, TypeVar
 
+from harness.utils.gateway.release import current, release_dir
 from harness.utils.plan import opening
 from harness.utils.ledger.db import Ledger
 from harness.utils.ledger.recorder import Recorder
@@ -25,6 +26,21 @@ def now() -> int:
     return int(time.time() * 1000)
 
 
+def in_force(claude_dir: str | Path) -> bool:
+    """Whether the code running is the code in force of a home: its published release, or its own work tree when no
+    release is published. Only that code may upgrade the home's ledger (utils/ledger/upgrade.py).
+
+    Args:
+        claude_dir: the home (the .claude folder).
+
+    Returns:
+        True when this module is in the release state/live/current names, or in the home itself when it names none.
+    """
+    home, here = Path(claude_dir).resolve(), Path(__file__).resolve().parents[3]
+    sha = current(home)
+    return here == (release_dir(home, sha).resolve() if sha else home)
+
+
 class LedgerCore:
     """The ledger of a home: its path, the open ledger, and the plain read and write every port method goes through."""
 
@@ -39,13 +55,14 @@ class LedgerCore:
 
     @property
     def ledger(self) -> Ledger:
-        """The open ledger, opened (and made from schema.sql when new) at the first use.
+        """The open ledger, opened (and made from schema.sql when new) at the first use; one of an older schema version
+        is upgraded when this code is the code in force of the home, else refused (utils/ledger/db.py).
 
         Returns:
             The Ledger of state/harness.db.
         """
         if self._ledger is None:
-            self._ledger = Ledger.open(self.path)
+            self._ledger = Ledger.open(self.path, upgrade=in_force(self.path.parent.parent))
         return self._ledger
 
     def write(self, change: Change[T]) -> T:

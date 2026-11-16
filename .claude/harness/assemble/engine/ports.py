@@ -23,6 +23,7 @@ from typing import Optional
 from harness.assemble.engine.config import Config, ConfigError
 from harness.assemble.engine.desk_port import DeskPort
 from harness.assemble.engine.ledger_core import now
+from harness.assemble.engine.record_port import RecordPort
 from harness.assemble.engine.ticket_port import TicketPort
 from harness.utils.contracts import Event, Finding, Port
 from harness.utils.git.branches import DEFAULT_PROTECTED, current, is_protected
@@ -43,29 +44,20 @@ ACTION_PORTS = ("plans", "ledger", "verify_command", "items", "doctor", "git_jud
 SERVER_PORTS = ACTION_PORTS + ("judge",)
 
 
-class LedgerPort(DeskPort, TicketPort):
-    """The ledger port: the desk plans (DeskPort), the tickets (TicketPort), and here the sessions, the plan in force
+class LedgerPort(DeskPort, TicketPort, RecordPort):
+    """The ledger port: the desk plans (DeskPort), the tickets (TicketPort), the recording of each action
+    (RecordPort), and here the sessions, the plan in force
     with its grants, registry and receipts, and the rows of the CLI doors and of the rules' decisions."""
-
-    def touch_session(self, sid: str) -> None:
-        """The session is at work now: the hook saw its prompt, or its call of the harness's MCP tools.
-
-        Args:
-            sid: the session id ("" changes nothing).
-        """
-        if sid:
-            self.write(lambda con, rec: con.execute(
-                "INSERT INTO sessions (sid, started_at, last_at) VALUES (?, ?, ?) ON CONFLICT(sid) DO UPDATE SET "
-                "last_at = excluded.last_at", (sid, now(), now())))
 
     def session(self) -> str:
         """The session calling the MCP server: the one whose call of the harness's tools the hook saw last ("" if none).
         Claude Code tells an MCP server no session; the hook sees each tool call just before the server runs it.
+        A session met only through other calls has its row with last time 0 and is never the one.
 
         Returns:
             The session id, or "".
         """
-        rows = self.rows("SELECT sid FROM sessions ORDER BY last_at DESC, rowid DESC LIMIT 1")
+        rows = self.rows("SELECT sid FROM sessions WHERE last_at > 0 ORDER BY last_at DESC, rowid DESC LIMIT 1")
         return rows[0]["sid"] if rows else ""
 
     def ticket(self, sid: str) -> Optional[Ticket]:
@@ -190,20 +182,6 @@ class LedgerPort(DeskPort, TicketPort):
         """
         home, here = top(self.path.parent.parent), top(repo) if Path(repo).is_dir() else None
         return bool(home and here) and key(home) == key(here)
-
-    def decision(self, event: Event, plan: Optional[ApprovedPlan], finding: Finding, verdict: str) -> None:
-        """Keep one finding of a hook call with the word Claude Code was given (act_rule_decisions).
-
-        Args:
-            event: the hook call.
-            plan: the plan in force in its session, or None.
-            finding: the finding kept.
-            verdict: the word Claude Code was given for the call (contracts.CLAUDE_DECISION, or the decision itself).
-        """
-        self.write(lambda con, rec: rec.insert(con, "act_rule_decisions", {
-            "uid": uuid.uuid4().hex, "sid": event.session, "agent": "", "plan_id": plan["id"] if plan else None,
-            "rule": finding.kind, "kind": "finding", "tool": event.tool, "service": "", "verdict": verdict,
-            "detail": finding.detail, "at": now()}))
 
     def keep_verify(self, plan: ApprovedPlan, receipt: Receipt) -> None:
         """A verify receipt of an approved plan: {files: {path: blob id}, tests, commands, code, ok, why, ms}.
@@ -334,9 +312,11 @@ class PlanState(Port):
 
     def read(self, event: Event) -> Facts:
         """The facts of the event's session: plan (ApprovedPlan or None), state_dir, git_view (GitView), stop_owed
-        (plan -> code files no green verify saw), banned, store_owed (() -> the unsaved work of the store), child_role
+        (plan -> code files no green verify saw, but those another writer changed), stop_foreign (plan -> those), banned, store_owed (() -> the unsaved work of the store), child_role
         (() -> the session's ChildRole when it is a child of a delegated plan, else None)."""
         return {"plan": self.port.approved(event.session), "state_dir": str(self.port.path.parent).replace("\\", "/"),
-                "git_view": self.git, "stop_owed": lambda plan: stop.unverified(self.port, plan), "banned": self.banned,
+                "git_view": self.git, "banned": self.banned,
+                "stop_owed": lambda plan: stop.owed(self.port, plan, self.port.written(event.session)),
+                "stop_foreign": lambda plan: stop.foreign(self.port, plan, self.port.written(event.session)),
                 "store_owed": lambda: store.owed(self.port) if store.folder() else [],
                 "child_role": lambda: child.role_of(self.port.ticket(event.session)) if event.session else None}

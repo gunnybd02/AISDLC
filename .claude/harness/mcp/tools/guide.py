@@ -1,7 +1,8 @@
-"""guide: read a skill of the library, or the actions of a block with their arguments (one action with topic)."""
+"""guide: read a skill of the library, or the actions of a block with their arguments (one action with topic). A skill
+read is recorded as a skill load of the calling session (docs/12-ledger.md)."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from harness.mcp.actions.table import ActionTable, signature
 from harness.mcp.server.tool import Result, Tool
@@ -17,14 +18,16 @@ class Guide(Tool):
     schema = {"type": "object", "properties": {"name": {"type": "string"}, "mode": {"type": "string", "enum": ["skills", "mcp"]},
                                                "topic": {"type": "string"}}, "required": ["name", "mode"]}
 
-    def __init__(self, skills: Skills, table: ActionTable) -> None:
-        """Keep the library and the action table it reads.
+    def __init__(self, skills: Skills, table: ActionTable, ports: Optional[dict[str, Any]] = None) -> None:
+        """Keep the library and the action table it reads, and the server's ports.
 
         Args:
             skills: the library of skills.
             table: the action table.
+            ports: the server's ports by name; plans (the ledger port) and session record a skill load. None: a
+                guide that records nothing.
         """
-        self.skills, self.table = skills, table
+        self.skills, self.table, self.ports = skills, table, ports or {}
 
     def call(self, args: dict[str, Any]) -> Result:
         """Answer {name, mode, topic?}: the whole text of a skill (mode skills), or the block's actions, one line
@@ -33,7 +36,12 @@ class Guide(Tool):
         name, mode, topic = args.get("name"), args.get("mode"), args.get("topic")
         if mode == "skills":
             skill = self.skills.get(name)
-            return Result(skill.text) if skill else Result(f"No skill {name}; find(words) lists them.", True)
+            if not skill:
+                return Result(f"No skill {name}; find(words) lists them.", True)
+            ledger = self.ports.get("plans")
+            if hasattr(ledger, "skill_load"):  # the load is recorded for the session, with its epoch
+                ledger.skill_load(self.ports.get("session"), skill.name, "guide")
+            return Result(skill.text)
         if mode != "mcp":
             return Result("mode is skills or mcp", True)
         if name not in self.table.blocks:

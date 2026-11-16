@@ -92,10 +92,10 @@ class PromptTest(unittest.TestCase):
         self.assertEqual(self.prompt("ok"), [])
 
     def test_each_prompt_is_kept_and_a_long_one_cut(self):
-        self.prompt("x" * 2500)
+        self.prompt("x" * 70000)  # cut at 64 KB (utils/ledger/activity.py)
         self.prompt("short")
         rows = [dict(r) for r in self.port.rows("SELECT n, chars, cut, length(text) AS kept FROM pl_prompts ORDER BY n")]
-        self.assertEqual(rows, [{"n": 1, "chars": 2500, "cut": 1, "kept": 2000}, {"n": 2, "chars": 5, "cut": 0, "kept": 5}])
+        self.assertEqual(rows, [{"n": 1, "chars": 70000, "cut": 1, "kept": 65536}, {"n": 2, "chars": 5, "cut": 0, "kept": 5}])
         self.assertEqual(self.port.session(), "s1")
 
 

@@ -1,5 +1,10 @@
-"""Ledger: the private SQLite DB of the harness. A new DB is made from schema.sql, a copy of the real ledger's schema;
-every open compares the DB's fingerprint with the one schema.sql gives, and a DB that drifted does not open.
+"""Ledger: the private SQLite DB of the harness. A new DB is made from schema.sql; every open compares the DB's
+fingerprint with the one schema.sql gives, and a DB that drifted does not open.
+
+schema.sql is a row of blocks, one per schema version ("-- version N" opens a block); a version only adds objects, so
+each is the one before and more. A ledger whose structure is exactly an older version's is upgraded by the one door
+(upgrade.py), which only the code in force opens (Ledger.open(upgrade=True)); any other writer refuses it and says so,
+and never guesses a structure. The file keeps its version in user_version; the structure decides.
 
 The fingerprint covers every table, index, view and trigger, its name and its CREATE text with comments and runs of
 spaces taken out: the same schema written another way is the same, any real change is not."""
@@ -15,6 +20,7 @@ from typing import Any, Callable, Optional
 from harness.utils.shapes import Row, T
 
 SCHEMA = Path(__file__).with_name("schema.sql")
+VERSION_LINE = re.compile(r"^--\s*version\s+(\d+)\b")
 
 
 class LedgerError(Exception):
@@ -61,40 +67,111 @@ def fingerprint(con: sqlite3.Connection) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def statements() -> list[str]:
-    """The statements of schema.sql: one a line, comments left out.
+def blocks() -> dict[int, list[str]]:
+    """The statements of schema.sql by schema version: a line "-- version N" opens the block of version N.
 
     Returns:
-        Each statement without its closing semicolon, in the file's order.
+        {version: its statements without their closing semicolon, in the file's order}; statements before the first
+        marker are version 1.
     """
-    return [line.strip().rstrip(";") for line in SCHEMA.read_text(encoding="utf-8").splitlines()
-            if line.strip() and not line.lstrip().startswith("--")]
+    out, version = {}, 1
+    for line in SCHEMA.read_text(encoding="utf-8").splitlines():
+        mark = VERSION_LINE.match(line.strip())
+        if mark:
+            version = int(mark.group(1))
+        elif line.strip() and not line.lstrip().startswith("--"):
+            out.setdefault(version, []).append(line.strip().rstrip(";"))
+    return out
 
 
-def in_memory() -> sqlite3.Connection:
-    """A DB in memory with the schema of schema.sql.
+def latest() -> int:
+    """The schema version this code reads and writes.
+
+    Returns:
+        The highest version schema.sql has a block for.
+    """
+    return max(blocks())
+
+
+def statements(version: Optional[int] = None) -> list[str]:
+    """The statements that make a ledger of a version: every block up to it, in order.
+
+    Args:
+        version: the schema version; None for the latest.
+
+    Returns:
+        Each statement without its closing semicolon.
+    """
+    top = latest() if version is None else version
+    return [sql for v, block in sorted(blocks().items()) if v <= top for sql in block]
+
+
+def in_memory(version: Optional[int] = None) -> sqlite3.Connection:
+    """A DB in memory with the schema of a version.
+
+    Args:
+        version: the schema version; None for the latest.
 
     Returns:
         An open connection the caller closes.
     """
     con = sqlite3.connect(":memory:")
-    for sql in statements():
+    for sql in statements(version):
         con.execute(sql)
     return con
 
 
-@lru_cache(maxsize=1)
-def pinned() -> str:
-    """The fingerprint schema.sql gives (computed once per process).
+@lru_cache(maxsize=None)
+def pinned(version: Optional[int] = None) -> str:
+    """The fingerprint schema.sql gives for a version (computed once per process).
+
+    Args:
+        version: the schema version; None for the latest.
 
     Returns:
-        The hex sha256 fingerprint() gives for a DB made from schema.sql.
+        The hex sha256 fingerprint() gives for a DB made from the blocks up to that version.
     """
-    con = in_memory()
+    con = in_memory(version)
     try:
         return fingerprint(con)
     finally:
         con.close()
+
+
+def version_of(con: sqlite3.Connection) -> int:
+    """The schema version a DB's structure is exactly; the structure decides, not the number the file keeps.
+
+    Args:
+        con: an open connection to the DB.
+
+    Returns:
+        The version whose fingerprint the DB has; 0 when it has the structure of none (it drifted, or it is newer
+        than this code).
+    """
+    mark = fingerprint(con)
+    return next((v for v in sorted(blocks(), reverse=True) if pinned(v) == mark), 0)
+
+
+def mismatch(path: str | Path, con: sqlite3.Connection) -> str:
+    """Why a DB that is not of the latest version does not open for a writer, with what to do.
+
+    Args:
+        path: the DB file.
+        con: an open connection to it.
+
+    Returns:
+        The message: an older version (the release in force upgrades it), a newer one (this code is not the release
+        in force), or a structure of no version (it drifted).
+    """
+    found, kept = version_of(con), con.execute("PRAGMA user_version").fetchone()[0]
+    if found:
+        return (f"{path}: schema mismatch: the ledger is version {found} and this code reads version {latest()}. "
+                "The release in force upgrades it when it next opens it: start a session, or run a harness command "
+                "through anchor.py; code that is not in force never upgrades a ledger.")
+    if kept > latest():
+        return (f"{path}: schema mismatch: the ledger is version {kept}, newer than this code (version {latest()}): "
+                "this code is not the release in force; run the harness through anchor.py.")
+    return f"{path}: its schema is not the one of schema.sql (it drifted)"
 
 
 def drift(theirs: dict[tuple[str, str], str], ours: dict[tuple[str, str], str]) -> list[str]:
@@ -185,18 +262,20 @@ class Ledger:
         self.path, self.con = Path(path), con
 
     @classmethod
-    def open(cls, path: str | Path) -> Ledger:
+    def open(cls, path: str | Path, upgrade: bool = False) -> Ledger:
         """Open the DB; one with no table (new, or left empty by a crash) gets the schema in one transaction, which a
-        second process waits for instead of making it twice.
+        second process waits for instead of making it twice. One of an older version is upgraded when upgrade is true
+        (the code in force), else refused.
 
         Args:
             path: the DB file; its folder is made when missing.
+            upgrade: True for the one upgrade door, the code in force of the ledger's home.
 
         Returns:
             The open ledger.
 
         Raises:
-            LedgerError: the DB's schema is not the one of schema.sql.
+            LedgerError: the DB's schema is not the latest (an older or newer version, or a drifted structure).
             sqlite3.Error: the DB cannot be opened or made.
         """
         path = Path(path)
@@ -210,12 +289,16 @@ class Ledger:
                     if not has_tables(con):
                         for sql in statements():
                             con.execute(sql)
+                        con.execute(f"PRAGMA user_version = {latest()}")
                     con.execute("COMMIT")
                 except BaseException:
                     con.execute("ROLLBACK")
                     raise
             if fingerprint(con) != pinned():
-                raise LedgerError(f"{path}: its schema is not the one of schema.sql (it drifted)")
+                if not (upgrade and version_of(con)):
+                    raise LedgerError(mismatch(path, con))
+                from harness.utils.ledger.upgrade import upgrade as upgrade_ledger  # it reads this module
+                upgrade_ledger(con)
         except BaseException:
             con.close()
             raise

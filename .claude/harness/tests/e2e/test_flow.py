@@ -94,5 +94,29 @@ class OneFlowTest(unittest.TestCase):
         ledger.close()
 
 
+class RecordedFlowTest(unittest.TestCase):
+    def test_the_hook_entry_records_turns_prompts_and_calls_by_itself(self):
+        claude_dir = copy_tree(self, {"project.json": json.dumps(CONFIG)})
+        repo = git_repo(self, {"a.py": "X = 1\n"})
+        flow = Flow(claude_dir, repo)
+        key = "ghp_" + "a1B2c3D4" * 5  # the shape of a token, not one
+        flow.hook("UserPromptSubmit", "", {})  # Claude Code sends the prompt beside the input, read below
+        payload = {"hook_event_name": "UserPromptSubmit", "session_id": "flow", "cwd": str(repo), "prompt": f"push with {key}"}
+        self.assertEqual(run(entry_of(claude_dir, "hook"), json.dumps(payload))[0], 0)
+        self.assertEqual(flow.decision("Read", {"file_path": str(repo / "a.py")}), "allow")
+        self.assertEqual(flow.decision("Write", {"file_path": str(repo / "a.py"), "content": "X = 2\n"}), "deny")
+        flow.hook("Stop", "", {})
+        ledger = Ledger.open(claude_dir / "state" / "harness.db")
+        self.addCleanup(ledger.close)
+        turns = [tuple(r[k] for k in r.keys()) for r in ledger.all("SELECT n, ended_at > 0 FROM pl_turns WHERE sid = 'flow' ORDER BY n")]
+        self.assertEqual(turns[-1][1], 1)  # the end of the reply closed the last turn
+        prompts = [r["text"] for r in ledger.all("SELECT text FROM pl_prompts WHERE sid = 'flow'")]
+        self.assertEqual(prompts, ["[redacted]"])  # a prompt that holds a token is not stored in clear
+        calls = [r["tool"] for r in ledger.all("SELECT tool FROM act_tool_calls WHERE sid = 'flow' ORDER BY rowid")]
+        self.assertEqual(calls, ["Read", "Write"])
+        spans = [(r["name"], r["status"], r["turn"]) for r in ledger.all("SELECT name, status, turn FROM pl_spans ORDER BY rowid")]
+        self.assertEqual(spans, [("Read", "ok", turns[-1][0]), ("Write", "denied", turns[-1][0])])
+
+
 if __name__ == "__main__":
     unittest.main()

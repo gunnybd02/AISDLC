@@ -7,7 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from typing import Any
+from typing import Any, Optional
 
 from harness.utils.ledger.db import Ledger, LedgerError
 from harness.utils.shapes import Row
@@ -118,9 +118,40 @@ class Recorder:
         Returns:
             True when the chain is whole (an empty table too).
         """
-        prev = ""
-        for row in ledger.all(f"SELECT * FROM {table} ORDER BY rowid"):
-            if row["prev_hash"] != prev or row["hash"] != digest(prev, row):
-                return False
-            prev = row["hash"]
-        return True
+        return chain_break(ledger.con, table) is None
+
+
+def chain_break(con: sqlite3.Connection, table: str) -> Optional[int]:
+    """Where a chained table's hash chain breaks.
+
+    Args:
+        con: an open connection to the ledger (any row factory).
+        table: a table of CHAINED.
+
+    Returns:
+        The rowid of the first row that does not hold the hash of the row before it or its own right hash (a row
+        changed after it was written, or every row after one that was); None when the chain is whole.
+    """
+    cursor = con.execute(f"SELECT rowid AS chain_rowid, * FROM {table} ORDER BY rowid")
+    names = [d[0] for d in cursor.description]
+    prev = ""
+    for values in cursor:
+        row = dict(zip(names, tuple(values)))
+        rowid = row.pop("chain_rowid")
+        if row["prev_hash"] != prev or row["hash"] != digest(prev, row):
+            return rowid
+        prev = row["hash"]
+    return None
+
+
+def chain_report(con: sqlite3.Connection) -> list[tuple[str, int, Optional[int]]]:
+    """The state of every hash chain of a ledger.
+
+    Args:
+        con: an open connection to the ledger.
+
+    Returns:
+        (table, its rows, the rowid where its chain breaks or None) for each table of CHAINED.
+    """
+    return [(table, con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0], chain_break(con, table))
+            for table in CHAINED]

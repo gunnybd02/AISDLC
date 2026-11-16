@@ -9,7 +9,7 @@ import harness.mcp as mcp_block
 from harness.tests import CLAUDE_DIR, entry_of
 from harness.tests.e2e import copy_tree, run
 
-SCRIPT = entry_of(CLAUDE_DIR, "mcp_server")
+SCRIPT = entry_of(CLAUDE_DIR, "mcp_server")  # only for a call that records nothing; a recorded call runs a copy
 
 
 def request(id, method, params=None):
@@ -29,7 +29,8 @@ class McpServerEntryTest(unittest.TestCase):
                  call(4, "guide", {"name": "work", "mode": "skills"}),
                  call(5, "guide", {"name": "health", "mode": "mcp"}),
                  call(6, "run", {"block": "health", "action": "items"})]
-        code, out, err = run(SCRIPT, "\n".join(lines) + "\n")
+        home = copy_tree(self)  # the server of a copy: its calls are recorded in the copy's ledger, never the real one
+        code, out, err = run(entry_of(home, "mcp_server"), "\n".join(lines) + "\n")
         self.assertEqual(code, 0, err)
         answers = {a["id"]: a for a in map(json.loads, out.splitlines())}
         self.assertEqual(sorted(answers), [1, 2, 3, 4, 5, 6])

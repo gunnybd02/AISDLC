@@ -27,6 +27,29 @@ def home_plan(plan: ApprovedPlan) -> bool:
     return set(plan.get("services") or ["agent-code"]) <= {"none", "agent-code"}
 
 
+def closure(con: sqlite3.Connection, sid: str, ticket: Ticket, choice: str, facts: list[str]) -> None:
+    """Keep the closing of a plan's ticket (pl_plan_closures): the choice, the facts the ledger held then, and what
+    the ticket declares that the ledger does not show. One row per close, never changed.
+
+    Args:
+        con: the connection of the transaction.
+        sid: the session that closes.
+        ticket: the ticket closed, with its plan and commits.
+        choice: delivered or abandoned.
+        facts: the lines of facts shown at the close ("Summary: ..." is the summary).
+    """
+    plan = ticket.get("plan") or {}
+    commits = list(ticket.get("commits", []))
+    missing = [sha for sha in commits
+               if not con.execute("SELECT 1 FROM rec_commits WHERE commit_sha = ?", (sha,)).fetchone()]
+    summary = next((line[len("Summary: "):] for line in facts if line.startswith("Summary: ")), "")
+    con.execute("INSERT INTO pl_plan_closures (uid, sid, plan_id, ticket, plan_no, choice, summary, facts, mismatches, at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (uuid.uuid4().hex, sid, plan.get("plan_id", ""), ticket.get("id", ""), plan.get("id") or 0, choice,
+                 summary, json.dumps({"lines": list(facts), "commits": commits}, ensure_ascii=False),
+                 json.dumps([f"commit {sha[:12]}: declared by the ticket, not in the ledger" for sha in missing]), now()))
+
+
 class TicketPort(LedgerCore):
     """The ledger's tickets: each moves its plan from its first step to its close, one transaction a move."""
 
@@ -77,6 +100,7 @@ class TicketPort(LedgerCore):
                     and not fresh.get("child"):  # a child's card plan waits in deliver for its handback
                 done = {**done, "state": tickets.CLOSED, "closeReason": tickets.DELIVERED}
                 self.event(con, rec, plan["plan_id"], "delivered", plan["rev"], plan["id"], sid)
+                closure(con, sid, done, tickets.DELIVERED, ["Closed by its last step, with no form."])
             return tickets.save(con, done)
         return self.write(change)
 
@@ -121,6 +145,7 @@ class TicketPort(LedgerCore):
             self.event(con, rec, plan["plan_id"], "delivered" if reason == "delivered" else "dropped", plan["rev"],
                        plan["id"], sid)
             opening.log(con, sid, "closure", ticket=fresh["id"], plan=plan["id"], reason=reason, facts=facts)
+            closure(con, sid, fresh, reason, facts)
         self.write(change)
 
     def holder(self, plan_id: str) -> Optional[Ticket]:

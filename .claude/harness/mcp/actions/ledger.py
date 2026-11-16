@@ -18,7 +18,8 @@ from harness.utils.plan.life import settle
 from harness.utils.ledger.db import LedgerError, query
 
 ACTIONS = [("ledger.db_query", "DbQuery"), ("ledger.plans_settle", "PlansSettle"), ("ledger.export", "Export"),
-           ("ledger.store_status", "StoreStatus")]
+           ("ledger.store_status", "StoreStatus"), ("ledger.usage_backfill", "UsageBackfill"),
+           ("ledger.annotate", "Annotate"), ("ledger.chain_check", "ChainCheck")]
 STORE_NOTE = ("\nStore: run('ledger', 'export', {reason: 'push'}) and upload the copy as its answer says "
               "(guide('store', 'skills')).")
 
@@ -83,6 +84,59 @@ class PlansSettle(McpAction):
         """List the open desk plans and their proof, and end the proven ones (write) or drop unproven ones of dead
         sessions (drop) (utils/plan/life.settle); answer the list and what was done."""
         return settle(ctx.ports["plans"], bool(args.get("write")), args.get("drop"))
+
+
+class UsageBackfill(McpAction):
+    """ledger.usage_backfill: the token usage the transcripts hold and the ledger lacks."""
+    block, name, effect = "ledger", "usage_backfill", WRITE
+    summary = ("Report the token usage the transcripts on this machine hold and the ledger lacks; write: true records it "
+               "once and seeds the list prices when there are none (the harness records usage by itself at each end "
+               "of a turn; this is for sessions from before)")
+    args_schema = {"type": "object", "properties": {"write": {"type": "boolean"}}, "required": []}
+    needs = ("plans",)
+
+    def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
+        """Answer what the transcripts hold that the ledger lacks, and record it when write is true."""
+        return ctx.ports["plans"].usage_backfill(bool(args.get("write")))
+
+
+class Annotate(McpAction):
+    """ledger.annotate: one judgment of the model about a span, a turn, a session or a plan."""
+    block, name, effect = "ledger", "annotate", WRITE
+    summary = ("Keep one judgment of a review: unit (span, turn, session or plan), ref (which one), name and identifier "
+               "(the review it belongs to), with a label, a score and a one-line explanation; the row is marked as the "
+               "model's and no gate reads it")
+    args_schema = {"type": "object", "properties": {
+        "unit": {"type": "string"}, "ref": {"type": "string"}, "name": {"type": "string"},
+        "identifier": {"type": "string"}, "label": {"type": "string"}, "score": {"type": "number"},
+        "explanation": {"type": "string"}}, "required": ["unit", "ref", "name", "identifier"]}
+    needs = ("plans", "session")
+
+    def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
+        """Keep the judgment; ActionError when a field is missing or wrong (nothing is written then)."""
+        problem = ctx.ports["plans"].annotate(ctx.ports["session"], args)
+        if problem:
+            raise ActionError(problem)
+        return f"Kept: {args['name']} on {args['unit']} {args['ref']} (annotator LLM)."
+
+
+class ChainCheck(McpAction):
+    """ledger.chain_check: whether the ledger's hash chains are whole."""
+    block, name, effect = "ledger", "chain_check", READ
+    summary = ("Check the hash chains of the ledger's evidence (plans, commits, verify receipts, git audit, file grants, "
+               "behaviours): each table's rows and whether its chain is whole, or the first row that breaks it")
+    args_schema = {"type": "object", "properties": {}, "required": []}
+    needs = ("plans",)
+
+    def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
+        """Answer one line per chained table, and whether every chain is whole."""
+        report = ctx.ports["plans"].chains()
+        lines = [f"{table}: {rows} row(s), " + ("whole" if row is None else f"BROKEN at row {row}")
+                 for table, rows, row in report]
+        broken = [table for table, _, row in report if row is not None]
+        end = (f"{len(broken)} chain(s) broken: a row was changed after it was written. Tell the user."
+               if broken else "Every chain is whole.")
+        return "\n".join(lines + [end])
 
 
 class Export(McpAction):

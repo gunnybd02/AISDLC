@@ -1,4 +1,4 @@
-"""run: call one action of the action table. Before it runs: the action exists, its arguments fit its args_schema, and
+"""run: call one action of the action table. Every call leaves one span in the ledger (docs/12-ledger.md). Before it runs: the action exists, its arguments fit its args_schema, and
 the server has every port it names in needs, which are all it is given. A write action is judged first: the judge
 port answers the verdict of the rules for the call, and only an allow that a rule row decided lets it run (an ask too
 is refused, the server cannot ask the user; an allow no rule decided is write-unjudged). A read is never judged."""
@@ -36,6 +36,19 @@ class Run(Tool):
         self.table, self.ports = table, ports
 
     def call(self, args: dict[str, Any]) -> Result:
+        """Run the action {block, action, args?} and answer its text or its error (answer); the call leaves one span
+        in the ledger, for success and for error, with the names of its arguments and never their values. A span that
+        cannot be kept never changes the answer."""
+        result = self.answer(args)
+        ledger = self.ports.get("plans")
+        if hasattr(ledger, "span"):
+            given = args.get("args")
+            ledger.span(self.ports.get("session"), "tool", "error" if result.is_error else "ok",
+                        f"{args.get('block')}.{args.get('action')}",
+                        {"args": sorted(str(k) for k in given) if isinstance(given, dict) else []})
+        return result
+
+    def answer(self, args: dict[str, Any]) -> Result:
         """Run the action {block, action, args?} with only the ports it needs, a write only when a rule allows it;
         answer its text, or an error for an unknown action, bad arguments, a missing port, a refused write or the
         action's ActionError or ValueError."""
@@ -74,8 +87,9 @@ class Run(Tool):
         judge = self.ports.get("judge")
         if judge is None:
             return f"{block}.{name} is a write and this server has no judge: it does not run"
-        event = Event("PreToolUse", TOOL, {"block": block, "action": name, "args": given, "effect": WRITE}, "",
-                      os.getcwd())
+        session = self.ports.get("session")
+        event = Event("PreToolUse", TOOL, {"block": block, "action": name, "args": given, "effect": WRITE},
+                      session() if callable(session) else "", os.getcwd())  # judged for the session that calls
         try:
             verdict = judge(event)
         except Exception as e:
