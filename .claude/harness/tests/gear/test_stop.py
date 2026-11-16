@@ -47,6 +47,31 @@ class StopTest(unittest.TestCase):
         (self.repo / "a.py").write_text("X = 3\n", encoding="utf-8")
         self.assertEqual(self.stop(), ["stop.unverified"])
 
+    def test_a_change_another_writer_made_is_named_and_does_not_hold_the_turn(self):
+        from harness.assemble.engine.build import build_runner
+        a = str(self.repo / "a.py")
+
+        def hook(kind, tool="", tool_input=None):
+            return build_runner(self.claude_dir).run(Event(kind, tool, tool_input or {}, "s1", str(self.repo)))
+        (self.repo / "a.py").write_text("X = 2\n", encoding="utf-8")
+        hook("PostToolUse", "Write", {"file_path": a, "content": "X = 2\n"})  # this session wrote it: in the ledger
+        verify(self.port, Config.load(self.claude_dir).verify, self.plan_id)
+        self.assertEqual(hook("Stop").verdict.findings, ())
+        (self.repo / "a.py").write_text("X = 9\n", encoding="utf-8")  # another writer: no write of this session
+        out = hook("Stop")
+        self.assertEqual([f.kind for f in out.verdict.findings], [])  # the turn is not held for it
+        self.assertIn("a.py changed after your last green verify, but this session did not make that change", out.notes[0])
+        hook("PostToolUse", "Write", {"file_path": a, "content": "X = 9\n"})  # now this session wrote that content
+        self.assertEqual([f.kind for f in hook("Stop").verdict.findings], ["stop.unverified"])  # its own change is owed
+
+    def test_a_file_with_no_recorded_write_is_owed_never_hidden(self):
+        from harness.utils.plan.stop import foreign, owed
+        verify(self.port, Config.load(self.claude_dir).verify, self.plan_id)
+        (self.repo / "a.py").write_text("X = 5\n", encoding="utf-8")
+        plan = self.port.approved("s1")
+        self.assertEqual(foreign(self.port, plan, {}), [])  # nothing recorded: not another writer's, it is owed
+        self.assertEqual(owed(self.port, plan, {}), ["a.py"])
+
     def test_a_failure_to_look_keeps_the_turn(self):
         def broken(plan):
             raise OSError("disk")

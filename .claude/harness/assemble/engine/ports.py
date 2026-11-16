@@ -322,9 +322,11 @@ class PlanState(Port):
 
     def read(self, event: Event) -> Facts:
         """The facts of the event's session: plan (ApprovedPlan or None), state_dir, git_view (GitView), stop_owed
-        (plan -> code files no green verify saw), banned, store_owed (() -> the unsaved work of the store), child_role
+        (plan -> code files no green verify saw, but those another writer changed), stop_foreign (plan -> those), banned, store_owed (() -> the unsaved work of the store), child_role
         (() -> the session's ChildRole when it is a child of a delegated plan, else None)."""
         return {"plan": self.port.approved(event.session), "state_dir": str(self.port.path.parent).replace("\\", "/"),
-                "git_view": self.git, "stop_owed": lambda plan: stop.unverified(self.port, plan), "banned": self.banned,
+                "git_view": self.git, "banned": self.banned,
+                "stop_owed": lambda plan: stop.owed(self.port, plan, self.port.written(event.session)),
+                "stop_foreign": lambda plan: stop.foreign(self.port, plan, self.port.written(event.session)),
                 "store_owed": lambda: store.owed(self.port) if store.folder() else [],
                 "child_role": lambda: child.role_of(self.port.ticket(event.session)) if event.session else None}
