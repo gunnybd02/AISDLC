@@ -15,7 +15,7 @@ from typing import Any, Callable
 from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError
 from harness.utils.git.run import GitError, env, git
-from harness.utils.orchestra import crew
+from harness.utils.orchestra import crew, synced
 from harness.utils.orchestra.brief import branch
 from harness.utils.orchestra.card import unit_spec
 from harness.utils.orchestra.fetch import checkout, rerun, same_repo
@@ -126,7 +126,7 @@ def conflict_text(name: str, pr: dict[str, Any], ref: str, files: list[str], why
 
 
 def land(port: PlanStore, sid: str, units: dict[str, Any], verify: list[str], github: Callable[..., Any],
-         timeout_min: int = 10) -> str:
+         timeout_min: int = 10, folder: str = "") -> str:
     """The final route: merge every accepted child's pull request, run each unit's tests on its merged base, and
     close the delegated plan as delivered when all is green and nothing of the parent's own is left.
 
@@ -137,9 +137,12 @@ def land(port: PlanStore, sid: str, units: dict[str, Any], verify: list[str], gi
         verify: the config's test command (the home's).
         github: call(method, path, fields) -> the JSON answer (utils/git/github.call).
         timeout_min: the minutes each unit's test run may take (1 to 30).
+        folder: the store's Drive folder; when set, the plan is delivered only when every child that ended has its
+            database in the store (utils/orchestra/synced.py) or the user waived it.
 
     Returns:
-        What was merged, and the plan's state: delivered, waiting for the parent's own files, a conflict, or red.
+        What was merged, and the plan's state: delivered, waiting for the parent's own files or for the children's
+        databases, a conflict, or red.
 
     Raises:
         ReviewError: no delegated plan, a child that has not ended, or nothing accepted.
@@ -174,8 +177,8 @@ def land(port: PlanStore, sid: str, units: dict[str, Any], verify: list[str], gi
         command = [sys.executable if w == "{python}" else w for w in (spec.get("verify") or verify)]
         if not command:
             continue
-        with checkout(spec, repo, spec.get("base", "main")) as folder:
-            root = folder if spec.get("path", ".") in ("", ".") else str(Path(folder) / spec["path"])
+        with checkout(spec, repo, spec.get("base", "main")) as tree:
+            root = tree if spec.get("path", ".") in ("", ".") else str(Path(tree) / spec["path"])
             ok, tail = rerun(root, command, [], int(timeout_min) * 60)
         lines.append(f"The tests of {spec.get('repo') or 'the home'} ({spec.get('path', '.')}) on the merged "
                      f"{spec.get('base', 'main')}: {'green' if ok else 'RED'}.")
@@ -188,7 +191,13 @@ def land(port: PlanStore, sid: str, units: dict[str, Any], verify: list[str], gi
     if own and port.ticket(sid).get("phase") != "deliver":
         return "\n".join(lines + [f"Every pull request is merged. The plan waits for your own files ({', '.join(own)}): "
                                   "commit them with step_done, then run('orchestra', 'land', {}) again."])
+    gaps = synced.missing(port, port.ticket(sid)) if folder else []
+    if gaps:
+        return "\n".join(lines + ["Every pull request is merged and green. " + synced.ask_text(port.ticket(sid), folder,
+                                                                                            gaps)])
     port.close_plan(sid, port.ticket(sid), "delivered", lines)
     return "\n".join(lines + [f"Plan {plan['id']} ({ticket['draft']}) is delivered. Delete the check-in if you set one "
                               "(delete_trigger). Then run('orchestra', 'remove', {}) for the child sessions, and report "
-                              "to the user; the merged branches are left for the user to delete."])
+                              "to the user; the merged branches are left for the user to delete."]
+                     + ([f"Save your own ledger too: run('ledger', 'export', {{reason: 'plan-close'}}) and upload it "
+                         f"(its name carries orch.{ticket['draft']}.parent)."] if folder else []))

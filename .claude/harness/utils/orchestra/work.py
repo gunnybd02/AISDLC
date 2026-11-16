@@ -284,7 +284,8 @@ def facts(port: PlanStore, ticket: Ticket, role: ChildRole, repo: str) -> dict[s
             "refused": list(dict.fromkeys(refused)), "base": (plan or {}).get("base")}
 
 
-def handback(port: PlanStore, sid: str, report: dict[str, Any], commit_judge: CommitJudge, git_judge: GitJudge) -> str:
+def handback(port: PlanStore, sid: str, report: dict[str, Any], commit_judge: CommitJudge, git_judge: GitJudge,
+             store_on: bool = False) -> str:
     """Write the child's receipt on its branch, commit it through the commit gate and push the branch.
 
     Args:
@@ -293,6 +294,8 @@ def handback(port: PlanStore, sid: str, report: dict[str, Any], commit_judge: Co
         report: changed, checked, notChecked, risks, testsChanged, and added and faults when there are any.
         commit_judge: the rules' verdict on a commit.
         git_judge: the rules' verdict on a git command.
+        store_on: whether a store folder is set; then the child saves its ledger to the store before it tells the
+            parent (the parent's plan is done only when every child's database is there).
 
     Returns:
         What was kept and pushed, and the one message the model sends to the parent.
@@ -325,7 +328,9 @@ def handback(port: PlanStore, sid: str, report: dict[str, Any], commit_judge: Co
     sha = commit(repo, [rel], message)
     port.write(lambda con, rec: tickets.save(con, {**tickets.latest(con, sid), "handback": {"sha": sha, "at": now()}}))
     pushed = push(port, sid, git_judge)
-    return (f"Handback kept in {rel} on {role['branch']} ({sha[:12]}). {pushed.splitlines()[0]} Now send ONE message "
+    save = ("Save your ledger to the store first: run('ledger', 'export', {reason: 'handback'}) and upload the copy as "
+            "its answer says (guide('store', 'skills')). Then " if store_on else "Now ")
+    return (f"Handback kept in {rel} on {role['branch']} ({sha[:12]}). {pushed.splitlines()[0]} {save}send ONE message "
             f"with send_message to the orchestrator {role['parent']}: \"handed back {role['branch']} {sha}\", and "
             "stop. Do not message it again unless it writes to you.")
 

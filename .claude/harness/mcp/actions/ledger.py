@@ -12,6 +12,7 @@ from harness.utils.contracts import READ, WRITE, ActionContext, ActionError, Mcp
 from harness.utils.git.branches import current
 from harness.utils.git.facts import top
 from harness.utils.ledger import store
+from harness.utils.orchestra import crew
 from harness.utils.ledger.export import FOLDER, FOLDER_ID, snapshot, upload_call
 from harness.utils.plan.life import settle
 from harness.utils.ledger.db import LedgerError, query
@@ -91,10 +92,11 @@ class Export(McpAction):
     summary = ("Copy the whole ledger for the store outside this machine (same schema as every copy; it records and is "
                "named by ledger, number, session, time, reason and commit) into .harness-export/ of the working folder "
                "(or of the folder into) and say the one Google Drive call that uploads it; reason is manual, push, "
-               "plan-close or turn-end; refused with no store folder")
+               "plan-close, turn-end or handback; a session of an orchestra run adds its plan marker "
+               "orch.<plan id>.<child or parent> to the name; refused with no store folder")
     args_schema = {"type": "object", "properties": {"folder": {"type": "string"}, "into": {"type": "string"},
                                                     "reason": {"type": "string"}}, "required": []}
-    needs = ("ledger", "session", "store")
+    needs = ("ledger", "session", "store", "plans")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Copy the whole ledger into <into>/.harness-export/ for the store and answer the one Drive call that uploads
@@ -113,7 +115,9 @@ class Export(McpAction):
         if not port.path.is_file():
             raise ActionError("there is no ledger yet: nothing to export")
         try:
-            record = store.begin(port, ctx.ports["session"](), reason, where(into))
+            sid = ctx.ports["session"]()
+            tag = crew.store_tag(ctx.ports["plans"].ticket(sid)) if "plans" in ctx.ports and sid else ""
+            record = store.begin(port, sid, reason, where(into), tag=tag)
             copy = snapshot(port.path, into / FOLDER, record)
         except LedgerError as e:
             raise ActionError(str(e)) from e

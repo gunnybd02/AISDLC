@@ -67,6 +67,18 @@ def parent_run(step: Callable[[], str]) -> str:
         raise ActionError(str(e)) from e
 
 
+def store_folder(ctx: ActionContext) -> str:
+    """The store's Drive folder id, "" when none is set or the port is not there.
+
+    Args:
+        ctx: the action's ports.
+
+    Returns:
+        The folder id, or "".
+    """
+    return str(ctx.ports.get("store", str)() or "")
+
+
 def units(ctx: ActionContext) -> dict[str, Any]:
     """The declared units by name, {} when the port is not there.
 
@@ -169,13 +181,13 @@ class Land(McpAction):
     summary = ("When every child has ended: merge each accepted pull request (a conflict stops it, for the parent to "
                "resolve), run each unit's tests on its merged base, close the plan delivered")
     args_schema = {"type": "object", "properties": {"timeoutMin": MINUTES}}
-    needs = ("plans", "session", "units", "verify_command", "github")
+    needs = ("plans", "session", "units", "verify_command", "github", "store")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Merge, test and close (utils/orchestra/land.land)."""
         sid = session_of(ctx)
         return parent_run(lambda: land.land(ctx.ports["plans"], sid, units(ctx), list(ctx.ports["verify_command"]()),
-                                            ctx.ports["github"], args.get("timeoutMin", 10)))
+                                            ctx.ports["github"], args.get("timeoutMin", 10), store_folder(ctx)))
 
 
 class Release(McpAction):
@@ -198,12 +210,12 @@ class Remove(McpAction):
     summary = ("Archive finished child sessions: the first call gives one checklist to ask the user; after the "
                "user ticks, the next call removes exactly those and gives each archive_session call")
     args_schema = {"type": "object", "properties": {}}
-    needs = ("plans", "session")
+    needs = ("plans", "session", "store")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """The checklist, or the removal of the ticked children (utils/orchestra/cleanup.remove)."""
         sid = session_of(ctx)
-        return parent_run(lambda: cleanup.remove(ctx.ports["plans"], sid))
+        return parent_run(lambda: cleanup.remove(ctx.ports["plans"], sid, store_folder(ctx)))
 
 
 class Digest(McpAction):

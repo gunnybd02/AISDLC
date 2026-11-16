@@ -29,7 +29,8 @@ if TYPE_CHECKING:
     from harness.utils.ledger.recorder import Recorder
 
 ENV = "HARNESS_DRIVE_FOLDER"
-REASONS = ("manual", "push", "plan-close", "turn-end")
+REASONS = ("manual", "push", "plan-close", "turn-end", "handback")
+TAG = re.compile(r"^orch\.pd-[a-z0-9-]{1,40}\.[a-z0-9][a-z0-9-]{0,39}$")  # the plan marker of an orchestra copy
 LEDGER, EXPORT, UPLOADED, ASKED = "store.ledger", "store.export", "store.uploaded", "store.asked"
 COUNTED = (("commit", "SELECT COUNT(*) AS n FROM rec_commits"),
            ("plan event", "SELECT COUNT(*) AS n FROM pl_plan_events WHERE event IN ('approved', 'delivered', 'dropped')"),
@@ -101,7 +102,7 @@ def mark(port: PlanStore) -> list[int]:
 
 
 def begin(port: PlanStore, sid: str, reason: str, where: Optional[dict[str, str]] = None,
-          now: Optional[float] = None) -> StoreRecord:
+          now: Optional[float] = None, tag: str = "") -> StoreRecord:
     """Keep the record of a new copy (and the ledger's id, the first time) and answer it: {ledger, seq, title, ...}.
 
     Args:
@@ -110,6 +111,9 @@ def begin(port: PlanStore, sid: str, reason: str, where: Optional[dict[str, str]
         reason: why the copy is made, one of REASONS.
         where: {repo, branch} the copy is asked from, added to the record; None or {} outside a repository.
         now: the time in seconds since the epoch; None for the clock.
+        tag: the plan marker of a session of an orchestra run, "orch.<plan id>.<child name or parent>"
+            (utils/orchestra/crew.store_tag); it goes in the title before the commit, so one Drive search lists
+            every copy of a run; "" for none (a tag of another shape is left out).
 
     Returns:
         The record kept in pl_notes (StoreRecord): its title is the copy's file name.
@@ -126,9 +130,12 @@ def begin(port: PlanStore, sid: str, reason: str, where: Optional[dict[str, str]
         last = con.execute("SELECT commit_sha FROM rec_commits ORDER BY at DESC, rowid DESC LIMIT 1").fetchone()
         commit = str(last[0])[:7] if last and last[0] else "nocommit"
         schema = f"s{pinned()[:8]}"
-        title = f"{session_part(sid)}__{ledger[:6]}-{seq:03d}__{stamp}__{reason}__{commit}__{schema}.db"
+        plan = tag if TAG.match(tag or "") else ""
+        title = (f"{session_part(sid)}__{ledger[:6]}-{seq:03d}__{stamp}__{reason}__{plan + '__' if plan else ''}"
+                 f"{commit}__{schema}.db")
         record = {"ledger": ledger, "seq": seq, "title": title, "session": str(sid or ""), "reason": reason, "at": at,
-                  "commit": commit, "schema": schema, "mark": mark_of(con), **(where or {})}
+                  "commit": commit, "schema": schema, "mark": mark_of(con), **({"plan": plan} if plan else {}),
+                  **(where or {})}
         note(con, EXPORT, title, seq, json.dumps(record, sort_keys=True), sid, at)
         return record
     return port.write(change)

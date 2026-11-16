@@ -112,6 +112,23 @@ def blocks_other(ticket: Optional[Ticket], plan_id: Optional[str] = None) -> str
             "(the children hand back, then it closes) or revise it with plan_revise")
 
 
+def store_tag(ticket: Optional[Ticket]) -> str:
+    """The plan marker of a session's copies in the store: "orch.<plan id>.<child name>" for a child,
+    "orch.<plan id>.parent" for the parent of a delegated plan (open or closed), "" otherwise.
+
+    Args:
+        ticket: the session's newest ticket.
+
+    Returns:
+        The marker, or "".
+    """
+    role = (ticket or {}).get("child")
+    if isinstance(role, dict) and role.get("draft") and role.get("name"):
+        return f"orch.{role['draft']}.{role['name']}"
+    plan = (ticket or {}).get("plan") or {}
+    return f"orch.{ticket['draft']}.parent" if plan.get("children") and ticket.get("draft") else ""
+
+
 def running(ticket: Ticket) -> list[str]:
     """The children of the crew that run now (running or reserved).
 
