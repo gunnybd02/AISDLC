@@ -5,6 +5,8 @@
   protected (optional) the protected branches, names or fnmatch patterns; main and master when not given
   ledger   (optional) the absolute path of the real ledger, whose schema the doctor compares read only; a Windows
            path (C:/...) is absolute on every system, and on one that is not Windows it names no ledger here"""
+from __future__ import annotations
+
 import json
 import os
 import re
@@ -22,7 +24,7 @@ OPTIONAL = ("verify", "ledger", "protected", "banned")
 
 
 class ConfigError(ValueError):
-    pass
+    """The config cannot be read, or holds a value it may not."""
 
 
 @dataclass(frozen=True)
@@ -34,12 +36,27 @@ class Config:
     banned: tuple = ()
 
     @property
-    def ledger_here(self):
-        """The real ledger's path on this system, or "": a Windows path names no file on another system."""
+    def ledger_here(self) -> str:
+        """The real ledger's path on this system, or "": a Windows path names no file on another system.
+
+        Returns:
+            The ledger path, or "" when none is named or it is a Windows path here on another system.
+        """
         return "" if os.name != "nt" and DRIVE.match(self.ledger) else self.ledger
 
     @classmethod
-    def load(cls, claude_dir):
+    def load(cls, claude_dir: str | Path) -> Config:
+        """Read and check the config of the home.
+
+        Args:
+            claude_dir: the home, the .claude folder that holds project.json.
+
+        Returns:
+            The Config; verify's "{python}" is this Python, banned words are stripped.
+
+        Raises:
+            ConfigError: the file cannot be read, names a key no longer read, or a value is not of its shape.
+        """
         path = Path(claude_dir) / FILE
         try:
             data = json.loads(path.read_text(encoding="utf-8-sig"))

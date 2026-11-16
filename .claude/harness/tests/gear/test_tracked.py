@@ -6,7 +6,8 @@ import unittest
 
 import harness.gear as gear_block
 from harness.assemble.engine.build import build_runner
-from harness.assemble.engine.ports import LedgerPort, question
+from harness.assemble.engine.desk_port import question
+from harness.assemble.engine.ports import LedgerPort
 from harness.gear.decide.arbiter import Decide
 from harness.gear.detect.forms import Forms
 from harness.gear.detect.planfiles import PlanFiles

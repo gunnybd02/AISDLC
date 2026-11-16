@@ -2,7 +2,10 @@
 mcp and gear through its loader, the one place of a dynamic import, and imports the nets only inside a function, so
 they never load on a hook call); an entry (harness/entry/, entry/) imports only assemble. It also reports a file that does not parse, for every
 net."""
+from __future__ import annotations
+
 import ast
+from pathlib import Path
 
 from harness.nets import files, module_level, read
 
@@ -19,13 +22,29 @@ INTERNAL = ("harness", "entry")
 DYNAMIC_OK = ("harness/assemble/engine/loader.py", "harness/assemble/engine/live_mcp.py")
 
 
-def owner(rel):
+def owner(rel: str) -> str:
+    """The block a file belongs to, for the import rules.
+
+    Args:
+        rel: the file's posix path from the .claude folder.
+
+    Returns:
+        "entry" (harness/entry/ or entry/), the block's folder under harness/, or "harness" for a file right in it.
+    """
     parts = rel.split("/")
     return "entry" if "entry" in parts[:2] else (parts[1] if len(parts) > 2 else "harness")
 
 
-def targets(node, rel):
-    """The dotted names an import statement reaches, relative imports resolved from the file's package."""
+def targets(node: ast.Import | ast.ImportFrom, rel: str) -> list[str]:
+    """The dotted names an import statement reaches, relative imports resolved from the file's package.
+
+    Args:
+        node: the import statement.
+        rel: the importing file's posix path from the .claude folder.
+
+    Returns:
+        The full dotted name of each name imported.
+    """
     if isinstance(node, ast.Import):
         return [a.name for a in node.names]
     package = rel.split("/")[:-1]
@@ -34,18 +53,44 @@ def targets(node, rel):
     return [f"{base}.{a.name}" if base else a.name for a in node.names]
 
 
-def under(name, prefixes):
+def under(name: str, prefixes: tuple[str, ...]) -> bool:
+    """Whether a dotted name is one of the prefixes or inside one.
+
+    Args:
+        name: a dotted module name.
+        prefixes: dotted package names.
+
+    Returns:
+        True when name is a prefix or starts with one and a dot.
+    """
     return any(name == p or name.startswith(p + ".") for p in prefixes)
 
 
-def dynamic(node):
+def dynamic(node: ast.AST) -> bool:
+    """Whether a node is a dynamic import: a call of __import__ or of an import_module.
+
+    Args:
+        node: a syntax node.
+
+    Returns:
+        True when it is such a call.
+    """
     if not isinstance(node, ast.Call):
         return False
     f = node.func
     return (isinstance(f, ast.Name) and f.id == "__import__") or (isinstance(f, ast.Attribute) and f.attr == "import_module")
 
 
-def check(claude_dir):
+def check(claude_dir: Path) -> list[str]:
+    """Every import that breaks the connection rule (ALLOWED), a dynamic import outside DYNAMIC_OK, assemble importing
+    the nets at load time, and a file of harness/ or entry/ that does not parse.
+
+    Args:
+        claude_dir: the .claude folder read.
+
+    Returns:
+        "imports: <file>:<line> ..." lines.
+    """
     out = []
     for rel, path in files(claude_dir, (".py",), ("harness", "entry", "harness/nets")):
         try:

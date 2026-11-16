@@ -7,12 +7,22 @@ action is judged by the same rule rows. The session is the one whose shell the h
 - tool find <words...> [--mode skills|mcp]
 - tool guide <name> [--mode mcp|skills] [--topic <action>]
 - tool run <block> <action> ['<args as a JSON object>']"""
+from __future__ import annotations
+
+import argparse
 import json
+from pathlib import Path
+from typing import Any
 
 from harness.assemble.engine.wire_mcp import build_server
 
 
-def add_parser(doors):
+def add_parser(doors: argparse._SubParsersAction) -> None:
+    """Add the door tool (find, guide, run) to the CLI's doors.
+
+    Args:
+        doors: the subparsers of the CLI's top parser (cli_wire.parser).
+    """
     tool = doors.add_parser("tool", exit_on_error=False).add_subparsers(dest="tool", required=True)
     find = tool.add_parser("find", exit_on_error=False)
     find.add_argument("query", nargs="+")
@@ -27,8 +37,18 @@ def add_parser(doors):
     run.add_argument("args", nargs="?", default="{}")
 
 
-def arguments(args):
-    """The arguments of the tool call the command line names; ValueError when they are not an object."""
+def arguments(args: argparse.Namespace) -> dict[str, Any]:
+    """The arguments of the tool call the command line names; ValueError when they are not an object.
+
+    Args:
+        args: the parsed command line of the door tool (args.tool is find, guide or run).
+
+    Returns:
+        The tool's arguments: {query, mode?}, {name, mode, topic?} or {block, action, args}.
+
+    Raises:
+        ValueError: the action's args are not JSON, or not a JSON object.
+    """
     if args.tool == "find":
         return {"query": " ".join(args.query), **({"mode": args.mode} if args.mode else {})}
     if args.tool == "guide":
@@ -42,8 +62,19 @@ def arguments(args):
     return {"block": args.block, "action": args.action, "args": given}
 
 
-def tool_door(args, claude_dir):
-    """(exit code, text): 0 the tool answered, 1 it answered an error."""
+def tool_door(args: argparse.Namespace, claude_dir: str | Path) -> tuple[int, str]:
+    """Call one tool of the harness's MCP server from the command line.
+
+    Args:
+        args: the parsed command line of the door tool.
+        claude_dir: the home, the .claude folder.
+
+    Returns:
+        (exit code, text): 0 the tool answered, 1 it answered an error.
+
+    Raises:
+        ValueError: the action's args are not a JSON object (arguments).
+    """
     call = arguments(args)
     try:
         result = build_server(claude_dir).tools[args.tool].call(call)

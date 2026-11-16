@@ -11,6 +11,8 @@ machine is prepared ahead of time, so the harness is brought to the newest main 
 script that installed it, and put in force when its doctor is clean; otherwise the session keeps what it runs. The
 code that runs then is the one the machine was prepared with: when it put a newer release in force, that release says
 how to reach the tools and which skill to read (its door live hint), so the session never reads of a thing it lacks."""
+from __future__ import annotations
+
 import subprocess
 import sys
 from pathlib import Path
@@ -19,16 +21,33 @@ from harness.assemble.engine.live_mcp import healthy
 from harness.utils.gateway.release import ALLOW_LABEL, NO_LABEL, anchor, build, current, publish, release_dir, stamp
 from harness.utils.git.asks import take
 from harness.utils.git.pull import PullError, fast_forward
+from harness.utils.shapes import PlanStore
 
 
-def status(home):
+def status(home: str | Path) -> str:
+    """Which release is in force and whether the work tree is published (the door live status).
+
+    Args:
+        home: the home, the .claude folder of the harness's clone.
+
+    Returns:
+        "In force: <sha or none>. Work tree: <stamp> (published|not published)."
+    """
     running, tree = current(home), stamp(home)
     return (f"In force: {running or 'none (sessions run the work tree)'}. Work tree: {tree}"
             + (" (published)." if running == tree else " (not published)."))
 
 
-def publish_door(port, home):
-    """(exit code, text): 0 published or asked, 1 refused."""
+def publish_door(port: PlanStore, home: str | Path) -> tuple[int, str]:
+    """Build a release of the work tree and put it in force with the user's one-use pass (the door live publish).
+
+    Args:
+        port: the ledger port (the pass live-publish:<sha> is taken from it).
+        home: the home, the .claude folder of the harness's clone.
+
+    Returns:
+        (exit code, text): 0 published or asked, 1 refused.
+    """
     sha = build(home)
     if current(home) == sha:
         return 0, f"Release {sha} is in force already."
@@ -43,8 +62,16 @@ def publish_door(port, home):
     return 0, f"Release {sha} is in force: hooks run it at once, MCP servers at their next call."
 
 
-def update_door(port, home):
-    """(exit code, text): 0 up to date, asked or published; 1 refused."""
+def update_door(port: PlanStore, home: str | Path) -> tuple[int, str]:
+    """Bring the newest main into the clone and publish it as publish_door does (the door live update).
+
+    Args:
+        port: the ledger port (the pass of the publish is taken from it).
+        home: the home, the .claude folder of the harness's clone.
+
+    Returns:
+        (exit code, text): 0 up to date, asked or published; 1 refused.
+    """
     pinned = pin(home)  # what runs now is the work tree: pin it before the clone changes under it
     try:
         before, after = fast_forward(home)
@@ -57,8 +84,15 @@ def update_door(port, home):
     return code, pinned + news + text
 
 
-def pin(home):
-    """Put the code that runs now in force when no release is (boot then runs the work tree); the pin text."""
+def pin(home: str | Path) -> str:
+    """Put the code that runs now in force when no release is (boot then runs the work tree); the pin text.
+
+    Args:
+        home: the home, the .claude folder of the harness's clone.
+
+    Returns:
+        "Pinned the code that runs now as release <sha>. ", or "" when a release is in force already.
+    """
     if current(home) is not None:
         return ""
     sha = build(home)
@@ -73,13 +107,27 @@ TOOLS_HINT = ("Its tools: mcp__harness__find, mcp__harness__guide and mcp__harne
               "skills (from the shell: python3 \"{boot}\" cli tool guide work --mode skills).")
 
 
-def tools_hint(home):
-    """How a session reaches the tools and which skill it reads first (the door live hint prints it)."""
+def tools_hint(home: str | Path) -> str:
+    """How a session reaches the tools and which skill it reads first (the door live hint prints it).
+
+    Args:
+        home: the home, the .claude folder of the harness's clone.
+
+    Returns:
+        The hint, naming the home's anchor.
+    """
     return TOOLS_HINT.format(boot=anchor(home).as_posix())
 
 
-def release_hint(home):
-    """The hint as the release in force writes it (its door live hint); this code's own when it cannot be asked."""
+def release_hint(home: str | Path) -> str:
+    """The hint as the release in force writes it (its door live hint); this code's own when it cannot be asked.
+
+    Args:
+        home: the home, the .claude folder of the harness's clone.
+
+    Returns:
+        The hint text.
+    """
     try:
         done = subprocess.run([sys.executable, str(anchor(home)), "cli", "live", "hint"], capture_output=True,
                               timeout=30)
@@ -91,17 +139,31 @@ def release_hint(home):
     return tools_hint(home)
 
 
-def session_update(home):
+def session_update(home: str | Path) -> str:
     """The text the session reads when it begins: which harness runs and why, and how to reach its tools (Claude Code
     can start before the setup script registers the MCP server, so a session may have none of them). The hint is the
-    release's own when this start put a newer one in force."""
+    release's own when this start put a newer one in force.
+
+    Args:
+        home: the home, the .claude folder of the harness's clone.
+
+    Returns:
+        The text for the session: harness_update's words, then the tools hint.
+    """
     ran = current(home) or stamp(home)
     text = harness_update(home)
     return f"{text} {tools_hint(home) if current(home) == ran else release_hint(home)}"
 
 
-def harness_update(home):
-    """Bring the harness to the newest main of its clone; which harness runs and why."""
+def harness_update(home: str | Path) -> str:
+    """Bring the harness to the newest main of its clone, and put it in force when its doctor is clean.
+
+    Args:
+        home: the home, the .claude folder of the harness's clone.
+
+    Returns:
+        Which harness runs and why (kept, up to date, or brought up to date).
+    """
     pinned = pin(home)
     try:
         before, after = fast_forward(home)

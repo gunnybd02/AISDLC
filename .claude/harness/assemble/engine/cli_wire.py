@@ -2,6 +2,8 @@
 shrink the approved plan of a session (docs 04, sections 4 and 5). The session is --session, else HARNESS_SESSION, else
 the last one the hook saw (tool: always that one, as for the MCP server). Each door answers
 (exit code, text): 0 done, 1 refused."""
+from __future__ import annotations
+
 import argparse
 import os
 import shlex
@@ -12,15 +14,21 @@ from harness.assemble.engine.config import Config, ConfigError
 from harness.assemble.engine.ports import LedgerPort
 from harness.utils.plan import grants
 from harness.utils.plan.verify import MAX_TIMEOUT, VERIFY_TIMEOUT, run
+from harness.utils.shapes import ApprovedPlan
 
 SESSION_ENV = "HARNESS_SESSION"
 
 
 class Refused(Exception):
-    pass
+    """A door will not do what it was asked; the message says why."""
 
 
-def parser():
+def parser() -> argparse.ArgumentParser:
+    """The CLI's parser: verify, add, live, behaviors and tool, each with --session.
+
+    Returns:
+        The top parser (it raises instead of exiting on an error).
+    """
     top = argparse.ArgumentParser(prog="python3 anchor.py cli", exit_on_error=False)
     top.add_argument("--session", dest="top_session")
     doors = top.add_subparsers(dest="door", required=True)
@@ -65,14 +73,38 @@ def parser():
     return top
 
 
-def plan_of(port, sid):
+def plan_of(port: LedgerPort, sid: str) -> ApprovedPlan:
+    """The plan in force in the session.
+
+    Args:
+        port: the ledger port.
+        sid: the session id ("" when none is known).
+
+    Returns:
+        The ApprovedPlan with its grants.
+
+    Raises:
+        Refused: no session, or no plan in force in it.
+    """
     plan = port.approved(sid) if sid else None
     if plan is None:
         raise Refused("no approved plan in this session" + ("" if sid else " (no session: pass --session)"))
     return plan
 
 
-def command_of(args, claude_dir):
+def command_of(args: argparse.Namespace, claude_dir: str | Path) -> list[str]:
+    """The test command of a verify: the words after --, else the config's verify.
+
+    Args:
+        args: the parsed command line of the door verify.
+        claude_dir: the home, whose config names verify.
+
+    Returns:
+        The command's words.
+
+    Raises:
+        Refused: the config does not load, or names no verify command.
+    """
     words = args.command[1:] if args.command[:1] == ["--"] else args.command
     if words:
         return words
@@ -85,7 +117,21 @@ def command_of(args, claude_dir):
     return list(command)
 
 
-def verify(port, sid, args, claude_dir):
+def verify(port: LedgerPort, sid: str, args: argparse.Namespace, claude_dir: Path) -> tuple[int, str]:
+    """Run the test command of the session's plan (utils/plan/verify.run) and keep its receipt.
+
+    Args:
+        port: the ledger port.
+        sid: the session whose plan is verified.
+        args: the parsed command line of the door verify (--in, --timeout, the command).
+        claude_dir: the home, the .claude folder.
+
+    Returns:
+        (exit code, text): 0 green, 1 red; the text is the head line and the tail of the output.
+
+    Raises:
+        Refused: a timeout out of range, no plan in force, or no command.
+    """
     if not 1 <= args.timeout <= MAX_TIMEOUT:
         raise Refused(f"--timeout is 1 to {MAX_TIMEOUT} seconds")
     plan, command = plan_of(port, sid), command_of(args, claude_dir)
@@ -97,7 +143,16 @@ def verify(port, sid, args, claude_dir):
     return (0 if ok else 1), "\n".join([head] + tail)
 
 
-def run_cli(argv, claude_dir):
+def run_cli(argv: list[str], claude_dir: str | Path) -> tuple[int, str]:
+    """Run one CLI door: verify, tool, live, add or behaviors.
+
+    Args:
+        argv: the command line after cli.
+        claude_dir: the home, the .claude folder.
+
+    Returns:
+        (exit code, text): 0 done, 1 refused (a refusal's text starts with "refused: ").
+    """
     port = LedgerPort(claude_dir)
     try:
         args = parser().parse_args(argv)

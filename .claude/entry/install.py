@@ -1,6 +1,8 @@
 """Forwarder, kept for machines set up before anchor.py: their setup script runs .claude/entry/install.py. It runs
 harness/entry/install.py with the same arguments. Standard library only; whatever fails exits 2.
 Removed once no installed machine names this path."""
+from __future__ import annotations
+
 import runpy
 import sys
 from pathlib import Path
@@ -8,7 +10,12 @@ from pathlib import Path
 TARGET = Path(__file__).resolve().parent.parent / "harness" / "entry" / "install.py"
 
 
-def main():
+def main() -> int:
+    """Run harness/entry/install.py with the same arguments, as if it were run itself.
+
+    Returns:
+        The exit code: the target's (its SystemExit code), 0 when it ends without one, 2 when it fails.
+    """
     try:
         sys.argv = [str(TARGET)] + sys.argv[1:]
         runpy.run_path(str(TARGET), run_name="__main__")

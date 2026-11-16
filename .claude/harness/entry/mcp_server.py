@@ -1,5 +1,7 @@
 """The MCP server of the harness over stdio, as Claude Code starts it. It only calls assemble; a harness that does not
 load writes why on stderr and exits 2."""
+from __future__ import annotations
+
 import os
 import sys
 from pathlib import Path
@@ -8,7 +10,12 @@ CODE_DIR = Path(__file__).resolve().parent.parent.parent  # the code this entry 
 CLAUDE_DIR = Path(os.environ.get("HARNESS_HOME") or CODE_DIR)  # the home: state, config, skills (anchor.py)
 
 
-def main():
+def main() -> int:
+    """Serve the harness's MCP server over stdio until the input ends.
+
+    Returns:
+        The exit code: 0 the input ended, 2 the harness failed (why on stderr).
+    """
     sys.stdin.reconfigure(encoding="utf-8", errors="replace")  # bad bytes become U+FFFD, never a crash
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
     try:

@@ -1,5 +1,8 @@
 """The doctor door harness/entry/doctor.py calls: every problem of the tree, and the report of them."""
+from __future__ import annotations
+
 from pathlib import Path
+from typing import Any
 
 from harness.assemble.engine.build import CLAUDE_DIR, build_runner, code_of, items_of, skill_docs
 from harness.assemble.engine.config import Config, ConfigError
@@ -9,9 +12,16 @@ from harness.utils.contracts import EFFECTS, McpAction
 from harness.utils.ledger.db import compare_real
 
 
-def doctor(claude_dir=CLAUDE_DIR):
+def doctor(claude_dir: str | Path = CLAUDE_DIR) -> list[str]:
     """Every problem of the tree: the indexes, each item's ref, the build (config, pipeline, rules), the skills, the real
-    ledger's schema, the nets. The nets are dev-time code, imported here only, so they never weigh on a hook call."""
+    ledger's schema, the nets. The nets are dev-time code, imported here only, so they never weigh on a hook call.
+
+    Args:
+        claude_dir: the home, the .claude folder; the nets read the code that runs (code_of).
+
+    Returns:
+        One line per problem; [] when the tree is clean.
+    """
     from harness.nets import bridges_net, config_net, entry_net, imports_net, layout_net, size_net, verdict_net
     claude_dir = Path(claude_dir)
     problems = Loader(code_of(claude_dir)).problems()
@@ -23,9 +33,16 @@ def doctor(claude_dir=CLAUDE_DIR):
     return problems
 
 
-def built(claude_dir):
+def built(claude_dir: Path) -> list[str]:
     """What fails when the tree is put together: a ref that does not load, the build, the skill library (a skill
-    that does not read, or names an action, a block or a skill that is not there)."""
+    that does not read, or names an action, a block or a skill that is not there).
+
+    Args:
+        claude_dir: the home, the .claude folder.
+
+    Returns:
+        One line per problem; the build is tried only when every ref and action file loads.
+    """
     out, items, actions = [], items_of(claude_dir), []
     for item in items.values():
         try:
@@ -50,9 +67,16 @@ def built(claude_dir):
     return out
 
 
-def real_ledger(claude_dir):
+def real_ledger(claude_dir: str | Path) -> list[str]:
     """The drift of the real ledger named in the config from schema.sql, read only; nothing when none is named, or
-    when the config does not load (built() reports that)."""
+    when the config does not load (built() reports that).
+
+    Args:
+        claude_dir: the home, the .claude folder.
+
+    Returns:
+        "ledger <drift>" lines.
+    """
     try:
         path = Config.load(claude_dir).ledger_here
     except ConfigError:
@@ -60,13 +84,28 @@ def real_ledger(claude_dir):
     return [f"ledger {line}" for line in compare_real(path)] if path else []
 
 
-def report(problems):
+def report(problems: list[str]) -> str:
+    """The doctor's report: an ERROR line per problem, then the count.
+
+    Args:
+        problems: the problems (doctor).
+
+    Returns:
+        "ERROR <problem>" lines and "<n> errors".
+    """
     return "\n".join([f"ERROR {p}" for p in problems] + [f"{len(problems)} errors"])
 
 
-def action_problems(entries):
+def action_problems(entries: list[tuple[str, str, Any]]) -> list[str]:
     """What is wrong with the (block, name, class) entries of an action file: a class that is no McpAction, a block or
-    name other than its entry's, an effect other than read or write, a port in needs no server gives."""
+    name other than its entry's, an effect other than read or write, a port in needs no server gives.
+
+    Args:
+        entries: (block, name, the object the file holds under the class name) of each entry (Loader.actions).
+
+    Returns:
+        "<block>.<name>: <what is wrong>" lines.
+    """
     out = []
     for block, name, cls in entries:
         what = f"{block}.{name}"
