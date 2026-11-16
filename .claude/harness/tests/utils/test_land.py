@@ -4,6 +4,8 @@ the two ways on; it waits while a child runs and for the parent's own files."""
 import unittest
 
 from harness.utils.orchestra import land, review
+
+land.WAIT = 0  # the tests do not wait for GitHub
 from harness.tests.utils.test_review import UNITS, FakeGitHub, Scenario, git
 
 
@@ -46,6 +48,13 @@ class LandTest(Scenario):
         self.assertIn("run('orchestra', 'reject'", text)
         self.assertEqual(self.port.ticket("s1")["state"], "open")
         self.assertIn("round 1 of 3", review.reject(self.port, "s1", "hello", "conflicts with work"))
+
+    def test_a_refusal_with_a_clean_local_merge_is_not_called_a_conflict(self):
+        github = FakeGitHub(self.repo, conflict=True)
+        self.accepted(github)
+        text = land.land(self.port, "s1", UNITS, [], github)
+        self.assertIn("merges cleanly here, but GitHub refused it", text)
+        self.assertNotIn("Resolve it here", text)
 
     def test_what_a_card_covers(self):
         card = {"change": ["src/", "a.py"], "tests": ["tests/test_*.py"]}

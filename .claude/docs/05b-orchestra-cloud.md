@@ -215,7 +215,10 @@ folder, every file named as a copy of this plan's run whose session is that chil
 handback, and `remove` archives only such children (a ticked child waits); a child whose session can never upload
 passes only with the user's "Allow" in the form "Close plan <id> without the database of <name>?". At delivery the
 parent saves its own ledger (`orch.<plan id>.parent`). The harness proves a copy is in the store, from Drive's
-answer; the model only runs the search.
+answer; the model only runs the search. A copy is the child's own when its name's session is the child's cloud session id
+or its own id inside its harness, which its receipt names: the two differ in the cloud (found live). `land` waits
+for GitHub to decide whether a pull request can merge, and a refusal while the local merge is clean is reported as
+"land again", not as a conflict.
 
 ## 9. Limits
 

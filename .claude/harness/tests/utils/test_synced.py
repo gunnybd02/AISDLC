@@ -10,6 +10,8 @@ from harness.utils.ledger import store
 from harness.utils.orchestra import cleanup, crew, land, review, synced
 from harness.tests.utils.test_review import UNITS, FakeGitHub, Scenario
 
+land.WAIT = 0
+
 FOLDER = "1AbCdEfGhIjKlMnOpQrStUv"
 
 
@@ -55,11 +57,19 @@ class SyncedTest(Scenario):
         self.assertEqual(stored["fileId"], "1File000000xyz")
         self.assertEqual(self.drive_answer([title("session_child0001", draft, "hello")], sid="s9"), [])
 
+    def test_a_copy_named_by_the_childs_own_id_from_its_receipt_is_its_own(self):
+        """In the cloud a child's harness knows itself by another id than its cloud session's (found live)."""
+        self.hand_back(receipt={"session": "8aa3f275-9f8b-56b3"})
+        review.check(self.port, "s1", "hello", UNITS, [])
+        draft = self.port.ticket("s1")["draft"]
+        self.assertEqual(len(self.drive_answer([title("8aa3f275-9f8b-56b3", draft, "hello")])), 1)
+        self.assertEqual(self.drive_answer([title("someone-else", draft, "hello")]), [])
+
     def test_land_delivers_only_when_every_child_is_in_the_store(self):
         github = self.accepted_and_merged()
         text = land.land(self.port, "s1", UNITS, [], github, folder=FOLDER)
         self.assertIn("Not synced yet: hello (no copy found)", text)
-        self.assertIn(f"name contains 'orch.{self.port.ticket('s1')['draft']}.'", text)
+        self.assertIn(f"title contains 'orch.{self.port.ticket('s1')['draft']}.' and parentId = '{FOLDER}'", text)
         self.assertEqual(self.port.ticket("s1")["state"], "open")
         draft = self.port.ticket("s1")["draft"]
         self.drive_answer([title("session_child0001", draft, "hello", seconds=time.time() - 3600)])

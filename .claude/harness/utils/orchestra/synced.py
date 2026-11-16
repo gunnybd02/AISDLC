@@ -2,7 +2,8 @@
 2026-11-16; docs/05b-orchestra-cloud.md). Harness code cannot call Google Drive; the hook can read Drive's own answer.
 So the parent's model searches the store folder, and seen() reads the answer of that search (not the model's words):
 each file named as a copy of this plan's run, "<session>__...__orch.<plan id>.<child>__...db", is kept on that child's
-crew entry when its session is the child's. A copy older than the child's handback does not count.
+crew entry when its session is the child's: its cloud session id, or its own id inside its harness, which its receipt
+names (the two differ in the cloud). A copy older than the child's handback does not count.
 
 missing() names who is not synced yet; a child whose session is gone and can never upload passes only with the user's
 "Allow" in the form waiver_question() gives (waiver_accepts keeps it, per plan and child)."""
@@ -91,7 +92,9 @@ def seen(port: PlanStore, event: Any) -> list[str]:
     for file_id, name in files_in(event.response):
         m = COPY.match(name)
         entry = ticket["crew"].get(m["name"]) if m and m["draft"] == ticket.get("draft") else None
-        if entry and session_part(entry.get("sid")) == m["session"]:
+        own = {session_part(entry.get("sid")), session_part((entry.get("receipt") or {}).get("session"))} \
+            if entry else set()
+        if entry and m["session"] in own - {"nosession"}:
             copy = {"fileId": file_id, "title": name, "at": stamp_ms(m["stamp"])}
             if copy["at"] >= found.get(m["name"], {}).get("at", -1):
                 found[m["name"]] = copy
@@ -213,8 +216,9 @@ def ask_text(ticket: Ticket, folder: str, gaps: list[tuple[str, str]]) -> str:
     draft, crew = ticket["draft"], ticket.get("crew") or {}
     lines = [f"Not synced yet: {', '.join(f'{n} ({w})' for n, w in gaps)}. The plan is done only when each child's "
              "database is in the store.",
-             f"1. Search the store with your Google Drive tool (search_files): name contains 'orch.{draft}.' in the "
-             f"folder {folder}. The harness reads Drive's answer itself; then run the same action again."]
+             f"1. Search the store with your Google Drive tool, search_files with the query: title contains "
+             f"'orch.{draft}.' and parentId = '{folder}'. The harness reads Drive's answer itself; then run the "
+             "same action again."]
     for name, _ in gaps:
         lines.append(f"2. If {name} has no copy: send_message to {crew[name].get('sid')}: \"Save your ledger to the "
                      "store now: run('ledger', 'export', {reason: 'handback'}) and upload the copy as its answer says, "
