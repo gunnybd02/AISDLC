@@ -142,7 +142,7 @@ def release_hint(home: str | Path) -> str:
 
 def session_began(home: str | Path, payload: str) -> None:
     """Record that a session began: its row in the ledger, and a higher epoch when its context was compacted or
-    cleared. It never raises: a start is never blocked.
+    cleared; then the ledger's upkeep. It never raises: a start is never blocked.
 
     Args:
         home: the home, the .claude folder.
@@ -153,7 +153,9 @@ def session_began(home: str | Path, payload: str) -> None:
         sid = str(data.get("session_id") or "") if isinstance(data, dict) else ""
         if sid:
             from harness.assemble.engine.ports import LedgerPort  # the port reads this module's siblings
-            LedgerPort(home).session_started(sid, str(data.get("source") or ""))
+            port = LedgerPort(home)
+            port.session_started(sid, str(data.get("source") or ""))
+            port.upkeep()  # roll up, prune, back up: once a day in effect
     except Exception as e:
         sys.stderr.write(f"harness: the session start was not recorded ({type(e).__name__}: {e})\n")
 

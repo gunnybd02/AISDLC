@@ -12,7 +12,7 @@ from harness.assemble.engine.ledger_core import LedgerCore
 from harness.utils.gateway.release import current
 from harness.utils.git.run import GitError, git
 from harness.utils.contracts import CLAUDE_DECISION, Event, Verdict
-from harness.utils.ledger import activity, usage, writes
+from harness.utils.ledger import activity, upkeep, usage, writes
 from harness.utils.shapes import Change, Facts
 
 NOT_RECORDED = "harness: not recorded in the ledger ({what}): {error}\n"
@@ -168,6 +168,29 @@ class RecordPort(LedgerCore):
         transcript = event.input.get("transcript_path") if isinstance(event.input, dict) else None
         if event.kind == "Stop" and event.session and transcript:  # the tokens of the turn, from the transcript
             self.recorded("usage", lambda con, rec: usage.read_new(con, event.session, transcript))
+
+    def upkeep(self) -> str:
+        """Run the ledger's upkeep (utils/ledger/upkeep.py): roll up finished days, then prune old rows only when the
+        roll-up went well, then today's backup. It never raises: a fault is told on the error stream and in the text.
+
+        Returns:
+            What was done ("" when nothing was), or why a part was not.
+        """
+        said, at = [], upkeep.now()
+        try:
+            days = self.ledger.write(lambda con: upkeep.rollup(con, at))
+            if days:
+                said.append(f"rolled up {len(days)} day(s)")
+            gone = self.ledger.write(lambda con: upkeep.prune(con, at))  # only after a roll-up without error
+            if gone:
+                said.append("pruned " + ", ".join(f"{n} of {t}" for t, n in sorted(gone.items())))
+            made = upkeep.backup(self.ledger.con, self.path, at)
+            if made:
+                said.append(f"backup {made}")
+        except Exception as e:
+            sys.stderr.write(NOT_RECORDED.format(what="upkeep", error=f"{type(e).__name__}: {e}"))
+            said.append(f"upkeep stopped ({type(e).__name__}: {e})")
+        return "; ".join(said)
 
     def usage_backfill(self, write: bool) -> str:
         """Report the token usage the transcripts on this machine hold and the ledger lacks; write records it and

@@ -184,6 +184,9 @@ def step_done(port: PlanStore, sid: str, message: Optional[str], judge: Optional
             raise StepError(verdict.reason)
     sha = commit(repo, paths, text)
     after = port.step_commit(sid, ticket, plan, repo, sha, fixing)
+    upkeep = getattr(port, "upkeep", None)
+    if upkeep:
+        upkeep()  # the ledger's upkeep runs after a commit; it never raises and is once a day in effect
     head_line = f"Committed {sha[:12]} ({', '.join(changed_files)})."
     if fixing:
         return f"{head_line} The fix is committed; the ticket is in Deliver."
