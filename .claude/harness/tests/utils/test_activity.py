@@ -81,6 +81,19 @@ class ActivityTest(unittest.TestCase):
                                 ("peer", "session_b", '{"from": "session_b", "chars": 2}', 1)])  # another tool: none
         self.assertNotIn("the report", str(self.rows("SELECT attrs FROM pl_spans")))  # never its text
 
+    def test_a_peers_message_in_the_answer_object_of_the_live_check_gets_its_span(self):
+        message = ('<cross-session-message from-session="session_p">\nThe following was sent by another Claude Code '
+                   'session.\n\n    PEER-E2E-2: the reply\n</cross-session-message>')
+        answer = {"notifications": [{"arrived_at": "2026-11-17T01:38:05Z", "content": message,
+                                     "notification_id": "n1", "origin": "mcp_send_message"}],
+                  "read_at": "2026-11-17T01:38:06Z", "remaining": 0}  # the shape the host gave on 2026-11-17
+        self.run_event("UserPromptSubmit", tool_input={"prompt": "go"})
+        build_runner(self.claude_dir).run(Event("PostToolUse", "ReadNotifications", {}, "s1", str(self.repo), answer))
+        rows = self.rows("SELECT name, attrs FROM pl_spans WHERE kind = 'peer'")
+        self.assertEqual([r[0] for r in rows], ["session_p"])
+        self.assertNotIn("PEER-E2E-2", str(rows))
+        self.assertEqual(activity.texts({"a": ["x", {"b": "y"}], "c": 3}), ["x", "y"])
+
     def test_guide_and_find_are_recorded_by_name(self):
         self.run_event("PreToolUse", "mcp__harness__guide", {"name": "work", "mode": "skills"})
         self.run_event("PreToolUse", "mcp__harness__find", {"query": "plan"})

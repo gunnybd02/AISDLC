@@ -2,8 +2,9 @@
 it fetches the child's branch, reads the receipt, reruns the tests itself, then accepts (one pull request into the
 unit's base; nothing is merged here) or sends the child back (at most 3 rounds).
 
-The child's machine and ledger are not the parent's: every fact comes from the branch. Messages to a child are sent
-by the parent's model with send_message; the answers here say exactly what to send."""
+The child's machine and ledger are not the parent's: every fact comes from the branch. Parent and child talk only
+through the branch: a send-back or an answer is a note pushed there (.harness/notes/<name>/), read by a fresh session
+of the child that spawn opens; no message is sent (a cloud child cannot answer one)."""
 from __future__ import annotations
 
 import json
@@ -18,9 +19,9 @@ from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError, repo_of
 from harness.utils.git.run import GitError, git
 from harness.utils.orchestra import crew
-from harness.utils.orchestra.brief import branch
+from harness.utils.orchestra.brief import NOTES, branch
 from harness.utils.orchestra.card import card_of, unit_spec
-from harness.utils.orchestra.fetch import FetchError, checkout, rerun
+from harness.utils.orchestra.fetch import FetchError, checkout, drop_receipt, put_note, rerun
 from harness.utils.orchestra.work import RECEIPTS, find_receipt
 from harness.utils.plan import tickets
 from harness.utils.shapes import Card, CrewEntry, PlanStore, Ticket
@@ -219,106 +220,94 @@ def accept(port: PlanStore, sid: str, name: str, units: dict[str, Any], github: 
             "'land', {}) merges the pull requests.")
 
 
-def drop_receipt(unit: dict[str, Any], repo: str, ref: str, name: str) -> str:
-    """Take the receipt off the child's branch with one git commit, pushed to the branch, so the merge does not carry
-    it into the base; the parent's ledger keeps it (the crew entry's receipt, from check). A plain branch push: no
-    file API (the cloud's proxy refuses GitHub's), and only the child's own orch/ branch is written.
+def fresh_session(port: PlanStore, sid: str, name: str, card: Card, change: dict[str, Any], state: str, rel: str,
+                  sha: str, ref: str) -> str:
+    """Keep a note on the child's entry and say how its fresh session is opened.
 
     Args:
-        unit: the unit's spec {repo, path, verify, base}.
-        repo: the parent's repository root.
-        ref: the child's branch.
+        port: the ledger port.
+        sid: the parent's session.
         name: the child's name.
+        card: its card.
+        change: the entry's other keys to set.
+        state: the story row's state.
+        rel: the note's path.
+        sha: the note's commit.
+        ref: the child's branch.
 
     Returns:
-        A sentence for the answer: taken off, or why not (then it lands with the merge).
+        The sentence for the answer.
     """
-    rel = f"{RECEIPTS}/{name}.json"
-    try:
-        with checkout(unit, repo, ref) as folder:
-            if not git(folder, "ls-files", "--", rel).strip():
-                return "The branch holds no receipt to take off."
-            who = [] if git_or_empty(folder, "config", "user.email") else \
-                ["-c", "user.name=harness", "-c", "user.email=harness@localhost"]
-            git(folder, "rm", "-q", "--", rel)
-            git(folder, *who, "commit", "-q", "-m", f"Keep the receipt of {name} out of {unit.get('base', 'main')}")
-            git(folder, "push", "-q", "origin", f"HEAD:refs/heads/{ref}", timeout=300)
-    except (FetchError, GitError) as e:
-        return f"The receipt stays on the branch ({str(e)[-300:]}); it lands with the merge."
-    return "Its receipt is kept in the ledger and taken off the branch."
+    set_entry(port, sid, name, card, {**change, "fresh": {"note": rel, "at": now(), "sha": sha}}, state)
+    return (f"The note is {rel} on {ref} ({sha[:12]}); nothing is sent to the child. Open a fresh session for it now: "
+            f"run('orchestra', 'spawn', {{name: '{name}'}}) gives the create_session call (it reads the note first), "
+            f"then run('orchestra', 'started', {{name: '{name}', sid}}).")
 
 
-def git_or_empty(folder: str, *args: str) -> str:
-    """The output of a git command, or "" when it fails (an unset config value).
-
-    Args:
-        folder: the folder git runs in.
-        *args: the words after git.
-
-    Returns:
-        Its output, stripped, or "".
-    """
-    try:
-        return git(folder, *args).strip()
-    except GitError:
-        return ""
-
-
-def reject(port: PlanStore, sid: str, name: str, why: str) -> str:
-    """Send a child back with a reason: one round, at most ROUNDS.
+def reject(port: PlanStore, sid: str, name: str, why: str, units: dict[str, Any]) -> str:
+    """Send a child back with a reason, one round of at most ROUNDS: a send-back note pushed on its branch, for a fresh
+    session of the child.
 
     Args:
         port: the ledger port.
         sid: the parent's session.
         name: the child's name.
         why: the reason, for the child.
+        units: the declared units by name.
 
     Returns:
-        The round and the exact send_message to make.
+        The round, the note, and how to open the fresh session.
 
     Raises:
         ReviewError: no such child, ended (an accepted child whose pull request is not merged may still be sent back,
-            for a conflict), no reason, or ROUNDS rounds already (the user decides then).
+            for a conflict), no reason, ROUNDS rounds already (the user decides then), or the note cannot be pushed.
     """
     text = " ".join(str(why).split())
     if not text:
         raise ReviewError("say why the child is sent back")
-    _, card, entry = child_of(port, sid, name, live=False)
+    ticket, card, entry = child_of(port, sid, name, live=False)
     if entry.get("state") in crew.ENDED and (entry.get("state") != crew.ACCEPTED or entry.get("merged")):
         raise ReviewError(f"{name} has ended ({entry['state']}{', merged' if entry.get('merged') else ''})")
     if entry.get("backs", 0) >= ROUNDS:
         raise ReviewError(f"{name} was sent back {ROUNDS} times: the user decides now (forget it, or say what to do)")
     n = entry.get("backs", 0) + 1
-    sent = list(entry.get("sent", [])) + [{"at": now(), "how": "send-back", "text": text[:1000]}]
-    set_entry(port, sid, name, card, {"state": crew.RUNNING, "backs": n, "sentBackAt": now(), "checkedAt": None,
-                                      "sent": sent}, "rejected")
-    return (f"{name} sent back (round {n} of {ROUNDS}). Send it now with send_message to {entry['sid']}: "
-            f"\"Send-back from the orchestrator, round {n} of {ROUNDS}: {text} Fix it on your branch, verify, push, "
-            "and hand back again.\" Check it again after its next handback.")
+    ref, rel = branch(ticket["plan"]["id"], name), f"{NOTES}/{name}/sendback-{n}.md"
+    note = (f"# Send-back {n} of {ROUNDS} from the orchestrator\n\n{text}\n\nFix it on this branch, verify, push, "
+            "and hand back again.\n")
+    sha = put_note(unit_spec(card, units), top(ticket["plan"]["root"]) or "", ref, rel, note,
+                   f"Send-back {n} of {name}")
+    sent = list(entry.get("sent", [])) + [{"at": now(), "how": "send-back", "text": text[:1000], "note": rel}]
+    told = fresh_session(port, sid, name, card, {"state": crew.RUNNING, "backs": n, "sentBackAt": now(),
+                                                 "checkedAt": None, "sent": sent}, "rejected", rel, sha, ref)
+    return f"{name} sent back (round {n} of {ROUNDS}). {told} Check it again after its next handback."
 
 
-def answer(port: PlanStore, sid: str, name: str, text: str) -> str:
-    """The parent's reply to a child's question, kept on its crew entry.
+def answer(port: PlanStore, sid: str, name: str, text: str, units: dict[str, Any]) -> str:
+    """The parent's reply to a child's question: an answer note pushed on its branch, for a fresh session of the child.
 
     Args:
         port: the ledger port.
         sid: the parent's session.
         name: the child's name.
         text: the reply.
+        units: the declared units by name.
 
     Returns:
-        The exact send_message to make.
+        The note, and how to open the fresh session.
 
     Raises:
-        ReviewError: no such child, ended, or an empty reply.
+        ReviewError: no such child, ended, an empty reply, or the note cannot be pushed.
     """
     reply = " ".join(str(text).split())
     if not reply:
         raise ReviewError("the answer is empty")
-    _, card, entry = child_of(port, sid, name)
-    sent = list(entry.get("sent", [])) + [{"at": now(), "how": "answer", "text": reply[:1000]}]
-    set_entry(port, sid, name, card, {"sent": sent}, "answered")
-    return f"Send it now with send_message to {entry['sid']}: \"Answer from the orchestrator: {reply}\""
+    ticket, card, entry = child_of(port, sid, name)
+    k = sum(1 for s in entry.get("sent", []) if s.get("how") == "answer") + 1
+    ref, rel = branch(ticket["plan"]["id"], name), f"{NOTES}/{name}/answer-{k}.md"
+    sha = put_note(unit_spec(card, units), top(ticket["plan"]["root"]) or "", ref, rel,
+                   f"# Answer {k} from the orchestrator\n\n{reply}\n", f"Answer {k} to {name}")
+    sent = list(entry.get("sent", [])) + [{"at": now(), "how": "answer", "text": reply[:1000], "note": rel}]
+    return f"Answer {k} to {name}. " + fresh_session(port, sid, name, card, {"sent": sent}, "answered", rel, sha, ref)
 
 
 def forget(port: PlanStore, sid: str, name: str, why: str) -> str:

@@ -57,6 +57,13 @@ class CardTest(unittest.TestCase):
 
 
 class BriefTest(unittest.TestCase):
+    def test_the_brief_talks_through_the_branch_never_by_message(self):
+        text = brief.brief(7, "pd-x", GOOD, "session_parent01")
+        self.assertNotIn("send_message", text)
+        self.assertIn("your branch is how you talk", text)
+        self.assertIn(".harness/notes/api/ on your branch", text)
+        self.assertIn("Read every note there before you start", text)
+
     def test_the_brief_sends_the_child_to_the_ledger_door_not_the_file(self):
         text = brief.brief(7, "pd-x", GOOD, "session_parent01")
         self.assertIn("run('ledger', 'db_query', {sql})", text)

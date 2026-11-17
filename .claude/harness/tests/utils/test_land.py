@@ -47,7 +47,7 @@ class LandTest(Scenario):
         self.assertIn("Conflicts in: orch-probe/hello.py", text)
         self.assertIn("run('orchestra', 'reject'", text)
         self.assertEqual(self.port.ticket("s1")["state"], "open")
-        self.assertIn("round 1 of 3", review.reject(self.port, "s1", "hello", "conflicts with work"))
+        self.assertIn("round 1 of 3", review.reject(self.port, "s1", "hello", "conflicts with work", UNITS))
 
     def test_a_refusal_with_a_clean_local_merge_is_not_called_a_conflict(self):
         github = FakeGitHub(self.repo, conflict=True)

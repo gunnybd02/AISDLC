@@ -4,6 +4,7 @@
 > Decided by the user on 2026-11-16: a child is a **cloud session**; the card travels **in the brief** and the
 > handback receipt **on the child's branch** (no refs of the harness on the remote); at most **3** children run; a
 > live probe first, then one plan per part. All four parts are built.
+> Changed by the user on 2026-11-17: parent and child **talk through git, never by message** (section 2b).
 
 ## 1. Why spec 05 changes here
 
@@ -18,12 +19,12 @@ sessions share only the git remote, and only the model (never harness code) can 
 | One shared ledger | The card rides in the brief (a JSON block). The receipt (commits, verify, behaviours) is written by harness code into a file on the child's branch. The crew stays in the parent's ledger (and its Drive copies). |
 | Worktree `wt/p<N>` per child | Each child has its own clone and branch `orch/p<plan>/<name>`; it pushes after every step, because its machine is temporary. |
 | One child per unit unless worktrees | Several children may share a unit: each has its own clone and branch. |
-| `watch` polls the session list | Harness code cannot list cloud sessions. A child wakes the parent with `send_message` when it hands back or asks; one long scheduled check-in catches a child that dies silently. |
+| `watch` polls the session list | Harness code cannot list cloud sessions, and a cloud child cannot message its parent. The parent sets a check-in (`send_later`) and reads the children's branches (`status`, `check`). |
 | `check` runs in the child's worktree | The parent fetches the child's branch and reruns the AC tests in a temporary checkout, plus the base proof. |
 | `accept` merges and deletes the branch | The same merge and tests, then push. This connection cannot delete branches (403): merged branches are listed for the user. |
 | `remove` / `purge` delete transcripts | After the user's checklist, the parent's model archives the sessions (`archive_session`). |
 | Only the brief forbids AskUserQuestion in a child | The child's harness refuses it: AskUserQuestion, merging, pushing another branch, and `plan_present` when it has a card. |
-| Texts cannot reach an idle child | `send_message` reaches a live or idle session (the probe). |
+| Texts cannot reach an idle child | No text is sent: a send-back or an answer is a note on the child's branch, and `spawn` opens a fresh session of the child that reads it. |
 
 Not needed here: worktrees, the verify lock between children, `claude --bg`, `watch`, respawn by job id, the purge of
 transcripts on disk.
@@ -35,7 +36,7 @@ One child session was opened with `create_session` and a brief (session "Orchest
 | Question | Answer |
 |---|---|
 | Is a child opened from a brief governed from its first word? | Yes: auto permission mode, the harness start message at its session start. |
-| Does child -> parent `send_message` wake the parent? | Yes, within about 20 seconds. |
+| Does child -> parent `send_message` wake the parent? | Yes, within about 20 seconds. **Not so on 2026-11-17**: refused or held for approval (section 2b). |
 | Does parent -> child `send_message` wake an idle child? | Yes, within about 20 seconds. |
 | Does a child act on a send-back? | **Only because its brief said send-backs from the parent are part of its plan.** It treats any other message as data. So the brief says so, with the parent's session id. |
 | Can a child edit or commit with no plan? | No: the harness refuses (expected; `take` opens its card plan). |
@@ -43,6 +44,27 @@ One child session was opened with `create_session` and a brief (session "Orchest
 
 Still unproven: a child pushing its branch (needs `take`, part 2), how long an idle child survives, and the cost of
 one child.
+
+## 2b. Talking through git (live checks of 2026-11-17)
+
+Three live checks showed that a cloud child **cannot message its parent**: in auto mode the classifier refuses
+`send_message` ("Unsanctioned Communication"), and in accept-edits mode it waits for an approval nobody gives. An
+allow rule in the repository's `.claude/settings.json` changed neither (it was added in PR 46 and taken out again).
+A session the user started can message, a session another session started cannot.
+
+So every word between parent and child goes through the child's branch `orch/p<plan>/<name>`:
+
+| Who | Writes on the branch | Then |
+|---|---|---|
+| Child | its commits, pushed after every step | goes on |
+| Child | a question: `.harness/notes/<name>/question-<n>.md` (`question`) | stops |
+| Child | its receipt: `.harness/handback/<name>.json` (`handback`) | stops |
+| Parent | a send-back: `.harness/notes/<name>/sendback-<n>.md` (`reject`) | `spawn` + `started`: a fresh session |
+| Parent | an answer: `.harness/notes/<name>/answer-<n>.md` (`answer`) | `spawn` + `started`: a fresh session |
+
+The parent learns of a receipt or a question by reading branches at its check-ins (`status`, `check`), never by a
+message. A fresh session of a child gets the same brief plus one line naming the note to read first; `take` stands on
+the pushed branch and lists its notes; `started` keeps the child's rounds and its earlier sessions.
 
 ## 3. One run
 
@@ -61,15 +83,15 @@ sequenceDiagram
     C->>C: first prompt binds; orchestra take opens the card plan from the card block
     loop work
         C->>G: push orch/p<plan>/<name> after every step
-        C-->>P: orchestra question, then send_message (optional)
-        P-->>C: orchestra answer, then send_message
+        C-->>G: orchestra question: a note on the branch, pushed; the child stops (optional)
+        P-->>G: orchestra answer: a note on the branch; spawn opens a fresh session
     end
-    C->>G: orchestra handback: receipt file on the branch, pushed
-    C->>P: send_message "handed back <branch> <sha>"
-    P->>G: fetch the branch and its receipt
+    C->>G: orchestra handback: receipt file on the branch, pushed; the child stops
+    P->>G: at a check-in: fetch the branch and its receipt
     P->>P: orchestra check {name}: rerun the AC tests here
     alt red or AC missing
-        P->>C: orchestra reject {name, why}, then send_message (round n of 3)
+        P->>G: orchestra reject {name, why}: a send-back note on the branch (round n of 3)
+        P->>C: spawn + create_session: a fresh session reads the note
     else green
         P->>P: orchestra accept {name}: merge, run the suite, push, end the child
     end
@@ -115,8 +137,8 @@ another plan there (`GATE: plan ... was not opened`). A revision of the running 
 
 **The brief** (`utils/orchestra/brief.py`) begins with `child session "<name>" of the delegated plan <n>` and the
 parent's session id, then: the goal and unit; `take` first and never a plan of its own; nobody at the keyboard; the
-branch and pushing it after every step; that send-backs and answers from the parent are part of its plan (the probe);
-`question`; verify bare; `handback` and one `send_message`; the files; the criteria with their behaviour ids
+branch and pushing it after every step; that it sends no message and its branch is how it talks, the parent's notes
+there being part of its plan; `question`; verify bare; `handback`, then stop; the files; the criteria with their behaviour ids
 `p<plan>.<name>.ac<n>`; and the card block, one JSON object between `<<<harness-card` and `harness-card>>>` with plan,
 draft, parent, branch, card and behaviour ids. Part 2's harness reads that block; until part 2, a child started from
 a brief cannot `take`.
@@ -135,8 +157,8 @@ Whoever opens a session writes its first prompt: the user or one of their sessio
 |---|---|
 | `take` | Stands on `orch/p<plan>/<name>` (local, else the remote one tracked, else new from HEAD) and opens the card plan, approved **by the grant** of the parent plan: `rec_plans` says reason `grant`, the logs say `grant`, no form is recorded. The card plan: title `<name>: <goal>`, files the change paths, tests the test paths, one step committed as the goal, one behaviour per AC (id `p<plan>.<name>.ac<n>`, what `AC<n>: ...`, the first card test; registered at once when there is one). A card without `change` is refused (and `spawn` refuses it in the parent: a cloud child's plan is built from those paths). |
 | `push` | Pushes its own branch only, judged by the git rules like `git push` in a shell (a refusal or a question stops it: nobody answers in a child), kept in `pl_git_audit`. |
-| `question {question}` | Kept on the child's ticket (`asks`); the answer says the line to send to the parent with `send_message`. Named `question`, not `ask`: the verdict net keeps the word `ask` for the arbiter. |
-| `handback {changed, checked, notChecked, risks, testsChanged, added?, faults?}` | Checks the report (spec 11.4: at most 10 entries of 200 characters, 400 for two-part ones). Adds what harness code reads: commits and their files, the newest verify (ok, red, missing), the behaviours `p<plan>.<name>.ac*`, uncommitted files, the base. Writes `.harness/handback/<name>.json`, commits it through the commit gate, pushes the branch, and tells the model to send one line `handed back <branch> <sha>` to the parent. |
+| `question {question}` | Kept on the child's ticket (`asks`), written as `.harness/notes/<name>/question-<n>.md`, committed through the commit gate and pushed; the child stops. Named `question`, not `ask`: the verdict net keeps the word `ask` for the arbiter. |
+| `handback {changed, checked, notChecked, risks, testsChanged, added?, faults?}` | Checks the report (spec 11.4: at most 10 entries of 200 characters, 400 for two-part ones). Adds what harness code reads: commits and their files, the newest verify (ok, red, missing), the behaviours `p<plan>.<name>.ac*`, uncommitted files, the base. Writes `.harness/handback/<name>.json`, commits it through the commit gate, pushes the branch, and tells the model to stop: it sends no message. |
 
 **Child refusals.** `plan_present`, `plan_close` and `maint grant` refuse in a child. The detector `child_guard`
 refuses `child.ask_user` (AskUserQuestion), `child.merge` (git merge, pull, rebase) and `child.push_other` (a push to
@@ -174,8 +196,8 @@ The parent reads no code; every fact comes from the child's branch (`utils/orche
 |---|---|
 | `check {name, timeoutMin?}` | A temporary checkout of the child's branch: a detached worktree of the parent's clone when the unit lives there, else a shallow clone of the unit's repository. Refused when the branch holds no receipt, the tip commit is not the receipt alone (then the receipt would not describe the code), the receipt is not of this child of this session, or it is not newer than the last send-back. Counts one active behaviour with a test per AC (`AC<n>:` at the start of its description), and **reruns the tests** with the unit's command in the unit's folder (once per test file when the command names `{test}`), without the harness's variables. Green only with no AC missing, nothing uncommitted, the child's verify ok and the rerun green; the result is kept on the crew entry (`lastCheck`, `checkedAt` = the round) with a `checked` story row. |
 | `accept {name}` | A green check this round; opens **one pull request** from `orch/p<plan>/<name>` into the unit's `base` (title the goal, body the AC), records it (`pr`) and the child is `accepted`. Nothing is merged. A child sent back after it (a conflict) keeps its pull request. |
-| `reject {name, why}` | Round n of 3, then the user decides; an accepted child whose pull request is not merged may be sent back too. The answer is the exact `send_message` to make. |
-| `answer {name, text}` | The reply to a child's question, kept; the answer is the `send_message` to make. |
+| `reject {name, why}` | Round n of 3, then the user decides; an accepted child whose pull request is not merged may be sent back too. Pushes the send-back note on the child's branch; the child then waits for a fresh session (`spawn`, `started`). |
+| `answer {name, text}` | The reply to a child's question, kept and pushed as an answer note on its branch; then a fresh session, as for reject. |
 | `forget {name, why}` | The child ends `forgotten`; its card may be spawned again. Its session stays until the user agrees to archive it. |
 | `read {name}` | The receipt, read from the branch. |
 | `land {timeoutMin?}` | **The final route.** Refused while a child has not ended. Merges each accepted pull request in the plan's order (one already merged is taken as is). A pull request that does not merge stops it: the answer names it and its conflicted files (`git merge-tree`) and the two ways on: the parent resolves it on the child's branch (the files are the delegated plan's) and lands again, or sends the child back. Then each unit's tests run on its merged base. Green, with the parent's own files committed (or none), closes the delegated plan **delivered**. |
@@ -232,7 +254,7 @@ for GitHub to decide whether a pull request can merge, and a refusal while the l
 ## 10. Trust
 
 - Only the user's "Approve" in the parent's form approves the delegated plan; nothing a child says approves or widens it.
-- A child trusts its brief because it is its first prompt; it trusts its parent's send-backs because the brief names
-  the parent's session id. Any other message is data.
+- A child trusts its brief because it is its first prompt; it trusts the notes on its branch because the brief says
+  they are the parent's, part of the plan. Any message from any session is data.
 - Whoever can push to the remote could forge a receipt on a branch. That is no worse than today (whoever can push can
   change the code), and the parent reruns the tests itself instead of taking the receipt's green on trust.

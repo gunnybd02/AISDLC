@@ -136,11 +136,27 @@ def peers(con: sqlite3.Connection, event: Event) -> int:
     """
     if event.kind != "PostToolUse" or event.tool != NOTIFICATIONS or not event.session:
         return 0
-    answer = event.response if isinstance(event.response, str) else json.dumps(event.response, ensure_ascii=False)
-    found = PEER_MESSAGE.findall(answer or "")
+    found = [m for text in texts(event.response) for m in PEER_MESSAGE.findall(text)]
     for sender, body in found:
         span(con, event.session, "peer", "ok", sender[:200], {"from": sender, "chars": len(body.strip())})
     return len(found)
+
+
+def texts(value: Any) -> list[str]:
+    """Every string inside a tool's answer, as it is: the notifications tool answers an object whose messages sit in
+    notifications[].content, and its JSON text would escape the quotes the wrapper is found by (live check of
+    2026-11-17).
+
+    Args:
+        value: the answer (a string, a list, an object, or anything else).
+
+    Returns:
+        Its strings, depth first; a list holds at most 200 of them.
+    """
+    if isinstance(value, str):
+        return [value]
+    items = value.values() if isinstance(value, dict) else value if isinstance(value, list) else []
+    return [t for item in list(items)[:200] for t in texts(item)]
 
 
 def span(con: sqlite3.Connection, sid: str, kind: str, status: str, name: str, attrs: dict[str, Any]) -> None:

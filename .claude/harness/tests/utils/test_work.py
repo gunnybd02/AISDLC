@@ -64,12 +64,42 @@ class WorkTest(unittest.TestCase):
         with self.assertRaisesRegex(work.WorkError, "pushes only orch/p7/api"):
             work.push(self.port, "c1", lambda repo, words: ALLOW)
 
-    def test_a_question_is_kept_and_says_whom_to_send_it(self):
-        text = work.ask(self.port, "c1", "Which status code for a closed account?")
-        self.assertIn("send_message to the orchestrator session_p1", text)
-        self.assertEqual(self.port.ticket("c1")["asks"][0]["n"], 1)
+    def test_a_question_is_a_numbered_note_pushed_on_the_branch_and_the_child_stops(self):
+        with self.assertRaisesRegex(work.WorkError, "take your card first"):
+            work.ask(self.port, "c1", "Which status code?", lambda *a: ALLOW, lambda *a: ALLOW)
+        self.take()
+        first = work.ask(self.port, "c1", "Which status code for a closed account?", lambda *a: ALLOW, lambda *a: ALLOW)
+        second = work.ask(self.port, "c1", "Is paging needed?", lambda *a: ALLOW, lambda *a: ALLOW)
+        for text in (first, second):
+            self.assertNotIn("send_message", text)
+            self.assertIn("Then stop: end your turn", text)
+        self.assertIn(".harness/notes/api/question-2.md", second)
+        note = git(self.origin, "show", "orch/p7/api:.harness/notes/api/question-1.md")
+        self.assertIn("Which status code for a closed account?", note)
+        self.assertIn("Question 1 from api (plan 7)", note)
+        self.assertEqual([a["n"] for a in self.port.ticket("c1")["asks"]], [1, 2])
         with self.assertRaisesRegex(work.WorkError, "one to 400"):
-            work.ask(self.port, "c1", " ")
+            work.ask(self.port, "c1", " ", lambda *a: ALLOW, lambda *a: ALLOW)
+        with self.assertRaisesRegex(work.WorkError, "a secret"):
+            work.ask(self.port, "c1", "Why?", lambda *a: Verdict("refuse", "a secret"), lambda *a: ALLOW)
+
+    def test_a_fresh_session_takes_the_pushed_branch_and_reads_its_notes(self):
+        self.take()
+        notes = self.repo / ".harness" / "notes" / "api"
+        notes.mkdir(parents=True)
+        (notes / "sendback-1.md").write_text("# Send-back 1 of 3\n\nAC1 is not tested\n", encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "Send-back 1 of api")
+        git(self.repo, "push", "-q", "origin", "orch/p7/api")
+        fresh = tree(self, {})  # a new machine: a clone of origin and its own ledger
+        git(fresh, "clone", "-q", str(self.origin), ".")
+        port = LedgerPort(copy_tree(self, {"project.json": json.dumps({"name": "t"})}))
+        prompt = brief.brief(7, "pd-x", CARD, "session_p1", resume=".harness/notes/api/sendback-1.md")
+        Act(port).run(Event("UserPromptSubmit", "", {"prompt": prompt}, "c2", str(fresh)), {}, ALLOW)
+        text = work.take(port, "c2", str(fresh))
+        self.assertIn("you are on orch/p7/api (tracked)", text)
+        self.assertIn("Notes on your branch, read them first: .harness/notes/api/sendback-1.md", text)
+        self.assertEqual(git(fresh, "log", "-1", "--format=%s").strip(), "Send-back 1 of api")
 
     def test_the_handback_receipt_is_committed_and_pushed(self):
         self.take()
@@ -77,8 +107,10 @@ class WorkTest(unittest.TestCase):
             work.handback(self.port, "c1", {**REPORT, "changed": []}, lambda *a: ALLOW, lambda *a: ALLOW)
         (self.repo / "scratch.txt").write_text("left over\n", encoding="utf-8")
         text = work.handback(self.port, "c1", REPORT, lambda *a: ALLOW, lambda *a: ALLOW, store_on=True)
-        self.assertIn('"handed back orch/p7/api', text)
-        self.assertIn("Save your ledger to the store first: run('ledger', 'export', {reason: 'handback'})", text)
+        self.assertIn("Handback kept in .harness/handback/api.json on orch/p7/api", text)
+        self.assertNotIn("send_message", text)
+        self.assertTrue(text.endswith("You send no message; the orchestrator reads your branch."))
+        self.assertIn("Save your ledger to the store: run('ledger', 'export', {reason: 'handback'})", text)
         receipt = json.loads(git(self.origin, "show", "orch/p7/api:.harness/handback/api.json"))
         self.assertEqual((receipt["name"], receipt["plan"], receipt["parent"], receipt["verify"]),
                          ("api", 7, "session_p1", "missing"))

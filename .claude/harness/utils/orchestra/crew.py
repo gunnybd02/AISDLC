@@ -5,7 +5,8 @@ row of the story, pl_children, which is never changed in place.
 - open_delegated: the user approved a plan with children; its ticket takes the grant, keeps the crew of an earlier
   revision, and a "pending" story row is written for each child not yet in the crew.
 - room: whether the parent may start a child now (delegated plan in force, a child of it, not started, under the cap).
-- start: the child's cloud session exists; its entry is written as running.
+- start: the child's cloud session exists; its entry is written as running. A child sent back or answered (its
+  entry holds fresh: the note on its branch) is started again in a fresh session, its rounds kept.
 
 In the cloud harness code cannot open a session (only the model's create_session can), so a child counts as running
 only once its session id comes back (orchestra started): a failed create_session leaves no ghost."""
@@ -143,7 +144,8 @@ def running(ticket: Ticket) -> list[str]:
 
 def room(ticket: Optional[Ticket], name: str) -> Card:
     """The card of a child the parent may start now: a delegated plan the user approved is in force, the name is one of
-    its children, the child has not started (or was forgotten), and fewer than CAP children run.
+    its children, the child has not started (or was forgotten) and fewer than CAP children run, or the child waits for
+    a fresh session (sent back or answered through a note on its branch).
 
     Args:
         ticket: the parent's ticket.
@@ -164,6 +166,8 @@ def room(ticket: Optional[Ticket], name: str) -> Card:
         raise ValueError(f"{name} is no child of plan {plan['id']}: its children are "
                          + ", ".join(c["name"] for c in plan["children"]))
     entry = (ticket.get("crew") or {}).get(name)
+    if entry and entry.get("fresh"):
+        return card  # sent back or answered: it runs already and waits for its fresh session
     if entry and entry.get("state") != FORGOTTEN:
         raise ValueError(f"{name} has started already (state {entry.get('state')}, session {entry.get('sid')})")
     busy = running(ticket)
@@ -197,6 +201,14 @@ def start(con: sqlite3.Connection, sid: str, name: str, child_sid: str, model: s
     taken = [n for n, e in (ticket.get("crew") or {}).items() if e.get("sid") == child_sid and e.get("state") not in ENDED]
     if taken:
         raise ValueError(f"session {child_sid} is the child {taken[0]} already: one session is one child")
+    old = (ticket.get("crew") or {}).get(name) or {}
+    if old.get("fresh"):  # the same child in a fresh session: its rounds and history stay
+        again: CrewEntry = {**old, "sid": child_sid, "state": RUNNING, "at": now(), "model": model or old.get("model", ""),
+                            "sessions": list(old.get("sessions", [])) + [old.get("sid")]}
+        again.pop("fresh", None)
+        story(con, delegated(ticket)["id"], card, RUNNING, again.get("backs", 0), sid=child_sid, model=again["model"])
+        tickets.save(con, {**ticket, "crew": {**(ticket.get("crew") or {}), name: again}})
+        return again
     entry: CrewEntry = {"unit": card["unit"], "sid": child_sid, "state": RUNNING, "backs": 0, "checkedAt": None,
                         "adopted": False, "model": model, "reportSid": sid, "at": now(), "sentBackAt": None, "sent": []}
     plan = delegated(ticket)
@@ -224,6 +236,7 @@ def status(ticket: Optional[Ticket]) -> str:
     for child in plan["children"]:
         entry = crew.get(child["name"], {})
         rounds = f", sent back {entry['backs']}x" if entry.get("backs") else ""
+        fresh = f" | waits for a fresh session: {entry['fresh']['note']}" if entry.get("fresh") else ""
         lines.append(f"- {child['name']} | {child.get('unit')} | {entry.get('state', PENDING)}{rounds} | "
-                     f"session {entry.get('sid') or '-'}")
+                     f"session {entry.get('sid') or '-'}{fresh}")
     return "\n".join(lines)
