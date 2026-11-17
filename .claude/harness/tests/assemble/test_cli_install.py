@@ -42,6 +42,7 @@ class InstallTest(unittest.TestCase):
         servers = json.loads(self.claude_json.read_text())
         self.assertEqual(servers["numStartups"], 7)
         self.assertEqual(servers["mcpServers"]["harness"]["args"], [self.boot, "mcp_server"])
+        self.assertEqual(servers["mcpServers"]["fallback"]["args"], [self.boot, "fallback"])  # beside the harness
         self.assertIn("other", servers["mcpServers"])
         allow = data["permissions"]["allow"]
         self.assertEqual(allow[0], MY_RULE)  # the user's own rule stays
