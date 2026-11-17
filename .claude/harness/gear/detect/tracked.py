@@ -2,7 +2,7 @@
 planfiles.py's (write.state), plan or not."""
 from __future__ import annotations
 
-from harness.gear.detect.planfiles import in_state
+from harness.gear.translate.planfiles import in_state
 from harness.utils.contracts import Detector, Event, Finding
 from harness.utils.shapes import Facts
 

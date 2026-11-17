@@ -2,7 +2,7 @@
 add file grants and drop grants (the newest decides), and a folder above a planned file (its mkdir)."""
 import unittest
 
-from harness.gear.detect.planfiles import PlanFiles
+from harness.gear.translate.planfiles import allowed
 from harness.utils.plan.files import allows, holds, named, rel_key
 from harness.tests import tree
 
@@ -29,10 +29,10 @@ class FilesTest(unittest.TestCase):
     def test_the_gate_uses_them_on_real_paths(self):
         root = str(tree(self, {})).replace("\\", "/")
         plan = {**PLAN, "root": root}
-        self.assertTrue(PlanFiles.allowed(plan, f"{root}/src/k/z.py"))
-        self.assertTrue(PlanFiles.allowed(plan, f"{root}/src"))  # mkdir src: held? no file named under src
-        self.assertFalse(PlanFiles.allowed(plan, f"{root}/one.py"))
-        self.assertFalse(PlanFiles.allowed(plan, "/elsewhere/src/a.py"))
+        self.assertTrue(allowed(plan, f"{root}/src/k/z.py"))
+        self.assertTrue(allowed(plan, f"{root}/src"))  # mkdir src: held? no file named under src
+        self.assertFalse(allowed(plan, f"{root}/one.py"))
+        self.assertFalse(allowed(plan, "/elsewhere/src/a.py"))
 
     def test_a_plan_without_tests_names_its_files(self):
         self.assertEqual(named({"files": ["docs/a.md"]}), {rel_key("docs/a.md")})

@@ -10,12 +10,11 @@ from harness.assemble.engine.desk_port import question
 from harness.assemble.engine.ports import LedgerPort
 from harness.gear.decide.arbiter import Decide
 from harness.gear.detect.forms import Forms
-from harness.gear.detect.planfiles import PlanFiles
 from harness.gear.detect.tracked import Tracked
 from harness.hooks.forms import Answers
 from harness.gear.translate.place import Places
 from harness.utils.contracts import Event, Finding
-from harness.tests import CLAUDE_DIR, WINDOWS, native, tree
+from harness.tests import CLAUDE_DIR, WINDOWS, edit_gate, native, tree
 from harness.tests.e2e import copy_tree
 
 ROOT = native("C:/repo")
@@ -25,7 +24,7 @@ STATE = native("C:/harness/.claude/state")
 
 def gate(event, facts):
     """The findings of the three detectors of the edit gate, in the order the recipe runs them."""
-    return [f for d in (Forms(), Tracked(), PlanFiles()) for f in d.detect(event, facts)]
+    return edit_gate(event, facts)
 
 
 def write(path, tool="Write", cwd=ROOT):

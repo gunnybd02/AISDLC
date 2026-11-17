@@ -10,12 +10,12 @@
     "commit_facts",
     "drive_calls",
     "agent_places",
-    "child_calls"
+    "child_calls",
+    "plan_paths"
   ],
   "detectors": [
     "forms",
     "tracked",
-    "planfiles",
     "stop_guard",
     "secret_scan",
     "mark_scan",
