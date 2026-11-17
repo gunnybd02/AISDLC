@@ -144,15 +144,62 @@ def current(home: str | Path) -> Optional[str]:
 
 
 def publish(home: str | Path, sha: str) -> None:
-    """Put the release sha in force (one atomic rename).
+    """Put the release sha in force (one atomic rename); the release it replaces becomes previous, the one the
+    anchor's fallback goes back to.
 
     Args:
         home: the harness home.
         sha: the release to put in force.
     """
-    tmp = live_dir(home) / f".current-{os.getpid()}"
-    tmp.write_text(sha, encoding="utf-8")
-    os.replace(tmp, live_dir(home) / "current")
+    running = current(home)
+    if running and running != sha:
+        write_live(home, "previous", running)
+    write_live(home, "current", sha)
+
+
+def write_live(home: str | Path, name: str, text: str) -> None:
+    """Write one file of state/live/ in one atomic rename.
+
+    Args:
+        home: the harness home.
+        name: the file (current, previous).
+        text: its whole text.
+    """
+    tmp = live_dir(home) / f".{name}-{os.getpid()}"
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, live_dir(home) / name)
+
+
+def previous(home: str | Path) -> Optional[str]:
+    """The release that was in force before the current one, when it is still there; else None.
+
+    Args:
+        home: the harness home.
+
+    Returns:
+        The sha state/live/previous names when that release is there, else None.
+    """
+    try:
+        sha = (live_dir(home) / "previous").read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return sha if sha and (release_dir(home, sha) / "harness").is_dir() else None
+
+
+def bad(home: str | Path) -> set[str]:
+    """The releases the anchor's fallback left (state/live/bad, one sha a line): never put in force by an update.
+
+    Args:
+        home: the harness home.
+
+    Returns:
+        The set of their shas; empty when there is none.
+    """
+    try:
+        text = (live_dir(home) / "bad").read_text(encoding="utf-8")
+    except OSError:
+        return set()
+    return {line.strip() for line in text.splitlines() if line.strip()}
 
 
 def accepts(port: PlanStore, answers: dict[str, str]) -> list[str]:

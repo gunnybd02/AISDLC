@@ -11,7 +11,7 @@ from harness.assemble.engine.cli_live import session_update, update_door
 from harness.assemble.engine.ports import LedgerPort
 from harness.assemble.engine.runner import Act
 from harness.utils.contracts import Event, Verdict
-from harness.utils.gateway.release import current, stamp
+from harness.utils.gateway.release import build, current, previous, stamp
 from harness.tests import anchor_of, tree
 from harness.tests.e2e import copy_tree, run
 
@@ -118,6 +118,29 @@ class LiveUpdateTest(unittest.TestCase):
             self.assertFalse(any("After the merge" in n for n in notes), notes)
         self.assertEqual(current(self.home), running)
         self.assertNotIn(NEW, (self.home / "/".join(HEALTH)).read_text(encoding="utf-8"))
+
+    def test_a_publish_keeps_the_release_it_replaced_as_previous(self):
+        running = stamp(self.home)
+        update_door(self.port, self.home)
+        self.assertIsNone(previous(self.home))
+        self.merge_on_origin()
+        update_door(self.port, self.home)
+        self.assertNotEqual(current(self.home), running)
+        self.assertEqual(previous(self.home), running)
+
+    def test_an_update_to_a_release_marked_bad_keeps_the_one_in_force(self):
+        running = stamp(self.home)
+        update_door(self.port, self.home)
+        self.merge_on_origin()
+        git(self.home.parent, "pull", "-q", "--ff-only")
+        sha = build(self.home)  # the release of the new main
+        (self.home / "state" / "live" / "bad").write_text(f"{sha}\n", encoding="utf-8")
+        code, text = update_door(self.port, self.home)
+        self.assertEqual(code, 1, text)
+        self.assertIn("failed once", text)
+        self.assertEqual(current(self.home), running)
+        self.assertIn("failed once", session_update(self.home))
+        self.assertEqual(current(self.home), running)
 
     def test_a_file_git_does_not_track_under_harness_stops_the_update(self):
         self.merge_on_origin()

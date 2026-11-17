@@ -21,7 +21,8 @@ from pathlib import Path
 from typing import Any
 
 from harness.assemble.engine.live_mcp import healthy
-from harness.utils.gateway.release import ALLOW_LABEL, NO_LABEL, anchor, build, current, publish, release_dir, stamp
+from harness.utils.gateway.release import (ALLOW_LABEL, NO_LABEL, anchor, bad, build, current, publish, release_dir,
+                                           stamp)
 from harness.utils.git.asks import take
 from harness.utils.git.pull import PullError, clone_root, fast_forward
 from harness.utils.git.run import GitError, git
@@ -103,6 +104,9 @@ def publish_main(home: str | Path) -> tuple[int, str]:
     sha = build(home)
     if current(home) == sha:
         return 0, f"Release {sha} is in force already."
+    if sha in bad(home):
+        return 1, (f"refused: release {sha} failed once and the fallback left it; release {current(home)} stays in "
+                   f"force. Fix main with a new pull request.")
     if not healthy(home, release_dir(home, sha)):
         return 1, (f"refused: the doctor of release {sha} finds problems; release {current(home)} stays in force. "
                    f"Fix main with a new pull request.")
@@ -279,6 +283,8 @@ def harness_update(home: str | Path) -> str:
     sha = build(home)
     if current(home) == sha:
         return f"{pinned}The harness is up to date: main {after[:12]}, release {sha}."
+    if sha in bad(home):
+        return f"{pinned}The harness keeps release {current(home)}: release {sha} of main {after[:12]} failed once."
     if not healthy(home, release_dir(home, sha)):
         return f"{pinned}The harness keeps release {current(home)}: the doctor of main {after[:12]} finds problems."
     publish(home, sha)
