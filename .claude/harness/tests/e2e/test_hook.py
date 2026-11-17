@@ -15,10 +15,9 @@ FAKE = {
         '"""A detector for the test."""\nfrom harness.utils.contracts import Detector, Finding\n\n\n'
         'class Fake(Detector):\n    def detect(self, event, facts):\n'
         '        return [Finding("test.flagged", event.input.get("command", ""))] if event.input.get("flag") else []\n'),
-    "harness/gear/__init__.py": (
-        '"""x"""\nITEMS = [{"kind": "rule", "name": "decide", "ref": "harness.gear.decide.arbiter:Decide"},\n'
-        '         {"kind": "translator", "name": "git_rules", "ref": "harness.gear.translate.git_rules:GitRuleFacts"},\n'
-        '         {"kind": "detector", "name": "fake", "ref": "harness.gear.fake_detect:Fake"}]\n'),
+    "harness/gear/__init__.py": (  # the real items (the rules' when facts stay declared) and the fake detector
+        '"""x"""\nITEMS = ' + repr([i for i in gear_block.ITEMS if i["kind"] != "detector"]
+                                  + [{"kind": "detector", "name": "fake", "ref": "harness.gear.fake_detect:Fake"}]) + "\n"),
     "harness/assemble/pipelines/base.json": json.dumps({"translators": [], "detectors": ["fake"]}),
 }
 

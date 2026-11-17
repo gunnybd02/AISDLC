@@ -14,7 +14,6 @@ ITEMS = [
     {"kind": "detector", "name": "mark_scan", "ref": "harness.gear.detect.mark:MarkScan"},
     {"kind": "detector", "name": "agent_files", "ref": "harness.gear.detect.agent:AgentFiles"},
     {"kind": "detector", "name": "stop_guard", "ref": "harness.gear.detect.stop:StopGuard"},
-    {"kind": "detector", "name": "write_action", "ref": "harness.gear.detect.action:WriteAction"},
     {"kind": "detector", "name": "drive_guard", "ref": "harness.gear.detect.drive:DriveGuard"},
     {"kind": "detector", "name": "store_guard", "ref": "harness.gear.detect.store:StoreGuard"},
     {"kind": "detector", "name": "child_guard", "ref": "harness.gear.detect.child:ChildGuard"},

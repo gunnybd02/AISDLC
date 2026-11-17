@@ -13,7 +13,6 @@
     "forms",
     "tracked",
     "planfiles",
-    "write_action",
     "stop_guard",
     "secret_scan",
     "mark_scan",
