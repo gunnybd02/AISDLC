@@ -46,11 +46,16 @@ class DeskPort(LedgerCore):
             why: {item: why it changed} for a revision, kept with it; None for none.
 
         Returns:
-            (plan id, revision number, the form question that approves it).
+            (plan id, revision number, the form question that approves it). A new plan replaces the plan that waited
+            in the same session: that one is dropped, so its form no longer counts (docs 04, section 8).
         """
-        plan_id = plan_id or new_id()
+        new, plan_id = plan_id is None, plan_id or new_id()
 
         def change(con: sqlite3.Connection, rec: Recorder) -> int:
+            if new and sid:
+                for old in revisions.waiting(con):
+                    if old["sid"] == sid:
+                        self.event(con, rec, old["plan_id"], "dropped", old["rev"], sid=sid)
             rev = revisions.record(con, rec, plan_id, sid, items, why)
             self.event(con, rec, plan_id, "waiting", rev, sid=sid)
             if sid:

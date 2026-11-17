@@ -100,13 +100,15 @@ Notes:
   itself (its tool span).
 - When the server judges a write from inside (its write gate, its commit or git line), that judging keeps its gate
   span and findings, with the calling session, and no second tool-call row: a call is counted once.
-- Verify gives the tests a copy of the ledger in `HARNESS_DB`, but nothing reads that variable: the ledger is always
-  `state/harness.db` of the home that runs. So a test that records must run a copy of the tree (`copy_tree`), never the
-  real home.
+- Verify gives the tests no ledger: the ledger is always `state/harness.db` of the home that runs, so a test that
+  records runs a copy of the tree (`copy_tree`), never the real home.
 - Cost in the retro views is tokens times `pl_prices`: a conversion at list prices, not a bill. A model with no
   price costs 0 there.
-- A peer's prompt is recognised by the host's wrapper `<cross-session-message`; this was not checked in a live
-  session.
+- A prompt that is not the user's own words is marked (`from_peer` 1): a system notification (it starts with
+  `<task-notification>`) or a peer's message. A live session showed that a peer's message arrives this way: the
+  prompt is a notification, the message itself is in the answer of the `ReadNotifications` tool. There the harness
+  keeps one `peer` span per message, with its sender and size, never its text. No gate reads the mark yet.
+- `guide` and `find` calls are recorded as `guide.<name>` and `find`.
 
 ### 2.2 Plans and proof
 

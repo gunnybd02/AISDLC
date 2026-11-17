@@ -50,12 +50,11 @@ class CliTest(unittest.TestCase):
         self.assertIn("RED (exit 127)", self.cli("verify", "--", "no-such-program-x")[1])
         self.assertEqual(self.cli("verify", "--timeout", "0")[0], 1)
 
-    def test_the_tests_see_a_copy_of_the_ledger(self):
+    def test_the_tests_get_no_ledger(self):
         self.port.touch_session("s1")
-        code, out = self.cli("verify", "--", "python3", "-c", "import os; print(os.environ['HARNESS_DB'])")
+        code, out = self.cli("verify", "--", "python3", "-c", "import os; print(os.environ.get('HARNESS_DB', 'none'))")
         self.assertEqual(code, 0, out)
-        self.assertNotEqual(out.splitlines()[-1], str(self.port.path))
-        self.assertTrue(out.splitlines()[-1].endswith("harness.db"))
+        self.assertEqual(out.splitlines()[-1], "none")  # a test that records builds its own home
 
     def test_add_file_widens_the_plan_and_each_door_refuses_with_why(self):
         self.assertEqual(self.cli("add", "file", self.path("notes.md"), "--behavior", "s1.sets-a", "--why", "docs")[0], 0)

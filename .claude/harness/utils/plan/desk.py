@@ -111,6 +111,7 @@ def normalize(items: PlanItems) -> PlanItems:
 
 def merge(old: PlanItems, changes: PlanItems) -> PlanItems:
     """A revision: each given item replaces the old one whole; without steps, new files and tests join the last step.
+    A replaced test or steps item takes the behaviours it made with it (normalize keeps them in behaviors).
 
     Args:
         old: the items of the newest revision (without root).
@@ -120,6 +121,13 @@ def merge(old: PlanItems, changes: PlanItems) -> PlanItems:
         The new items, not normalized.
     """
     out = {**old, **changes}
+    if "behaviors" not in changes and ("test" in changes or "steps" in changes):  # those the old item made go with it
+        gone = {t.get("name") for t in old.get("test", []) if isinstance(t, dict)} if "test" in changes else set()
+        for n, step in enumerate(old.get("steps", []) if "steps" in changes else []):
+            for b in step.get("behaviors", []) if isinstance(step, dict) else []:
+                if isinstance(b, dict) and isinstance(b.get("id"), str):
+                    gone.add(b["id"] if STEP_ID.match(b["id"]) else f"s{n + 1}.{b['id']}")
+        out["behaviors"] = [b for b in old.get("behaviors", []) if not (isinstance(b, dict) and b.get("id") in gone)]
     if "steps" not in changes and old.get("steps"):
         steps = [dict(s) for s in old["steps"]]
         last = steps[-1]

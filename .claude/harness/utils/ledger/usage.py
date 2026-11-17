@@ -163,6 +163,19 @@ def pending(con: sqlite3.Connection, sid: str, path: str | Path) -> tuple[int, i
     return len(new), sum(sum(m["tokens"].values()) for m in new)
 
 
+def tokens_of(con: sqlite3.Connection, sid: str) -> int:
+    """The tokens the ledger holds for a session.
+
+    Args:
+        con: an open connection to the ledger.
+        sid: the session id.
+
+    Returns:
+        The sum of its pl_usage rows; 0 when it has none.
+    """
+    return con.execute("SELECT COALESCE(SUM(tokens), 0) FROM pl_usage WHERE sid = ?", (sid,)).fetchone()[0]
+
+
 def read_new(con: sqlite3.Connection, sid: str, path: str | Path, main: bool = True) -> int:
     """Keep the usage of the new lines of a session's transcript.
 

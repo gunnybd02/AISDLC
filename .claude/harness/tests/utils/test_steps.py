@@ -103,6 +103,15 @@ class StepsTest(unittest.TestCase):
         self.verify()
         self.assertIn("plan is delivered", step_done(self.port, "s1", "Set B"))
 
+    def test_a_deletion_already_staged_is_committed(self):
+        self.approve({**LIGHT, "files": ["a.py", "other.py"]})
+        git(self.repo, "rm", "-q", "other.py")  # staged: in neither the tree nor the index
+        self.write("a.py", "X = 2\n")
+        self.verify()
+        self.assertIn("plan is delivered", step_done(self.port, "s1", "Set X and drop other"))
+        self.assertEqual(sorted(git(self.repo, "show", "--name-only", "--format=", "HEAD").split()), ["a.py", "other.py"])
+        self.assertNotIn("other.py", git(self.repo, "ls-files"))
+
     def test_no_commit_without_a_green_verify_of_the_current_files(self):
         self.approve(LIGHT)
         self.write("a.py", "X = 2\n")

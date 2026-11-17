@@ -54,6 +54,10 @@ class BlockTest(unittest.TestCase):
         other = {**LIGHT, "children": [{**CARD, "ac": [CARD["ac"][0], "times below one returns ''"]}]}
         self.assertNotEqual(render.sha(render.block(plan)), render.sha(render.block(other)))  # a criterion is approved
 
+    def test_the_head_line_counts_the_files_of_the_childrens_cards(self):
+        plan = {**LIGHT, "files": ["notes.md"], "tests": [], "children": [CARD]}
+        self.assertIn(": 3 files, 0 steps", render.head(plan, "pd-x-000000", 1))  # notes.md and the card's two
+
     def test_the_head_line_and_the_changed_lines_of_a_revision(self):
         head = render.head(FULL, "pd-x-000000", 2, ["files", "risks"])
         self.assertTrue(head.startswith('"Add a greeting": plan pd-x-000000 rev 2 is waiting for the user\'s approval '

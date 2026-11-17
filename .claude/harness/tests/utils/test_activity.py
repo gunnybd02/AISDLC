@@ -61,6 +61,32 @@ class ActivityTest(unittest.TestCase):
         self.assertTrue(activity.inner(Event("PreToolUse", "HarnessGit", {"command": "git push"}, "", "/w")))
         self.assertFalse(activity.inner(Event("PreToolUse", "Bash", {"command": "ls"}, "s1", "/w")))
 
+    def test_a_notification_or_a_peers_message_is_marked_as_not_the_users(self):
+        notice = "<task-notification>\n<task-type>queued-remote-notifications</task-type>\n</task-notification>"
+        peer = '<cross-session-message from-session="session_x">hi</cross-session-message>'
+        for text in ("set X to 2", notice, peer):
+            self.run_event("UserPromptSubmit", tool_input={"prompt": text})
+        self.assertEqual(self.rows("SELECT n, from_peer FROM pl_prompts ORDER BY n"), [(1, 0), (2, 1), (3, 1)])
+        self.assertFalse(activity.from_others("a sentence that names <task-notification> later"))
+
+    def test_a_peers_message_is_recorded_where_it_arrives_with_sender_and_size(self):
+        answer = ('--- Notification 1 of 2 ---\n<cross-session-message from-session="session_a">\n  the report\n'
+                  '</cross-session-message>\n--- Notification 2 of 2 ---\n<cross-session-message from-session="session_b">'
+                  'ok</cross-session-message>')
+        self.run_event("UserPromptSubmit", tool_input={"prompt": "go"})
+        build_runner(self.claude_dir).run(Event("PostToolUse", "ReadNotifications", {}, "s1", str(self.repo), answer))
+        build_runner(self.claude_dir).run(Event("PostToolUse", "Read", {"file_path": "x"}, "s1", str(self.repo), answer))
+        rows = self.rows("SELECT kind, name, attrs, turn FROM pl_spans WHERE kind = 'peer' ORDER BY rowid")
+        self.assertEqual(rows, [("peer", "session_a", '{"from": "session_a", "chars": 10}', 1),
+                                ("peer", "session_b", '{"from": "session_b", "chars": 2}', 1)])  # another tool: none
+        self.assertNotIn("the report", str(self.rows("SELECT attrs FROM pl_spans")))  # never its text
+
+    def test_guide_and_find_are_recorded_by_name(self):
+        self.run_event("PreToolUse", "mcp__harness__guide", {"name": "work", "mode": "skills"})
+        self.run_event("PreToolUse", "mcp__harness__find", {"query": "plan"})
+        self.assertEqual(self.rows("SELECT tool FROM act_tool_calls ORDER BY rowid"), [("guide.work",), ("find",)])
+        self.assertEqual(self.rows("SELECT name FROM pl_spans ORDER BY rowid"), [("guide.work",), ("find",)])
+
     def test_a_call_is_recorded_whole_or_not_at_all_and_a_fault_never_blocks_it(self):
         err = io.StringIO()
         with mock.patch.object(activity, "span", side_effect=sqlite3.OperationalError("disk I/O error")), \

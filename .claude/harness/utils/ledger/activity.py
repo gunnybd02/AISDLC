@@ -1,7 +1,9 @@
 """Activity: what the harness records of each action by itself (docs/12-ledger.md), as rows of the caller's
 transaction, so a call is recorded whole or not at all.
 - a turn (pl_turns): opened by a prompt, closed when the reply ends; its number places everything else;
-- a prompt (pl_prompts): under its turn's number, secrets masked, cut at 64 KB, marked when another session sent it;
+- a prompt (pl_prompts): under its turn's number, secrets masked, cut at 64 KB, marked when it is not the user's own
+  words (a system notification, a peer's message);
+- a peer's message: one peer span where it arrives, the answer of the notifications tool, with sender and size;
 - a judged tool or shell event: one act_tool_calls row, one gate span (pl_spans), and one act_rule_decisions row per
   finding with the word Claude Code was given; the harness judging a write from inside (the server's gate, its commit)
   keeps its gate span and findings and no second tool-call row;
@@ -29,6 +31,10 @@ if TYPE_CHECKING:
 
 PROMPT_MOST = 65536
 PEER = "<cross-session-message"  # how the host wraps a message another session sent
+NOTICE = "<task-notification>"  # how the host wraps a system notification: never the user's own words
+PEER_MESSAGE = re.compile(r'<cross-session-message from-session="([^"]*)">(.*?)</cross-session-message>', re.S)
+NOTIFICATIONS = "ReadNotifications"  # the tool whose answer holds the messages of other sessions
+HARNESS = "mcp__harness__"  # the prefix Claude Code gives the harness's own tools
 RUN_TOOL = "mcp__harness__run"
 INNER_TOOLS = ("HarnessCommit", "HarnessGit")  # events the harness builds to judge its own commit or git line
 SKILL_FILE = re.compile(r"[\\/](?:skill_docs|skills)[\\/]([A-Za-z0-9_.-]+)[\\/]SKILL\.md$")
@@ -102,7 +108,39 @@ def prompt(con: sqlite3.Connection, sid: str, n: int, text: str) -> None:
     """
     kept, chars, cut = stored(text, PROMPT_MOST)
     con.execute("INSERT OR REPLACE INTO pl_prompts (sid, n, text, chars, cut, from_peer, source, uuid, at) VALUES "
-                "(?, ?, ?, ?, ?, ?, 'live', '', ?)", (sid, n, kept, chars, cut, int(PEER in text), now()))
+                "(?, ?, ?, ?, ?, ?, 'live', '', ?)", (sid, n, kept, chars, cut, int(from_others(text)), now()))
+
+
+def from_others(text: str) -> bool:
+    """Whether a prompt is not the user's own words: a system notification, or a message another session sent.
+
+    Args:
+        text: the prompt as the hook got it.
+
+    Returns:
+        True when it starts with the host's notification wrapper or holds the wrapper of a peer's message.
+    """
+    return str(text).lstrip().startswith(NOTICE) or PEER in str(text)
+
+
+def peers(con: sqlite3.Connection, event: Event) -> int:
+    """Keep the messages of other sessions where they arrive: the answer of the notifications tool. One peer span per
+    message, with its sender and size, never its text.
+
+    Args:
+        con: the connection of the transaction.
+        event: the hook call (only a PostToolUse of the notifications tool is read).
+
+    Returns:
+        The number of messages kept.
+    """
+    if event.kind != "PostToolUse" or event.tool != NOTIFICATIONS or not event.session:
+        return 0
+    answer = event.response if isinstance(event.response, str) else json.dumps(event.response, ensure_ascii=False)
+    found = PEER_MESSAGE.findall(answer or "")
+    for sender, body in found:
+        span(con, event.session, "peer", "ok", sender[:200], {"from": sender, "chars": len(body.strip())})
+    return len(found)
 
 
 def span(con: sqlite3.Connection, sid: str, kind: str, status: str, name: str, attrs: dict[str, Any]) -> None:
@@ -122,7 +160,8 @@ def span(con: sqlite3.Connection, sid: str, kind: str, status: str, name: str, a
 
 
 def tool_of(event: Event) -> str:
-    """The name a call is recorded under: "<block>.<action>" for a run of a harness action, else the tool's name.
+    """The name a call is recorded under: "<block>.<action>" for a run of a harness action, "guide.<name>" for a guide
+    call, "find" for a find call, else the tool's name.
 
     Args:
         event: the hook call.
@@ -133,6 +172,10 @@ def tool_of(event: Event) -> str:
     given = event.input if isinstance(event.input, dict) else {}
     if event.tool == RUN_TOOL and given.get("block") and given.get("action"):
         return f"{given['block']}.{given['action']}"
+    if event.tool == HARNESS + "guide":
+        return f"guide.{given.get('name') or given.get('block') or ''}".rstrip(".")
+    if event.tool == HARNESS + "find":
+        return "find"
     return event.tool or ""
 
 
