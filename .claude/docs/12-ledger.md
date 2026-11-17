@@ -37,6 +37,9 @@ tool server, a CLI door or the upkeep, never by a step the model has to remember
   the upkeep. Each takes the write lock for one short transaction.
 - **A recording fault never blocks or changes a call.** It leaves one line on the error stream
   (`harness: not recorded in the ledger (...)`) and the call goes on (`assemble/engine/record_port.py`).
+- **A guards-off grant lifts the checks, never the recording.** While it lasts the hook runs the harness as usual and
+  only the verdict becomes allow (`contracts.waived`): prompts, calls, findings and the user's answers to forms are
+  kept. A broken harness under a grant passes the call and says on stderr that it did not record.
 - The model reads only through `run("ledger", "db_query", {sql})`: one SELECT, read only, at most 200 rows.
 - The model writes only fixed shapes: a plan revision, a note, a judgment marked as its own (`ledger.annotate`).
   No gate takes authority from a row the model could have written.
@@ -78,7 +81,7 @@ Times are epoch milliseconds, UTC. "Kept" means never deleted.
 | Table | One row is | Written by | Life |
 |---|---|---|---|
 | `sessions` | One session: first and last time, epoch, project, release | The hook, when it first meets a session; `last_at` moves only at a prompt or a call of the harness's tools | Kept, one row per session |
-| `pl_turns` | One turn: from a prompt to the end of the reply | A prompt opens it, a Stop that may end closes it | Kept |
+| `pl_turns` | One turn: from a prompt to the end of the reply; `plan_id` is the first plan in force in it (0: none) | A prompt opens it, the first call with a plan links it, a Stop that may end closes it | Kept |
 | `pl_prompts` | One prompt under its turn's number, masked, cut at 64 KB, marked when another session sent it | Each prompt | 180 days |
 | `act_tool_calls` | One tool or shell event the harness judged, before it runs | Each `PreToolUse` | 180 days, then only its day total |
 | `pl_spans` | One unit of activity: `gate` (a decision, ok or denied), `tool` (a run of a harness action, ok or error, argument names), `llm` (a reply of the model) | The hook, the `run` tool, the usage reader | Kept |

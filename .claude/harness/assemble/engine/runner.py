@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Protocol
 
 
-from harness.utils.contracts import RULE_ACTIONS, Detector, Event, Finding, Port, Translator, Verdict
+from harness.utils.contracts import RULE_ACTIONS, Detector, Event, Finding, Port, Translator, Verdict, waived
 from harness.utils.git.asks import accepts
 from harness.utils.ledger import store
 from harness.utils.plan import stop
@@ -67,11 +67,13 @@ class Runner:
         self.givers = list(ports) + list(translators)
         self.detectors, self.decide, self.act = list(detectors), decide, act
 
-    def run(self, event: Event) -> Outcome:
+    def run(self, event: Event, waive: bool = False) -> Outcome:
         """Run one event through the pipeline.
 
         Args:
             event: the hook call (or the event an MCP action is judged as).
+            waive: the guards are off: the verdict holds nothing (contracts.waived), and act still records the call
+                and keeps the user's answers.
 
         Returns:
             The Outcome: the verdict and the notes for the model.
@@ -106,6 +108,8 @@ class Runner:
         if matched:  # the when rows judge the rule actions (spec 13 section 7)
             findings += matched(facts.get(RULE_ACTIONS, []))
         verdict = self.decide.decide(findings)
+        if waive:
+            verdict = waived(verdict)
         notes = self.act.run(event, facts, verdict) if self.act else []
         return Outcome(verdict, tuple(notes))
 

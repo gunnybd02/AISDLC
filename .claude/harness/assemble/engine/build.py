@@ -140,12 +140,13 @@ def with_hint(reason: str, claude_dir: str | Path) -> str:
     return reason + SHELL_HINT.format(boot=anchor(claude_dir).as_posix())
 
 
-def run_hook(text: str, claude_dir: str | Path = CLAUDE_DIR) -> str:
+def run_hook(text: str, claude_dir: str | Path = CLAUDE_DIR, waive: bool = False) -> str:
     """A hook payload in, Claude Code's answer out ("" when the call is allowed and there is nothing to say).
 
     Args:
         text: the hook's JSON payload as Claude Code sent it on stdin.
         claude_dir: the home, the .claude folder.
+        waive: the guards are off: the call is recorded and passes (Runner.run).
 
     Returns:
         The JSON text for stdout, or "".
@@ -153,6 +154,6 @@ def run_hook(text: str, claude_dir: str | Path = CLAUDE_DIR) -> str:
     items = items_of(claude_dir)
     hook_io = Loader.resolve(items["hook_io"])
     event = hook_io.read(text)
-    outcome = build_runner(claude_dir, items, LedgerPort(claude_dir).approved(event.session)).run(event)
+    outcome = build_runner(claude_dir, items, LedgerPort(claude_dir).approved(event.session)).run(event, waive)
     verdict = replace(outcome.verdict, reason=with_hint(outcome.verdict.reason, claude_dir))
     return hook_io.write(event, verdict, outcome.notes)
