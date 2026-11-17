@@ -4,8 +4,9 @@ it in force only with the user's word: a one-use pass of exactly that sha, given
 form question 'Allow publishing harness release <sha>?' (a session cannot answer a form; utils/git/asks.py
 keeps the pass).
 update brings the newest main of the harness's own clone into a running session: it pins the code that runs now when
-no release is in force (so the new code is not run before the user's word), fast-forwards the clone (utils/git/pull.py)
-and publishes as above. Hooks run the new release at their next call, MCP servers at their next request.
+no release is in force, fast-forwards the clone (utils/git/pull.py: clean, on main, nothing untracked under harness/)
+and puts it in force when its doctor is clean, with no form: main changes only by a pull request the user allowed, so
+the merge was the user's word. Hooks run the new release at their next call, MCP servers at their next request.
 session_update is what Claude Code runs when a session starts (harness/entry/session_start.py, a SessionStart hook): a cloud
 machine is prepared ahead of time, so the harness is brought to the newest main then, with the trust of the setup
 script that installed it, and put in force when its doctor is clean; otherwise the session keeps what it runs. The
@@ -64,14 +65,15 @@ def publish_door(port: PlanStore, home: str | Path) -> tuple[int, str]:
 
 
 def update_door(port: PlanStore, home: str | Path) -> tuple[int, str]:
-    """Bring the newest main into the clone and publish it as publish_door does (the door live update).
+    """Bring the newest main into the clone and put it in force when its doctor is clean (the door live update). No
+    form: the clone is exactly origin's main, which changes only by a pull request the user allowed.
 
     Args:
-        port: the ledger port (the pass of the publish is taken from it).
+        port: the ledger port (kept for the door's shape; merged main needs no pass).
         home: the home, the .claude folder of the harness's clone.
 
     Returns:
-        (exit code, text): 0 up to date, asked or published; 1 refused.
+        (exit code, text): 0 up to date or published; 1 refused.
     """
     pinned = pin(home)  # what runs now is the work tree: pin it before the clone changes under it
     try:
@@ -80,9 +82,28 @@ def update_door(port: PlanStore, home: str | Path) -> tuple[int, str]:
         return 1, f"{pinned}refused: {e}"
     if before == after and stamp(home) == current(home):
         return 0, f"{pinned}Up to date: main {after[:12]} is the release in force."
-    code, text = publish_door(port, home)
+    code, text = publish_main(home)
     news = f"main {before[:12]} -> {after[:12]}. " if before != after else ""
     return code, pinned + news + text
+
+
+def publish_main(home: str | Path) -> tuple[int, str]:
+    """Put the clone's main, just fast-forwarded, in force when its own doctor is clean; no form (the merge was it).
+
+    Args:
+        home: the home, the .claude folder of the harness's clone, exactly origin's main.
+
+    Returns:
+        (exit code, text): 0 in force; 1 refused (its doctor finds problems, the release in force stays).
+    """
+    sha = build(home)
+    if current(home) == sha:
+        return 0, f"Release {sha} is in force already."
+    if not healthy(home, release_dir(home, sha)):
+        return 1, (f"refused: the doctor of release {sha} finds problems; release {current(home)} stays in force. "
+                   f"Fix main with a new pull request.")
+    publish(home, sha)
+    return 0, f"Release {sha} is in force: hooks run it at once, MCP servers at their next call."
 
 
 def pin(home: str | Path) -> str:
