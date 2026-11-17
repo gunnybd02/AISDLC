@@ -3,6 +3,7 @@ the harness writes back, such as an approval, and the notes it gives the model).
 give the same fact are an error of the pipeline, never a silent overwrite."""
 from __future__ import annotations
 
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional, Protocol
@@ -76,17 +77,47 @@ class Runner:
         Raises:
             RunnerError: two givers give the same fact.
         """
-        facts = {}
+        facts, findings = {}, []
         for giver in self.givers:
-            new = giver.read(event) if isinstance(giver, Port) else giver.translate(event)
+            try:
+                new = giver.read(event) if isinstance(giver, Port) else giver.translate(event)
+                if not isinstance(new, dict):
+                    raise TypeError(f"gave {type(new).__name__}, not a dict of facts")
+            except Exception as e:  # a gear fault is a finding, never a crash (spec 13 section 7)
+                findings.append(fault(event, giver, e))
+                continue
             twice = sorted(set(new) & set(facts))
             if twice:
                 raise RunnerError(f"{type(giver).__name__} gives facts another giver gave: {', '.join(twice)}")
             facts.update(new)
-        findings = [f for detector in self.detectors for f in detector.detect(event, facts)]
+        for detector in self.detectors:
+            try:
+                findings += detector.detect(event, facts)
+            except Exception as e:
+                findings.append(fault(event, detector, e))
         verdict = self.decide.decide(findings)
         notes = self.act.run(event, facts, verdict) if self.act else []
         return Outcome(verdict, tuple(notes))
+
+
+FAULT, FAULT_AFTER = "gear.fault", "gear.fault_after"
+
+
+def fault(event: Event, gear: object, error: Exception) -> Finding:
+    """The finding of a gear that raised: gear.fault before a tool call (a refusal: fail closed), gear.fault_after on any
+    other event (an allow: a broken gear never holds a turn or a prompt). The fault is also said on stderr.
+
+    Args:
+        event: the hook call.
+        gear: the giver or detector that raised.
+        error: what it raised.
+
+    Returns:
+        The Finding, its detail the gear's class and the error.
+    """
+    detail = f"{type(gear).__name__}: {type(error).__name__}: {error}"[:300]
+    sys.stderr.write(f"harness: a gear failed on {event.kind}: {detail}\n")
+    return Finding(FAULT if event.kind == "PreToolUse" else FAULT_AFTER, detail)
 
 
 HARNESS_TOOLS = "mcp__harness__"  # the tools of the harness's own MCP server, as Claude Code names them

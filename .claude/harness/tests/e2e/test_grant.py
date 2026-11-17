@@ -127,7 +127,9 @@ class GrantTest(unittest.TestCase):
 
     def test_no_grant_without_its_trace(self):
         (self.root / "state" / "harness.db").mkdir(parents=True)  # the ledger cannot be written
-        self.assertNotEqual(hook(self.root, form(Q, answer=YES))[0], 0)
+        code, out, _ = hook(self.root, form(Q, answer=YES))
+        self.assertEqual(code, 0)  # a PostToolUse is never held by a broken harness, but the model is told
+        self.assertIn("nothing it asked for is granted, and the guards stay on", out)
         self.assertEqual(hook(self.root, write_call())[0], 2)
 
     def test_another_answer_grants_nothing(self):

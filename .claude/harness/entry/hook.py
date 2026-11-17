@@ -40,6 +40,7 @@ MAX_MINUTES = 120
 FORGE = '"="'
 PREFILLED = "Only the user answers a form: call AskUserQuestion with the questions alone, none holding '\"=\"'."
 
+BLOCKING = ("PreToolUse", None, "")  # the events a failure of the harness blocks (exit 2)
 
 def ledger(create: bool) -> Optional[sqlite3.Connection]:
     """The ledger, made from schema.sql as utils/ledger/db.py makes it when it has no table yet; None when it does not
@@ -273,9 +274,11 @@ def main() -> int:
     """Answer one hook call: a form checked here, a grant kept or used, else the harness's own answer (run_hook).
 
     Returns:
-        The exit code: 0 the call goes on (the answer on stdout), 2 it is blocked (the reason on stderr).
+        The exit code: 0 the call goes on (the answer on stdout), 2 it is blocked (the reason on stderr). A failure of
+        the harness blocks only a tool call (PreToolUse) or a payload that names no event; on any other event it is
+        said on stderr and the session goes on, so a broken harness never holds a turn's end or a prompt.
     """
-    raw, data, asking = "", {}, False
+    raw, data, asking, form = "", {}, False, False
     try:
         raw = sys.stdin.buffer.read().decode("utf-8")
         data = json.loads(raw) if raw.strip() else {}
@@ -306,6 +309,12 @@ def main() -> int:
     except BaseException as e:
         if asking:
             return 0  # a clean form is harmless to ask, and it is how the user is asked for a grant
+        if data.get("hook_event_name") not in BLOCKING:  # spec 13: only a tool call is held by a broken harness
+            say(f"harness hook failed, nothing is held: {type(e).__name__}: {e}")
+            if form:  # the user's answer could not be kept: say so, so nobody believes a grant holds
+                return answer(f"The harness could not keep this answer ({type(e).__name__}: {e}); nothing it asked "
+                              "for is granted, and the guards stay on.")
+            return 0
         say(f"harness hook failed, the call is blocked: {type(e).__name__}: {e}")
         return 2
     sys.stdout.buffer.write(out.encode("utf-8"))
