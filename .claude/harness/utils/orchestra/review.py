@@ -1,6 +1,6 @@
 """Review: the parent's side of a handed-back child (docs/05b-orchestra-cloud.md part 3). The parent reads no code:
 it fetches the child's branch, reads the receipt, reruns the tests itself, then accepts (one pull request into the
-unit's base; nothing is merged here) or sends the child back (at most 3 rounds).
+unit's base; nothing is merged here) or sends the child back (the config's limits.rounds at most).
 
 The child's machine and ledger are not the parent's: every fact comes from the branch. Parent and child talk only
 through the branch: a send-back or an answer is a note pushed there (.harness/notes/<name>/), read by a fresh session
@@ -29,7 +29,6 @@ from harness.utils.shapes import Card, CrewEntry, PlanStore, Ticket
 if TYPE_CHECKING:
     from harness.utils.ledger.recorder import Recorder
 
-ROUNDS = 3
 CHECKED = "checked"
 
 
@@ -256,8 +255,8 @@ def fresh_session(port: PlanStore, sid: str, name: str, card: Card, change: dict
             f"then run('orchestra', 'started', {{name: '{name}', sid}}).")
 
 
-def reject(port: PlanStore, sid: str, name: str, why: str, units: dict[str, Any]) -> str:
-    """Send a child back with a reason, one round of at most ROUNDS: a send-back note pushed on its branch, for a fresh
+def reject(port: PlanStore, sid: str, name: str, why: str, units: dict[str, Any], rounds: int) -> str:
+    """Send a child back with a reason, one round of at most rounds: a send-back note pushed on its branch, for a fresh
     session of the child.
 
     Args:
@@ -266,13 +265,14 @@ def reject(port: PlanStore, sid: str, name: str, why: str, units: dict[str, Any]
         name: the child's name.
         why: the reason, for the child.
         units: the declared units by name.
+        rounds: the send-backs a child may have (the config's limits.rounds).
 
     Returns:
         The round, the note, and how to open the fresh session.
 
     Raises:
         ReviewError: no such child, ended (an accepted child whose pull request is not merged may still be sent back,
-            for a conflict), no reason, ROUNDS rounds already (the user decides then), or the note cannot be pushed.
+            for a conflict), no reason, rounds send-backs already (the user decides then), or the note cannot be pushed.
     """
     text = " ".join(str(why).split())
     if not text:
@@ -280,18 +280,18 @@ def reject(port: PlanStore, sid: str, name: str, why: str, units: dict[str, Any]
     ticket, card, entry = child_of(port, sid, name, live=False)
     if entry.get("state") in crew.ENDED and (entry.get("state") != crew.ACCEPTED or entry.get("merged")):
         raise ReviewError(f"{name} has ended ({entry['state']}{', merged' if entry.get('merged') else ''})")
-    if entry.get("backs", 0) >= ROUNDS:
-        raise ReviewError(f"{name} was sent back {ROUNDS} times: the user decides now (forget it, or say what to do)")
+    if entry.get("backs", 0) >= rounds:
+        raise ReviewError(f"{name} was sent back {rounds} times: the user decides now (forget it, or say what to do)")
     n = entry.get("backs", 0) + 1
     ref, rel = branch(ticket["plan"]["id"], name), f"{NOTES}/{name}/sendback-{n}.md"
-    note = (f"# Send-back {n} of {ROUNDS} from the orchestrator\n\n{text}\n\nFix it on this branch, verify, push, "
+    note = (f"# Send-back {n} of {rounds} from the orchestrator\n\n{text}\n\nFix it on this branch, verify, push, "
             "and hand back again.\n")
     sha = put_note(unit_spec(card, units), top(ticket["plan"]["root"]) or "", ref, rel, note,
                    f"Send-back {n} of {name}")
     sent = list(entry.get("sent", [])) + [{"at": now(), "how": "send-back", "text": text[:1000], "note": rel}]
     told = fresh_session(port, sid, name, card, {"state": crew.RUNNING, "backs": n, "sentBackAt": now(),
                                                  "checkedAt": None, "sent": sent}, "rejected", rel, sha, ref)
-    return f"{name} sent back (round {n} of {ROUNDS}). {told} Check it again after its next handback."
+    return f"{name} sent back (round {n} of {rounds}). {told} Check it again after its next handback."
 
 
 def answer(port: PlanStore, sid: str, name: str, text: str, units: dict[str, Any]) -> str:

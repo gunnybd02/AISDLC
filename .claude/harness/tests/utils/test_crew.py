@@ -58,19 +58,19 @@ class CardTest(unittest.TestCase):
 
 class BriefTest(unittest.TestCase):
     def test_the_brief_talks_through_the_branch_never_by_message(self):
-        text = brief.brief(7, "pd-x", GOOD, "session_parent01")
+        text = brief.brief(7, "pd-x", GOOD, "session_parent01", rounds=3)
         self.assertNotIn("send_message", text)
         self.assertIn("your branch is how you talk", text)
         self.assertIn(".harness/notes/api/ on your branch", text)
         self.assertIn("Read every note there before you start", text)
 
     def test_the_brief_sends_the_child_to_the_ledger_door_not_the_file(self):
-        text = brief.brief(7, "pd-x", GOOD, "session_parent01")
+        text = brief.brief(7, "pd-x", GOOD, "session_parent01", rounds=3)
         self.assertIn("run('ledger', 'db_query', {sql})", text)
         self.assertIn("Never open the ledger file (harness.db)", text)
 
     def test_the_brief_says_who_it_is_and_that_send_backs_are_its_plan(self):
-        text = brief.brief(7, "pd-x", GOOD, "session_parent01")
+        text = brief.brief(7, "pd-x", GOOD, "session_parent01", rounds=3)
         self.assertTrue(text.startswith('You are child session "api" of the delegated plan 7, approved by the user in '
                                         "the orchestrator session session_parent01."))
         for part in ("never call AskUserQuestion", "orch/p7/api", "send-backs and answers", "act on them",
@@ -102,7 +102,7 @@ class CrewTest(unittest.TestCase):
         self.repo = git_repo(self, {"notes.md": "n\n"})
         self.port = LedgerPort(self.claude_dir)
         self.port.touch_session("s1")
-        self.ctx = ActionContext({"plans": self.port, "session": lambda: "s1", "units": dict})
+        self.ctx = ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3}, "units": dict})
 
     def approve(self, extra=None, n=2):
         items = {**desk.normalize(desk.clean({**PLAN, "children": children(n), **(extra or {})})),
@@ -131,7 +131,7 @@ class CrewTest(unittest.TestCase):
         self.approve(extra={"children": [{**GOOD, "name": "c1", "unit": "api"}]})
         units = {"api": {"repo": "https://github.com/me/shop", "path": "services/api", "verify": ["npm", "test"],
                          "base": "develop"}}
-        ctx = ActionContext({"plans": self.port, "session": lambda: "s1", "units": lambda: units})
+        ctx = ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3}, "units": lambda: units})
         text = Spawn().run(ctx, {"name": "c1"})
         call = json.loads(text[text.index("\n{") + 1:])
         self.assertEqual(call["source_url"], "https://github.com/me/shop")
@@ -164,6 +164,15 @@ class CrewTest(unittest.TestCase):
             Started().run(self.ctx, {"name": f"c{i}", "sid": f"session_child000{i}"})
         with self.assertRaisesRegex(ActionError, "3 children run already"):
             Spawn().run(self.ctx, {"name": "c4"})
+
+    def test_the_children_cap_comes_from_the_limits(self):
+        self.approve()
+        one = ActionContext({"plans": self.port, "session": lambda: "s1", "units": dict,
+                             "limits": lambda: {"children": 1, "rounds": 3}})
+        Started().run(one, {"name": "c1", "sid": "session_child0001"})
+        with self.assertRaisesRegex(ActionError, "1 children run already"):
+            Spawn().run(one, {"name": "c2"})
+        self.assertIn("1 of 1 may run", Status().run(one, {}).replace("0 of 1 accepted; ", ""))
 
     def test_a_cloud_child_needs_change_paths(self):
         items = {**desk.normalize(desk.clean({**PLAN, "children": [{k: v for k, v in GOOD.items() if k != "change"}]})),

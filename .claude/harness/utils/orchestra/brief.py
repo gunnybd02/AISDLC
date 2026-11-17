@@ -66,7 +66,7 @@ def listed(label: str, paths: list[str]) -> str:
 
 
 def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, Any] | None = None,
-          resume: str = "") -> str:
+          resume: str = "", *, rounds: int) -> str:
     """The first prompt of a child: who it is, its work, how it is approved, that nobody is at its keyboard, its
     permissions, how it asks and hands back, its files and criteria, and the card block.
 
@@ -78,6 +78,7 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
         unit: the unit it works in, {repo, path, verify, base} (card.unit_spec); None for the home.
         resume: the note a fresh session of the child reads first (a send-back or an answer on its branch); "" for
             its first session.
+        rounds: the send-backs the child may have before the user decides (the config's limits.rounds).
 
     Returns:
         The brief, as the prompt of create_session.
@@ -116,7 +117,7 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
         "\n".join(x for x in (listed("Read", card.get("read", [])), listed("Change", card.get("change", [])),
                               listed("Tests", card.get("tests", []))) if x),
         "The orchestrator reads no code: it checks that each criterion has a registered behaviour whose description "
-        "starts with \"AC<n>:\" and runs its tests again. It may send you back at most 3 times; then the user "
+        f"starts with \"AC<n>:\" and runs its tests again. It may send you back at most {rounds} times; then the user "
         "decides.\n" + "\n".join(acs),
         card_block(plan, card, parent_sid, draft, spec),
     ]

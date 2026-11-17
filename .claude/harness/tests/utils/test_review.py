@@ -76,7 +76,7 @@ class Scenario(unittest.TestCase):
         _, _, q = self.port.present(items, sid="s1")
         approvals(self.port, "s1", {q: YES})
         self.plan = self.port.ticket("s1")["plan"]["id"]
-        Started().run(ActionContext({"plans": self.port, "session": lambda: "s1"}),
+        Started().run(ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3}}),
                       {"name": "hello", "sid": "session_child0001"})
 
     def hand_back(self, receipt=None, code=CODE, after=None):
@@ -145,11 +145,11 @@ class ReviewTest(Scenario):
             self.check()
 
     def ctx(self):
-        return ActionContext({"plans": self.port, "session": lambda: "s1", "units": lambda: UNITS})
+        return ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3}, "units": lambda: UNITS})
 
     def test_reject_pushes_a_send_back_note_and_a_fresh_session_reads_it(self):
         self.hand_back()
-        text = review.reject(self.port, "s1", "hello", "AC2 is not tested", UNITS)
+        text = review.reject(self.port, "s1", "hello", "AC2 is not tested", UNITS, 3)
         self.assertIn("round 1 of 3", text)
         self.assertNotIn("send_message", text)
         self.assertIn("run('orchestra', 'spawn', {name: 'hello'})", text)
@@ -163,9 +163,9 @@ class ReviewTest(Scenario):
         self.assertIn("Read .harness/notes/hello/sendback-1.md on it first", prompt)
         self.assertNotIn("send_message", prompt)
         for n in (2, 3):
-            self.assertIn(f"round {n} of 3", review.reject(self.port, "s1", "hello", "AC2 is not tested", UNITS))
+            self.assertIn(f"round {n} of 3", review.reject(self.port, "s1", "hello", "AC2 is not tested", UNITS, 3))
         with self.assertRaisesRegex(review.ReviewError, "the user decides now"):
-            review.reject(self.port, "s1", "hello", "again", UNITS)
+            review.reject(self.port, "s1", "hello", "again", UNITS, 3)
         self.hand_back(receipt={"at": 1})  # a receipt older than the send-back
         with self.assertRaisesRegex(review.ReviewError, "not handed back since it was sent back"):
             self.check()
@@ -184,10 +184,19 @@ class ReviewTest(Scenario):
                                                         r"raise ValueError or TypeError\? Answer it with"):
             self.check()
 
+    def test_the_rounds_come_from_the_limits(self):
+        self.hand_back()
+        self.assertIn("round 1 of 1", review.reject(self.port, "s1", "hello", "AC2 is not tested", UNITS, 1))
+        with self.assertRaisesRegex(review.ReviewError, "sent back 1 times: the user decides now"):
+            review.reject(self.port, "s1", "hello", "again", UNITS, 1)
+        spawned = Spawn().run(ActionContext({"plans": self.port, "session": lambda: "s1", "units": lambda: UNITS,
+                                             "limits": lambda: {"children": 3, "rounds": 1}}), {"name": "hello"})
+        self.assertIn("It may send you back at most 1 times", spawned)
+
     def test_a_fresh_session_keeps_the_childs_rounds(self):
         self.hand_back()
-        review.reject(self.port, "s1", "hello", "AC2 is not tested", UNITS)
-        text = Started().run(ActionContext({"plans": self.port, "session": lambda: "s1"}),
+        review.reject(self.port, "s1", "hello", "AC2 is not tested", UNITS, 3)
+        text = Started().run(ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3}}),
                              {"name": "hello", "sid": "session_child0002"})
         self.assertIn("runs in session session_child0002", text)
         entry = self.port.ticket("s1")["crew"]["hello"]
@@ -204,7 +213,7 @@ class ReviewTest(Scenario):
         self.assertNotIn("send_message", text)
         self.assertIn("use 404", git(self.origin, "show", f"orch/p{self.plan}/hello:.harness/notes/hello/answer-1.md"))
         self.assertIn("waits for a fresh session: .harness/notes/hello/answer-1.md",
-                      __import__("harness.utils.orchestra.crew", fromlist=["x"]).status(self.port.ticket("s1")))
+                      __import__("harness.utils.orchestra.crew", fromlist=["x"]).status(self.port.ticket("s1"), 3))
         self.assertIn("forgotten", review.forget(self.port, "s1", "hello", "it will not come back"))
         entry = self.port.ticket("s1")["crew"]["hello"]
         self.assertEqual((entry["state"], entry["sent"][0]["how"]), ("forgotten", "answer"))

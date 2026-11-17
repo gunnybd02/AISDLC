@@ -9,7 +9,10 @@
            {"api": {"repo": "https://github.com/me/shop", "path": "services/api", "verify": [...], "base": "main"}}
            repo its repository (https; "" or none: the home's own), path its folder in it (default "."), verify its
            test command run in that folder (default: verify above), base the branch its pull requests target
-           (default "main"). Several units may share one repository, each with its own path (a repo of many units)."""
+           (default "main"). Several units may share one repository, each with its own path (a repo of many units).
+  limits   (optional) the orchestra's policy limits, each a whole number from 1 to 10: {"children": 3, "rounds": 3}
+           children the children of a delegated plan that run at once, rounds the send-backs of one child before the
+           user decides. A limit not given is its default (LIMITS, spec 05)."""
 from __future__ import annotations
 
 import json
@@ -26,7 +29,8 @@ FILE = "project.json"
 DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
 REQUIRED = ("name",)
 GONE = {"recipe": "the pipeline is picked by the state of the session (assemble/engine/select.py)"}
-OPTIONAL = ("verify", "ledger", "protected", "banned", "units")
+OPTIONAL = ("verify", "ledger", "protected", "banned", "units", "limits")
+LIMITS = {"children": 3, "rounds": 3}  # the defaults; the one place the values live (owners)
 UNIT_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 RESERVED = ("home", "none", "agent-code")
 UNIT_KEYS = ("repo", "path", "verify", "base")
@@ -88,6 +92,26 @@ def unit_of(name: str, value: object, verify: tuple) -> Unit:
     return Unit(repo, path.replace("\\", "/").strip("/") or ".", tuple(words), base)
 
 
+def limits_of(value: object) -> tuple:
+    """Check the limits of the config and fill in the defaults.
+
+    Args:
+        value: the limits object of project.json ({} when it has none).
+
+    Returns:
+        ((name, value), ...) for every limit of LIMITS.
+
+    Raises:
+        ConfigError: not an object, an unknown limit, or a value that is not a whole number from 1 to 10.
+    """
+    if not isinstance(value, dict) or set(value) - set(LIMITS):
+        raise ConfigError(f"{FILE}: limits is an object of {', '.join(LIMITS)}")
+    for name, n in value.items():
+        if not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= 10:
+            raise ConfigError(f"{FILE}: limits.{name} is a whole number from 1 to 10")
+    return tuple((name, value.get(name, default)) for name, default in LIMITS.items())
+
+
 @dataclass(frozen=True)
 class Config:
     name: str
@@ -96,6 +120,7 @@ class Config:
     protected: tuple = DEFAULT_PROTECTED
     banned: tuple = ()
     units: tuple = ()  # ((name, Unit), ...), in the file's order
+    limits: tuple = tuple(LIMITS.items())  # ((name, value), ...), every limit, the defaults filled in
 
     @property
     def ledger_here(self) -> str:
@@ -147,7 +172,7 @@ class Config:
             raise ConfigError(f"{FILE}: units is an object of units by name")
         made = tuple((name, unit_of(name, value, tuple(verify))) for name, value in units.items())
         return cls(data["name"], tuple(sys.executable if w == "{python}" else w for w in verify), ledger,
-                   tuple(protected), tuple(w.strip() for w in banned), made)
+                   tuple(protected), tuple(w.strip() for w in banned), made, limits_of(data.get("limits", {})))
 
     def unit(self, name: str) -> Optional[Unit]:
         """A declared unit by its name.

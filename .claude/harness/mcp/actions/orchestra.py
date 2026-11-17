@@ -57,13 +57,14 @@ def source_url(root: str) -> str:
     return url if re.match(r"^https://(?!127\.|localhost)", url) else ""
 
 
-def room(port: PlanStore, sid: str, name: str) -> tuple[int, str, Any]:
+def room(port: PlanStore, sid: str, name: str, cap: int) -> tuple[int, str, Any]:
     """The plan number, draft and card of a child the parent may start now.
 
     Args:
         port: the ledger port.
         sid: the parent's session.
         name: the child's name.
+        cap: the children that may run at once (the config's limits.children).
 
     Returns:
         (plan number, desk id, Card).
@@ -73,7 +74,7 @@ def room(port: PlanStore, sid: str, name: str) -> tuple[int, str, Any]:
     """
     ticket = port.ticket(sid)
     try:
-        card = crew.room(ticket, name)
+        card = crew.room(ticket, name, cap)
     except ValueError as e:
         raise ActionError(str(e)) from e
     return ticket["plan"]["id"], ticket["draft"], card
@@ -86,15 +87,16 @@ class Spawn(McpAction):
                "make; then record it with started {name, sid}")
     args_schema = {"type": "object", "properties": {"name": NAME_ARG, "model": {"type": "string"}},
                    "required": ["name"]}
-    needs = ("plans", "session", "units")
+    needs = ("plans", "session", "units", "limits")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """The brief and the create_session call of the named child; nothing is written until started. A child that
         waits for a fresh session (a note on its branch) gets the brief of a fresh session. ActionError when no approved
-        delegated plan is in force, the name is no child of it, it has started, CAP children run, or its card names no
+        delegated plan is in force, the name is no child of it, it has started, limits.children run, or its card names no
         change paths or an open session to adopt."""
         sid = session_of(ctx)
-        plan, draft, card = room(ctx.ports["plans"], sid, args["name"])
+        limits = ctx.ports["limits"]()
+        plan, draft, card = room(ctx.ports["plans"], sid, args["name"], limits["children"])
         if not card.get("change"):
             raise ActionError(f"{card['name']}'s card names no files to change: a cloud child's plan is made from its "
                               "change paths; revise the card with change")
@@ -105,7 +107,7 @@ class Spawn(McpAction):
         unit = unit_spec(card, ctx.ports["units"]())
         url = unit["repo"] or source_url(ticket["plan"].get("root") or os.getcwd())
         fresh = ((ticket.get("crew") or {}).get(card["name"]) or {}).get("fresh") or {}
-        prompt = briefs.brief(plan, draft, card, sid, unit, fresh.get("note", ""))
+        prompt = briefs.brief(plan, draft, card, sid, unit, fresh.get("note", ""), rounds=limits["rounds"])
         call = briefs.create_call(plan, card, prompt, url, args.get("model", ""))
         where = "" if url else (" The unit's repository has no URL another machine can clone: add source_url to "
                                 "the call by hand.")
@@ -121,19 +123,19 @@ class Started(McpAction):
     summary = "Record the session id create_session gave for a spawned child; from now on it runs"
     args_schema = {"type": "object", "properties": {"name": NAME_ARG, "sid": {"type": "string"},
                                                     "model": {"type": "string"}}, "required": ["name", "sid"]}
-    needs = ("plans", "session")
+    needs = ("plans", "session", "limits")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Write the child's crew entry (running, its session) and a story row in one transaction. ActionError for a
         session id of the wrong shape, this session's own id, a session that is another child already, or any reason
         spawn refuses."""
-        sid = session_of(ctx)
+        sid, cap = session_of(ctx), ctx.ports["limits"]()["children"]
         child_sid = str(args["sid"]).strip()
         if not SESSION_ID.match(child_sid):
             raise ActionError(f"{child_sid!r} is no session id: give the id create_session answered (session_...)")
         first = not ((ctx.ports["plans"].ticket(sid) or {}).get("crew"))  # no child started before this one
         try:
-            entry = ctx.ports["plans"].write(lambda con, rec: crew.start(con, sid, args["name"], child_sid,
+            entry = ctx.ports["plans"].write(lambda con, rec: crew.start(con, sid, args["name"], child_sid, cap,
                                                                          str(args.get("model") or "")))
         except ValueError as e:
             raise ActionError(str(e)) from e
@@ -142,7 +144,7 @@ class Started(McpAction):
                    "mcp__claude-code-remote__send_later {\"delay_minutes\": 30, \"message\": \"Orchestra check-in: "
                    "run('orchestra', 'check', {name}) for each running child (it reads the child's branch: a receipt or "
                    "a question), and set the next check-in while a child still runs.\"}.") if first else ""
-        return (f"Child {args['name']} runs in session {entry['sid']} ({len(crew.running(ticket))} of {crew.CAP} "
+        return (f"Child {args['name']} runs in session {entry['sid']} ({len(crew.running(ticket))} of {cap} "
                 "running). It talks only through its branch: it pushes its receipt, or a question, and stops; it "
                 "sends no message. To look at it, run('orchestra', 'check', {name}): it reads the branch and "
                 f"says whether the child handed back, asked a question, or is still working.{checkin}")
@@ -153,11 +155,11 @@ class Status(McpAction):
     block, name, effect = "orchestra", "status", READ
     summary = "The children of the delegated plan in force: each one's unit, state, rounds and session"
     args_schema = {"type": "object", "properties": {}}
-    needs = ("plans", "session")
+    needs = ("plans", "session", "limits")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """The status of the session's delegated plan (utils/orchestra/crew.status)."""
-        return crew.status(ctx.ports["plans"].ticket(session_of(ctx)))
+        return crew.status(ctx.ports["plans"].ticket(session_of(ctx)), ctx.ports["limits"]()["children"])
 
 
 

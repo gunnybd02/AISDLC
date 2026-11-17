@@ -74,6 +74,17 @@ class ConfigTest(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(ConfigError):
                 Config.load(tree(self, {"project.json": json.dumps({"name": "x", "units": bad})}))
 
+    def test_the_orchestra_limits_are_data_with_defaults(self):
+        def load(limits=None):
+            data = {"name": "x", **({} if limits is None else {"limits": limits})}
+            return dict(Config.load(tree(self, {"project.json": json.dumps(data)})).limits)
+        self.assertEqual(load(), {"children": 3, "rounds": 3})
+        self.assertEqual(load({"rounds": 1}), {"children": 3, "rounds": 1})
+        self.assertEqual(load({"children": 2, "rounds": 5}), {"children": 2, "rounds": 5})
+        for bad in ({"children": 0}, {"rounds": 11}, {"rounds": "3"}, {"rounds": True}, {"other": 1}, [3]):
+            with self.subTest(bad=bad), self.assertRaisesRegex(ConfigError, "limits"):
+                load(bad)
+
     def test_a_config_written_with_a_bom_loads(self):
         root = tree(self, {"project.json": "﻿" + json.dumps({"name": "x"})})
         self.assertEqual(Config.load(root).name, "x")

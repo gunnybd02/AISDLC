@@ -22,7 +22,7 @@ class ChildGuardTest(unittest.TestCase):
         self.claude_dir = copy_tree(self, {"project.json": json.dumps({"name": "t"})})
         self.repo = git_repo(self, {"a.py": "X = 1\n"})
         self.port = LedgerPort(self.claude_dir)
-        prompt = brief.brief(7, "pd-x", CARD, "session_parent01")
+        prompt = brief.brief(7, "pd-x", CARD, "session_parent01", rounds=3)
         Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": prompt}, "c1", str(self.repo)), {},
                            Verdict("allow"))
         Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": "hello"}, "s2", str(self.repo)), {},

@@ -1,6 +1,6 @@
 """orchestra, the parent's review and final route (docs/05b-orchestra-cloud.md part 3; utils/orchestra/review.py,
 land.py). The parent reads no code: it checks each handed-back child by its receipt and a rerun of its tests,
-accepts it as one pull request into its unit's base, or sends it back (3 rounds at most); land merges the pull
+accepts it as one pull request into its unit's base, or sends it back (limits.rounds at most); land merges the pull
 requests at the end, the parent resolving conflicts there, and closes the plan as delivered.
 
 - check {name, timeoutMin?}: fetch the child's branch, read its receipt, rerun its tests.
@@ -86,18 +86,19 @@ class Accept(McpAction):
 
 
 class Reject(McpAction):
-    """orchestra.reject: send a child back, one round of 3."""
+    """orchestra.reject: send a child back, one round of limits.rounds."""
     block, name, effect = "orchestra", "reject", WRITE
-    summary = ("Send a child back with why (3 rounds at most): a note pushed on its branch; then spawn opens a fresh "
+    summary = ("Send a child back with why (limits.rounds at most): a note pushed on its branch; then spawn opens a fresh "
                "session of it")
     args_schema = {"type": "object", "properties": {"name": NAME, "why": {"type": "string"}},
                    "required": ["name", "why"]}
-    needs = ("plans", "session", "units")
+    needs = ("plans", "session", "units", "limits")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Push the send-back note and keep the round (utils/orchestra/review.reject)."""
         sid = session_of(ctx)
-        return answered(PARENT_ERRORS, lambda: review.reject(ctx.ports["plans"], sid, args["name"], args["why"], units(ctx)))
+        return answered(PARENT_ERRORS, lambda: review.reject(ctx.ports["plans"], sid, args["name"], args["why"], units(ctx),
+                                                                   ctx.ports["limits"]()["rounds"]))
 
 
 class Answer(McpAction):

@@ -54,7 +54,7 @@ class CleanupTest(Scenario):
         self.assertEqual(cleanup.digest(self.port, "nobody"), "No delegated plan in this session.")
 
     def test_only_the_first_started_child_is_told_to_set_the_check_in(self):
-        ctx = ActionContext({"plans": self.port, "session": lambda: "s1"})
+        ctx = ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3}})
         review.forget(self.port, "s1", "hello", "again")
         again = Started().run(ctx, {"name": "hello", "sid": "session_child0002"})
         self.assertNotIn("check-in", again)  # the crew had a child already
