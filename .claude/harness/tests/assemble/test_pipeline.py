@@ -65,17 +65,22 @@ class RecipeTest(unittest.TestCase):
     def test_the_real_base_recipe_resolves(self):
         PipelineBook(CLAUDE_DIR / "harness" / "assemble" / "pipelines").resolve("base")
 
-    def test_the_engine_puts_the_floor_under_every_plan_pipeline(self):
+    def test_the_engine_puts_the_floor_under_the_pipelines_of_the_plans_units(self):
         book = self.book(base={"translators": ["t"], "detectors": ["d1", "d2"]},
-                         ui={"detectors": ["ui", "d1"]}, bare={})
-        self.assertEqual(select(book, None).name, "base")
-        self.assertEqual(select(book, {"plan_id": "p"}).name, "base")
-        ui = select(book, {"pipeline": "ui"})
-        self.assertEqual((ui.name, ui.translators, ui.detectors), ("ui", ("t",), ("d1", "d2", "ui")))  # floor first, once
-        bare = select(book, {"pipeline": "bare"})  # a pipeline that lists nothing still runs the whole floor
+                         ui={"detectors": ["ui", "d1"]}, api={"translators": ["t2"], "detectors": ["api", "ui"]}, bare={})
+        mapped = {"web": "ui", "server": "api", "notes": "bare", "lost": "missing"}
+        self.assertEqual(select(book, None, mapped).name, "base")
+        self.assertEqual(select(book, {"services": ["docs"]}, mapped).name, "base")  # a unit with no pipeline
+        self.assertEqual(select(book, {"services": ["web"]}, None).name, "base")  # no map at all
+        ui = select(book, {"services": ["web"]}, mapped)
+        self.assertEqual((ui.name, ui.translators, ui.detectors), ("base+ui", ("t",), ("d1", "d2", "ui")))  # floor first
+        both = select(book, {"services": ["server", "web", "docs"]}, mapped)  # two units: both pipelines, each gear once
+        self.assertEqual((both.name, both.translators, both.detectors),
+                         ("base+api+ui", ("t", "t2"), ("d1", "d2", "api", "ui")))
+        bare = select(book, {"services": ["notes"]}, mapped)  # a pipeline that lists nothing still runs the whole floor
         self.assertEqual((bare.translators, bare.detectors), (("t",), ("d1", "d2")))
         with self.assertRaises(PipelineError):
-            select(book, {"pipeline": "missing"})
+            select(book, {"services": ["lost"]}, mapped)
 
     def test_the_doctor_reads_every_pipeline_file(self):
         from harness.assemble.engine.checks import pipelines

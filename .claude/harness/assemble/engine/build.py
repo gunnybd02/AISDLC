@@ -108,14 +108,14 @@ def build_runner(claude_dir: str | Path = CLAUDE_DIR, items: Optional[dict[str, 
 
     Raises:
         ConfigError: the config does not load.
-        PipelineError: the pipeline cannot be read or is looser than the floor.
+        PipelineError: the floor or a pipeline of the plan's units cannot be read.
         BuildError: the pipeline names something that is no translator or detector.
     """
     claude_dir = Path(claude_dir)
     items = items or items_of(claude_dir)
     config = Config.load(claude_dir)  # a config that does not load stops the hook, as before
     code = code_of(claude_dir)
-    pipeline = select(PipelineBook(code / "harness" / "assemble" / "pipelines"), plan)
+    pipeline = select(PipelineBook(code / "harness" / "assemble" / "pipelines"), plan, config.pipelines())
     decide = Loader.resolve(items["decide"]).load(code)
     port = LedgerPort(claude_dir)
     return Runner(pick(items, pipeline.translators, "translator"), pick(items, pipeline.detectors, "detector"), decide,
