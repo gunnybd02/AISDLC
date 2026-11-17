@@ -124,6 +124,18 @@ class ActivityTest(unittest.TestCase):
         self.assertEqual(activity.turn_now(self.port.ledger.con, "s1"), 3)
         self.assertEqual(activity.turn_now(self.port.ledger.con, "other"), 0)
 
+    def test_a_turn_names_the_first_plan_in_force_in_it(self):
+        self.run_event("UserPromptSubmit", tool_input={"prompt": "no plan"})
+        self.run_event("PreToolUse", "Read", {"file_path": str(self.repo / "a.py")})
+        self.run_event("UserPromptSubmit", tool_input={"prompt": "with a plan"})
+        call = Event("PreToolUse", "Read", {"file_path": str(self.repo / "a.py")}, "s1", str(self.repo))
+        for plan_no in (7, 9):  # a second plan in the same turn does not move it
+            self.port.write(lambda con, rec, p=plan_no: activity.record_call(con, rec, call, {"id": p}, "allow", []))
+        self.assertEqual(self.rows("SELECT n, plan_id FROM pl_turns ORDER BY n"), [(1, 0), (2, 7)])
+        self.run_event("Stop")
+        self.port.write(lambda con, rec: activity.record_call(con, rec, call, {"id": 9}, "allow", []))
+        self.assertEqual(self.rows("SELECT n, plan_id FROM pl_turns ORDER BY n"), [(1, 0), (2, 7)])  # a closed turn
+
     def test_a_turn_follows_the_prompts_of_a_ledger_made_before_turns_were_kept(self):
         self.port.write(lambda con, rec: con.execute(
             "INSERT INTO pl_prompts (sid, n, text, chars, cut, from_peer, source, uuid, at) VALUES ('s1', 4, 'old', 3, 0, 0, 'user', '', 1)"))

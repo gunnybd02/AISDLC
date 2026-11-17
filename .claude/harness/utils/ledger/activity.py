@@ -214,7 +214,8 @@ def arg_names(given: Any) -> list[str]:
 def record_call(con: sqlite3.Connection, rec: Recorder, event: Event, plan: Optional[ApprovedPlan], word: str,
                 findings: Iterable[Finding] | Sequence[Finding]) -> None:
     """Keep what one hook call was: for a tool or shell event before it runs, a tool-call row and a gate span; for any
-    call, one rule-decision row per finding. All in the caller's transaction.
+    call, one rule-decision row per finding; the open turn is linked to the first plan in force in it. All in the
+    caller's transaction.
 
     Args:
         con: the connection of the transaction.
@@ -225,6 +226,8 @@ def record_call(con: sqlite3.Connection, rec: Recorder, event: Event, plan: Opti
         findings: the findings of the verdict.
     """
     sid, findings = event.session or "", list(findings)
+    if plan and sid:  # the open turn belongs to the first plan in force in it
+        con.execute("UPDATE pl_turns SET plan_id = ? WHERE sid = ? AND ended_at = 0 AND plan_id = 0", (plan["id"], sid))
     if event.kind == "PreToolUse":
         name = tool_of(event)
         if not inner(event):  # one tool-call row per call: the hook's, or the tool span when no hook runs

@@ -71,13 +71,13 @@ session cannot read the old chat; it reads this file. The frame of every plan is
 | #54 | When rows (spec 13 section 7): a row `code, verdict, why, when, test` matches the facts of rule actions; translators declare their vocabulary (READS for the port facts they read); the git rules are when rows, `gear/detect/git.py` gone, every git verdict and message kept; a stricter row (a force push anywhere) needs no Python |
 | #55 | Every command check is a when row: commit, the server's write actions, Drive, agent files, the child and the plan files describe in `gear/translate/` and their rows decide; every rule action names its kind; an action that must be judged and meets no row is asked (`rule.unmatched`); only the content and state detectors remain |
 | #57 | Publish on merge, with a fallback: `live update` puts merged main in force with no form (the merge was the user's word; files not tracked under `harness/` stop it); after a merge tool merges the harness's own repository, the hook does the update by itself. Each publish keeps `state/live/previous`. `anchor.py` holds the fallback: a release whose hook crashes twice is left for the previous one and listed in `state/live/bad` (no update puts it back); the anchor's own MCP server `fallback` (`rollback`, `status`, in `.mcp.json` and the install) never loads a release, and the hook lets its calls pass, so a release that refuses everything can still be rolled back. One step back only |
+| #58 | A guards-off grant lifts the checks, never the recording: the hook runs the harness under a grant with the verdict waived (`contracts.waived`), so prompts, calls and form answers (an "Approve") are kept; a broken harness still passes. Each turn names the first plan in force in it (`pl_turns.plan_id`) |
 
-543 tests pass (1 skipped, Windows only); doctor: 0 errors.
+547 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
-Learned in #57: a guards-off grant (`maint.grant`) makes the hook pass everything, so it also does not record a form's
-answer: an "Approve" given while the guards are off is lost; ask it again after the grant ends. And harness work is done
-in the home clone (`~/.harness` in the cloud): from another clone of this repository, `step_done` refuses `.claude/`
-files as a unit's agent files.
+Learned in #57: a guards-off grant made the hook pass everything without recording, so an "Approve" given while the
+guards were off was lost (fixed in #58). And harness work is done in the home clone (`~/.harness` in the cloud): from
+another clone of this repository, `step_done` refuses `.claude/` files as a unit's agent files.
 
 ## The cloud, as it runs now
 
