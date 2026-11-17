@@ -57,6 +57,11 @@ class CardTest(unittest.TestCase):
 
 
 class BriefTest(unittest.TestCase):
+    def test_the_brief_sends_the_child_to_the_ledger_door_not_the_file(self):
+        text = brief.brief(7, "pd-x", GOOD, "session_parent01")
+        self.assertIn("run('ledger', 'db_query', {sql})", text)
+        self.assertIn("Never open the ledger file (harness.db)", text)
+
     def test_the_brief_says_who_it_is_and_that_send_backs_are_its_plan(self):
         text = brief.brief(7, "pd-x", GOOD, "session_parent01")
         self.assertTrue(text.startswith('You are child session "api" of the delegated plan 7, approved by the user in '

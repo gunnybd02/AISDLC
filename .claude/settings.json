@@ -1,4 +1,9 @@
 {
+  "permissions": {
+    "allow": [
+      "mcp__claude-code-remote__send_message"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {
