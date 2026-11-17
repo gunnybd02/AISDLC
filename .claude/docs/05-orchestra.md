@@ -40,7 +40,7 @@ Every term below is used with exactly this meaning in the rest of the document.
 | Background session | A session started by the command line in the background, with no terminal attached; it runs until it stops or is stopped. |
 | Ledger | The harness's single database. All state of plans, tickets, children, behaviours, verifies and audits lives there. |
 | Plan | A structured description of a change (title, overview, files, tests, steps). It must be approved before any file is edited. |
-| Approval form | The question the user answers in the chat. Only the user's "Duyệt" there approves a plan; a word in the chat or a message from another session approves nothing. |
+| Approval form | The question the user answers in the chat. Only the user's "Approve" there approves a plan; a word in the chat or a message from another session approves nothing. |
 | Ticket | The ledger record of one session's current work: which plan is in force, its phase, its commits, its state (open or closed) and why it closed. |
 | Delegated plan | A plan that carries a `children` list. Approving it creates a delegated ticket for the parent. |
 | Parent / orchestrator | The session that presented and owns the delegated plan. |
@@ -91,7 +91,7 @@ sequenceDiagram
     participant C as Child session (background)
     P->>H: present the plan with a children list
     H-->>U: approval form
-    U->>H: "Duyệt"
+    U->>H: "Approve"
     H->>H: delegated ticket, a "pending" story row per child, a waiting card plan per card with files to change
     P->>H: spawn (name, reportTo)
     H->>C: start a background session; its first prompt is the brief

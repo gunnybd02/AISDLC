@@ -1,11 +1,12 @@
 """h1.blocks-and-nets: each net finds its break in a fake tree and nothing in the real one."""
 import unittest
 
-from harness.nets import (bridges_net, config_net, entry_net, hints_net, imports_net, layout_net, owners_net,
-                          size_net, verdict_net)
+from harness.nets import (bridges_net, config_net, english_net, entry_net, hints_net, imports_net, layout_net,
+                          owners_net, size_net, verdict_net)
 from harness.tests import CLAUDE_DIR, tree
 
-NETS = (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net, entry_net, hints_net, owners_net)
+NETS = (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net, entry_net, hints_net, owners_net,
+        english_net)
 
 
 def joined(net, test, files):
@@ -238,6 +239,19 @@ class OwnersNetTest(unittest.TestCase):
                  "harness/utils/x.py": 'HINT = "then run(\'plan\', \'plan_show\') or run(\'orchestra\', \'nope\', {name})"\n'}
         self.assertEqual(owners_net.check(tree(self, files)),
                          ["owners: harness/utils/x.py:1 tells the model run('orchestra', 'nope'), which is no action"])
+
+
+
+class EnglishNetTest(unittest.TestCase):
+    def test_a_foreign_letter_is_reported_a_symbol_or_an_escape_is_not(self):
+        files = {"docs/a.md": "# Notes\n\nApprove \u2192 go \u2714\n\"Duy\u1ec7t\"\n",
+                 "harness/utils/a.py": 'WORD = "caf\\u00e9"  # an escape is free\nNAME = "caf\u00e9"\n',
+                 "harness/tests/utils/test_a.py": 'TEXT = "Duy\u1ec7t"\n',  # the tests are free
+                 "harness/utils/b.txt": "\u00fc\n"}
+        self.assertEqual(english_net.check(tree(self, files)), [
+            "english: docs/a.md: line 4 holds a letter outside ASCII (U+1EC7); write English, or an escape",
+            "english: harness/utils/a.py: line 2 holds a letter outside ASCII (U+00E9); write English, or an escape",
+            "english: harness/utils/b.txt: line 1 holds a letter outside ASCII (U+00FC); write English, or an escape"])
 
 
 class ConfigNetTest(unittest.TestCase):

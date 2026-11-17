@@ -205,7 +205,7 @@ The skill is the instruction text the parent follows. Its content, step by step:
 2. **Present the plan** with `children`. Each card: name, unit (or home), goal, 1 to 6 short AC that each name a visible
    case, optional read / change / tests paths (paths only), optional actions (push). A card with change opens its plan by
    itself. One goal per child. The parent plan's own files are the notes or documents it commits at the end. Ask with the
-   form; one "Duyệt" approves all children.
+   form; one "Approve" approves all children.
 3. **Start each child:** `spawn { name, reportTo: <this session's name> }`. The parent's name comes from the session list.
    No Remote Control unless the user wants to watch a child. A card naming an open session is adopted instead:
    - `adopt` returns a brief, which the parent sends with SendMessage (asking to be notified when the child is idle);
