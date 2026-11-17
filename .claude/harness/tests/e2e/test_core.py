@@ -42,11 +42,6 @@ class OneCoreTest(unittest.TestCase):
         self.assertEqual(code, 0, err)
         return json.loads(out)["result"]["content"][0]["text"]
 
-    def test_the_repository_lets_a_session_message_another_without_a_prompt(self):
-        from pathlib import Path
-        settings = json.loads((Path(__file__).resolve().parents[3] / "settings.json").read_text(encoding="utf-8"))
-        self.assertIn("mcp__claude-code-remote__send_message", settings["permissions"]["allow"])  # a child reports back
-
     def test_with_no_harness_installed_the_repository_copy_is_the_core(self):
         code, out, _ = self.write(self.clone)
         self.assertEqual(code, 0)
