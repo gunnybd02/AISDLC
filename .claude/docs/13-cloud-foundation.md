@@ -10,6 +10,12 @@ purpose, and what is still open. Checked on 2026-11-17 by reading the code and r
 |---|---|---|
 | Five blocks (hooks, mcp, gear, assemble, utils), imports point one way, utils imports no upper block | Yes | imports net |
 | Only the loader imports by name | Yes (`assemble/engine/loader.py`, `live_mcp.py`) | imports net |
+| Standard library only; no code run from a text (`exec`, `eval`, `compile`); `sys.path` only in the loader and the entries | Yes | imports net |
+| An entry imports only named wiring modules | Yes: build, checks, cli_install, cli_live, cli_wire, live_mcp | imports net |
+| Text is English (no letter above code point 127 outside tests) | Yes | english net |
+| A broken harness blocks only a tool call (PreToolUse, or no event name); every other event goes on with the failure on stderr | Yes; an answer to a form it could not keep is told to the model | `entry/hook.py`, `tests/e2e/test_hook.py` |
+| A gear that raises becomes a verdict, never a crash | Yes: `gear.fault` refuses before a tool call, `gear.fault_after` allows after it; another gear's refusal still stands | `assemble/engine/runner.py`, `gear/rules/base.json` |
+| Adding a detector takes at most four files and never the runner or the arbiter; an action takes one | Yes, proven through a copied tree's own hook and MCP server | `tests/assemble/test_fitness.py` |
 | Block declaration files only declare (`ITEMS`, `ACTIONS` literals) | Yes | the loader, in the doctor |
 | Every file sits where the layout list allows | Yes | layout net |
 | No bridge modules | Yes | bridges net |
@@ -66,14 +72,11 @@ not a policy) and `DEAD_AFTER` (6 hours: a guess of when a session no longer run
 
 ## 5. Still open (from the check of 2026-11-17)
 
-- **The hook's failure policy.** Spec: a broken harness blocks only PreToolUse (exit 2) and lets every other event go
-  (exit 0). Here `entry/hook.py` exits 2 on every event, Stop included, so a broken harness could hold the end of a
-  turn: a gate with no exit.
-- **No english net.** Non-ASCII letters sit in `project/behaviors.json` and three orchestra documents.
-- **The imports net is partial.** It does not refuse third-party packages outside the entries, running text as code,
-  or `sys.path` edits; an entry may import any `assemble` module, not five named ones.
-- **No fitness tests** (a new gear touching at most four files, a new action two).
 - **Model-facing text lives beside the code.** The owners net checks the action names it gives; the sentences
   themselves still sit in `utils`, one place per answer.
 - **Refusals in code.** `utils/plan` and `utils/orchestra` refuse in code (`raise ...Error`) where the hook path refuses
   through rule rows. Many are input checks; which are policy is not yet sorted.
+- The two design differences of section 4, for the user to decide.
+
+Closed on 2026-11-17 (PR 51): the hook's failure policy, gear faults as verdicts, the english net, the whole imports
+rule, and the fitness tests.
