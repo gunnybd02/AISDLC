@@ -1,6 +1,6 @@
 {
- "at": 1794887267701,
- "base": "52f968bfa3224191649a3d4ac30909d02f1f15df",
+ "at": 1794887733009,
+ "base": "6684ce9607029a682a719007a3156d54842a8e59",
  "behaviours": {
   "p1.trim.ac1": {
    "status": "active",
@@ -22,10 +22,9 @@
  "commits": [
   {
    "files": [
-    "orch-play/test_trim.py",
-    "orch-play/trim.py"
+    "orch-play/test_trim.py"
    ],
-   "sha": "52082fec40a4d0ba9f65e0cbb616c9a3def9c6c4"
+   "sha": "578b615916174536fced4ae1450018d8bb558b43"
   }
  ],
  "draft": "pd-mwk5i8l8-589dd4",
@@ -36,29 +35,27 @@
  "report": {
   "added": [],
   "changed": [
-   "orch-play/trim.py: new trim(text) that strips spaces at both ends and raises TypeError for non-strings",
-   "orch-play/test_trim.py: tests for AC1 and AC2"
+   "orch-play/test_trim.py: new AC1 test that trim of a text of only spaces (and empty text) returns ''"
   ],
   "checked": [
-   "AC1: trim(' hi ') == 'hi' (p1.trim.ac1), plus inner spaces kept",
-   "AC2: None, int, list and bytes raise TypeError (p1.trim.ac2)",
-   "verify green: 10 tests in orch-play pass"
+   "verify green: 11 tests, behaviours p1.trim.ac1 and p1.trim.ac2 proven",
+   "trim('   ') == '', trim(' ') == '', trim('') == ''"
   ],
   "faults": [],
   "notChecked": [
-   "Tabs and newlines at the ends: only the space character is removed, per the card's wording"
+   "whitespace other than the space character (tabs, newlines) is kept by design: the card says spaces"
   ],
   "risks": [
-   "If callers expect all whitespace trimmed (like str.strip()), tabs/newlines would remain"
+   "none beyond the above: trim.py was not changed, strip(' ') already returned ''"
   ],
   "testsChanged": [
    {
-    "test": "orch-play/test_trim.py",
-    "why": "new test file proving AC1 and AC2 of the card"
+    "test": "orch-play/test_trim.py::test_ac1_only_spaces_returns_empty",
+    "why": "send-back 1 asked AC1 to also cover a text made only of spaces"
    }
   ]
  },
- "session": "b3575847-9aca-59d5-8171-b9df4bff3f04",
+ "session": "5034ac71-4a17-59f5-804f-ccdc66c17015",
  "uncommitted": [],
  "unit": {
   "base": "orch-sandbox",
