@@ -83,6 +83,24 @@ class WorkTest(unittest.TestCase):
         with self.assertRaisesRegex(work.WorkError, "a secret"):
             work.ask(self.port, "c1", "Why?", lambda *a: Verdict("refuse", "a secret"), lambda *a: ALLOW)
 
+    def test_a_fresh_session_takes_the_pushed_branch_and_reads_its_notes(self):
+        self.take()
+        notes = self.repo / ".harness" / "notes" / "api"
+        notes.mkdir(parents=True)
+        (notes / "sendback-1.md").write_text("# Send-back 1 of 3\n\nAC1 is not tested\n", encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "Send-back 1 of api")
+        git(self.repo, "push", "-q", "origin", "orch/p7/api")
+        fresh = tree(self, {})  # a new machine: a clone of origin and its own ledger
+        git(fresh, "clone", "-q", str(self.origin), ".")
+        port = LedgerPort(copy_tree(self, {"project.json": json.dumps({"name": "t"})}))
+        prompt = brief.brief(7, "pd-x", CARD, "session_p1", resume=".harness/notes/api/sendback-1.md")
+        Act(port).run(Event("UserPromptSubmit", "", {"prompt": prompt}, "c2", str(fresh)), {}, ALLOW)
+        text = work.take(port, "c2", str(fresh))
+        self.assertIn("you are on orch/p7/api (tracked)", text)
+        self.assertIn("Notes on your branch, read them first: .harness/notes/api/sendback-1.md", text)
+        self.assertEqual(git(fresh, "log", "-1", "--format=%s").strip(), "Send-back 1 of api")
+
     def test_the_handback_receipt_is_committed_and_pushed(self):
         self.take()
         with self.assertRaisesRegex(work.WorkError, "changed names at least one point"):

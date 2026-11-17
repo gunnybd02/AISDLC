@@ -153,12 +153,14 @@ def take(port: PlanStore, sid: str, root: str) -> str:
     folder = child.unit_root(role, repo)
     if not Path(folder).is_dir():
         raise WorkError(f"the unit's folder {role['unit']['path']} is not in this clone ({repo})")
+    notes = sorted(p.relative_to(repo).as_posix() for p in (Path(repo) / NOTES / role["name"]).glob("*.md"))
     plan_id, _, _ = port.present(child.card_plan(role, folder), sid=sid)
     number = port.approve(sid, port.revision(plan_id), by=f"grant of plan {role['plan']} ({role['parent']})")
     return (f"Card plan {plan_id} (plan {number}) is open, approved by the grant of plan {role['plan']}; you are on "
             f"{role['branch']} ({how}). Files: {', '.join(role['card']['change'])}. Behaviours: "
             f"{', '.join(role['behaviours'])}. Loop: write the tests, make them pass, verify bare, "
-            "run('plan', 'step_done', {message}), run('orchestra', 'push'); then run('orchestra', 'handback', {...}).")
+            "run('plan', 'step_done', {message}), run('orchestra', 'push'); then run('orchestra', 'handback', {...})."
+            + (f" Notes on your branch, read them first: {', '.join(notes)}." if notes else ""))
 
 
 def push(port: PlanStore, sid: str, judge: GitJudge) -> str:

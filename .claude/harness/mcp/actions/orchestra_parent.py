@@ -5,8 +5,8 @@ requests at the end, the parent resolving conflicts there, and closes the plan a
 
 - check {name, timeoutMin?}: fetch the child's branch, read its receipt, rerun its tests.
 - accept {name}: a green check this round; open its pull request (nothing is merged).
-- reject {name, why}: send it back; the answer is the send_message to make.
-- answer {name, text}: the reply to a child's question; the answer is the send_message to make.
+- reject {name, why}: send it back: a send-back note on its branch, then spawn opens a fresh session of it.
+- answer {name, text}: the reply to a child's question: an answer note on its branch, then a fresh session.
 - forget {name, why}: drop a child that will not come back.
 - read {name}: its receipt.
 - land {timeoutMin?}: merge every accepted pull request, run each unit's tests, close the plan delivered.
@@ -123,29 +123,30 @@ class Accept(McpAction):
 class Reject(McpAction):
     """orchestra.reject: send a child back, one round of 3."""
     block, name, effect = "orchestra", "reject", WRITE
-    summary = "Send a child back with why (3 rounds at most); the answer is the send_message to make"
+    summary = ("Send a child back with why (3 rounds at most): a note pushed on its branch; then spawn opens a fresh "
+               "session of it")
     args_schema = {"type": "object", "properties": {"name": NAME, "why": {"type": "string"}},
                    "required": ["name", "why"]}
-    needs = ("plans", "session")
+    needs = ("plans", "session", "units")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Record the send-back (utils/orchestra/review.reject)."""
+        """Push the send-back note and keep the round (utils/orchestra/review.reject)."""
         sid = session_of(ctx)
-        return parent_run(lambda: review.reject(ctx.ports["plans"], sid, args["name"], args["why"]))
+        return parent_run(lambda: review.reject(ctx.ports["plans"], sid, args["name"], args["why"], units(ctx)))
 
 
 class Answer(McpAction):
     """orchestra.answer: the reply to a child's question."""
     block, name, effect = "orchestra", "answer", WRITE
-    summary = "Answer a child's question; the answer is the send_message to make"
+    summary = "Answer a child's question: a note pushed on its branch; then spawn opens a fresh session of it"
     args_schema = {"type": "object", "properties": {"name": NAME, "text": {"type": "string"}},
                    "required": ["name", "text"]}
-    needs = ("plans", "session")
+    needs = ("plans", "session", "units")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Record the reply (utils/orchestra/review.answer)."""
+        """Push the answer note (utils/orchestra/review.answer)."""
         sid = session_of(ctx)
-        return parent_run(lambda: review.answer(ctx.ports["plans"], sid, args["name"], args["text"]))
+        return parent_run(lambda: review.answer(ctx.ports["plans"], sid, args["name"], args["text"], units(ctx)))
 
 
 class Forget(McpAction):

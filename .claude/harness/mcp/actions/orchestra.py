@@ -107,9 +107,10 @@ class Spawn(McpAction):
     needs = ("plans", "session", "units")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """The brief and the create_session call of the named child; nothing is written until started. ActionError
-        when no approved delegated plan is in force, the name is no child of it, it has started, CAP children run, or
-        its card names no change paths or an open session to adopt."""
+        """The brief and the create_session call of the named child; nothing is written until started. A child that
+        waits for a fresh session (a note on its branch) gets the brief of a fresh session. ActionError when no approved
+        delegated plan is in force, the name is no child of it, it has started, CAP children run, or its card names no
+        change paths or an open session to adopt."""
         sid = session_of(ctx)
         plan, draft, card = room(ctx.ports["plans"], sid, args["name"])
         if not card.get("change"):
@@ -121,7 +122,9 @@ class Spawn(McpAction):
         ticket = ctx.ports["plans"].ticket(sid)
         unit = unit_spec(card, ctx.ports.get("units", dict)())
         url = unit["repo"] or source_url(ticket["plan"].get("root") or os.getcwd())
-        call = briefs.create_call(plan, card, briefs.brief(plan, draft, card, sid, unit), url, args.get("model", ""))
+        fresh = ((ticket.get("crew") or {}).get(card["name"]) or {}).get("fresh") or {}
+        prompt = briefs.brief(plan, draft, card, sid, unit, fresh.get("note", ""))
+        call = briefs.create_call(plan, card, prompt, url, args.get("model", ""))
         where = "" if url else (" The unit's repository has no URL another machine can clone: add source_url to "
                                 "the call by hand.")
         return (f"Child {card['name']} of plan {plan}: open it with mcp__claude-code-remote__create_session and these "

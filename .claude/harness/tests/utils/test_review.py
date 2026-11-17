@@ -1,13 +1,13 @@
 """orchestra part 3, the parent's review: check reads the receipt on the child's branch and reruns its tests itself;
-accept opens one pull request (a fake GitHub here) and merges nothing; reject counts rounds; answer and forget are
-recorded. A real origin, reached as https://github.com/o/r through git's insteadOf."""
+accept opens one pull request (a fake GitHub here) and merges nothing; reject and answer push a note on the child's
+branch for a fresh session of it, reject counts rounds; forget is recorded. A real origin, reached as https://github.com/o/r through git's insteadOf."""
 import json
 import subprocess
 import time
 import unittest
 
 from harness.assemble.engine.ports import LedgerPort
-from harness.mcp.actions.orchestra import Started
+from harness.mcp.actions.orchestra import Spawn, Started
 from harness.utils.contracts import YES, ActionContext
 from harness.utils.git.github import GitHubError, repo_of
 from harness.utils.orchestra import review
@@ -144,19 +144,53 @@ class ReviewTest(Scenario):
         with self.assertRaisesRegex(review.ReviewError, "tip of .* is not its receipt"):
             self.check()
 
-    def test_reject_counts_rounds_and_says_what_to_send(self):
-        for n in (1, 2, 3):
-            text = review.reject(self.port, "s1", "hello", "AC2 is not tested")
-            self.assertIn(f"round {n} of 3", text)
-            self.assertIn("send_message to session_child0001", text)
+    def ctx(self):
+        return ActionContext({"plans": self.port, "session": lambda: "s1", "units": lambda: UNITS})
+
+    def test_reject_pushes_a_send_back_note_and_a_fresh_session_reads_it(self):
+        self.hand_back()
+        text = review.reject(self.port, "s1", "hello", "AC2 is not tested", UNITS)
+        self.assertIn("round 1 of 3", text)
+        self.assertNotIn("send_message", text)
+        self.assertIn("run('orchestra', 'spawn', {name: 'hello'})", text)
+        ref = f"orch/p{self.plan}/hello"
+        note = git(self.origin, "show", f"{ref}:.harness/notes/hello/sendback-1.md")
+        self.assertIn("AC2 is not tested", note)
+        self.assertIn("Send-back 1 of hello", git(self.origin, "log", "-1", "--format=%s", ref))
+        spawned = Spawn().run(self.ctx(), {"name": "hello"})  # the same child, in a fresh session
+        prompt = json.loads(spawned[spawned.index("\n{") + 1:])["prompt"]
+        self.assertIn("You are a fresh session of this child", prompt)
+        self.assertIn("Read .harness/notes/hello/sendback-1.md on it first", prompt)
+        self.assertNotIn("send_message", prompt)
+        for n in (2, 3):
+            self.assertIn(f"round {n} of 3", review.reject(self.port, "s1", "hello", "AC2 is not tested", UNITS))
         with self.assertRaisesRegex(review.ReviewError, "the user decides now"):
-            review.reject(self.port, "s1", "hello", "again")
+            review.reject(self.port, "s1", "hello", "again", UNITS)
         self.hand_back(receipt={"at": 1})  # a receipt older than the send-back
         with self.assertRaisesRegex(review.ReviewError, "not handed back since it was sent back"):
             self.check()
 
-    def test_answer_and_forget_are_recorded(self):
-        self.assertIn('"Answer from the orchestrator: use 404"', review.answer(self.port, "s1", "hello", "use 404"))
+    def test_a_fresh_session_keeps_the_childs_rounds(self):
+        self.hand_back()
+        review.reject(self.port, "s1", "hello", "AC2 is not tested", UNITS)
+        text = Started().run(ActionContext({"plans": self.port, "session": lambda: "s1"}),
+                             {"name": "hello", "sid": "session_child0002"})
+        self.assertIn("runs in session session_child0002", text)
+        entry = self.port.ticket("s1")["crew"]["hello"]
+        self.assertEqual((entry["sid"], entry["backs"], entry["state"], entry["sessions"]),
+                         ("session_child0002", 1, "running", ["session_child0001"]))
+        self.assertNotIn("fresh", entry)
+        with self.assertRaisesRegex(Exception, "has started already"):
+            Spawn().run(self.ctx(), {"name": "hello"})
+
+    def test_answer_pushes_a_note_and_forget_is_recorded(self):
+        self.hand_back()
+        text = review.answer(self.port, "s1", "hello", "use 404", UNITS)
+        self.assertIn("Answer 1 to hello", text)
+        self.assertNotIn("send_message", text)
+        self.assertIn("use 404", git(self.origin, "show", f"orch/p{self.plan}/hello:.harness/notes/hello/answer-1.md"))
+        self.assertIn("waits for a fresh session: .harness/notes/hello/answer-1.md",
+                      __import__("harness.utils.orchestra.crew", fromlist=["x"]).status(self.port.ticket("s1")))
         self.assertIn("forgotten", review.forget(self.port, "s1", "hello", "it will not come back"))
         entry = self.port.ticket("s1")["crew"]["hello"]
         self.assertEqual((entry["state"], entry["sent"][0]["how"]), ("forgotten", "answer"))

@@ -65,7 +65,8 @@ def listed(label: str, paths: list[str]) -> str:
     return f"{label}: {', '.join(paths)}" if paths else ""
 
 
-def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, Any] | None = None) -> str:
+def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, Any] | None = None,
+          resume: str = "") -> str:
     """The first prompt of a child: who it is, its work, how it is approved, that nobody is at its keyboard, its
     permissions, how it asks and hands back, its files and criteria, and the card block.
 
@@ -75,6 +76,8 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
         card: the child's card.
         parent_sid: the parent's session id.
         unit: the unit it works in, {repo, path, verify, base} (card.unit_spec); None for the home.
+        resume: the note a fresh session of the child reads first (a send-back or an answer on its branch); "" for
+            its first session.
 
     Returns:
         The brief, as the prompt of create_session.
@@ -87,6 +90,8 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
     acs = [f"AC{n}: {a}  (behaviour {behaviour_id(plan, name, n)})" for n, a in enumerate(card["ac"], 1)]
     parts = [
         f"You are {HEAD.format(name=name, plan=plan)}, approved by the user in the orchestrator session {parent_sid}.",
+        (f"You are a fresh session of this child: your branch {branch(plan, name)} holds your earlier work, and take "
+         f"stands on it. Read {resume} on it first: it is why you go on." if resume else ""),
         f"Your work: {card['goal'].rstrip('.')}. Work only in {where}. Once the orchestrator accepts it, your "
         f"branch becomes a pull request into {spec['base']}.",
         "How you are approved: the user approved your card with the parent plan. First call "
