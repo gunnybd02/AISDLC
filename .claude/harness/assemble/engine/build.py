@@ -117,7 +117,8 @@ def build_runner(claude_dir: str | Path = CLAUDE_DIR, items: Optional[dict[str, 
     code = code_of(claude_dir)
     pipeline = select(PipelineBook(code / "harness" / "assemble" / "pipelines"), plan, config.pipelines())
     translators = pick(items, pipeline.translators, "translator")
-    vocabulary = {fact for t in translators for fact in getattr(t, "VOCABULARY", ())}
+    declared = pick(items, [n for n, i in items.items() if i.kind == "translator"], "translator")
+    vocabulary = {fact for t in declared for fact in getattr(t, "VOCABULARY", ())}  # rules apply to every pipeline
     decide = Loader.resolve(items["decide"]).load(code, vocabulary=vocabulary)
     port = LedgerPort(claude_dir)
     return Runner(translators, pick(items, pipeline.detectors, "detector"), decide,

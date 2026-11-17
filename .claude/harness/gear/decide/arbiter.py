@@ -141,13 +141,29 @@ class Decide:
         """The findings of the when rows the rule actions meet: one per row and action, the action's detail kept.
 
         Args:
-            actions: the rule actions of the event (RULE_ACTIONS), each its facts and an optional detail.
+            actions: the rule actions of the event (RULE_ACTIONS), each its facts, and an optional detail or details
+                by fact.
 
         Returns:
             Finding(code, detail) for each match, in the order of the actions, then of the rows.
         """
-        return [Finding(row["code"], str(action.get("detail", ""))) for action in actions if isinstance(action, dict)
-                for row in self.when_rows if self.matches(row["when"], action)]
+        return [Finding(row["code"], self.detail_of(row["when"], action)) for action in actions
+                if isinstance(action, dict) for row in self.when_rows if self.matches(row["when"], action)]
+
+    @staticmethod
+    def detail_of(when: dict[str, Any], action: dict[str, Any]) -> str:
+        """The words a match shows in brackets: the detail of the first fact of the when that has one (details), else
+        the action's detail.
+
+        Args:
+            when: the matched row's when.
+            action: the rule action.
+
+        Returns:
+            The detail, "" when there is none.
+        """
+        details = action.get("details") if isinstance(action.get("details"), dict) else {}
+        return str(next((details[k] for k in when if k in details), action.get("detail", "")))
 
     @staticmethod
     def row_problem(row: Any, claude_dir: Path) -> str:

@@ -4,6 +4,7 @@
     "answers",
     "places",
     "git_commands",
+    "git_rules",
     "actions",
     "commit_facts"
   ],
@@ -12,7 +13,6 @@
     "tracked",
     "planfiles",
     "raw_commit",
-    "git_rules",
     "write_action",
     "stop_guard",
     "secret_scan",

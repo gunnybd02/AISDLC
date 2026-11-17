@@ -17,6 +17,7 @@ FAKE = {
         '        return [Finding("test.flagged", event.input.get("command", ""))] if event.input.get("flag") else []\n'),
     "harness/gear/__init__.py": (
         '"""x"""\nITEMS = [{"kind": "rule", "name": "decide", "ref": "harness.gear.decide.arbiter:Decide"},\n'
+        '         {"kind": "translator", "name": "git_rules", "ref": "harness.gear.translate.git_rules:GitRuleFacts"},\n'
         '         {"kind": "detector", "name": "fake", "ref": "harness.gear.fake_detect:Fake"}]\n'),
     "harness/assemble/pipelines/base.json": json.dumps({"translators": [], "detectors": ["fake"]}),
 }

@@ -12,7 +12,9 @@ from harness.assemble.engine.ports import LedgerPort
 from harness.gear.decide.arbiter import Decide
 from harness.assemble.engine.pipeline import PipelineBook
 from harness.assemble.engine.ports import GitView
-from harness.gear.detect.git import GitRules
+from harness.gear.translate.git_rules import GitRuleFacts
+from harness.tests import entry_of
+from harness.tests.e2e import run
 from harness.gear.translate.git import GitCommands
 from harness.utils.contracts import Event
 from harness.utils.git.facts import staged, top
@@ -106,10 +108,18 @@ class GitRulesTest(unittest.TestCase):
         git(self.repo, "push", "-q", "origin", "work")
         self.view = GitView(tree(self, {}) / ".claude", ("main", "release/*"))
 
-    def found(self, command, view=None):
-        event = Event("PreToolUse", "Bash", {"command": command}, "s1", str(self.repo))
+    JUDGE = None
+
+    def judged(self, command, view=None, kind="PreToolUse"):
+        """The findings the real when rows give for a command: GitCommands, then GitRuleFacts, then the matcher."""
+        if GitRulesTest.JUDGE is None:
+            GitRulesTest.JUDGE = Decide.load(CLAUDE_DIR, vocabulary=set(GitRuleFacts.VOCABULARY))
+        event = Event(kind, "Bash", {"command": command}, "s1", str(self.repo))
         facts = {**GitCommands().translate(event), "git_view": view or self.view}
-        return sorted({f.kind for f in GitRules().detect(event, facts)})
+        return self.JUDGE.matched(GitRuleFacts().translate(event, facts).get("rule_actions", []))
+
+    def found(self, command, view=None):
+        return sorted({f.kind for f in self.judged(command, view)})
 
     def on_main(self):
         git(self.repo, "checkout", "-q", "-b", "main")
@@ -166,6 +176,8 @@ class GitRulesTest(unittest.TestCase):
         git(self.repo, "commit", "-q", "-m", "agent file")
         self.assertIn("push.agent_files", self.found("git push origin work:main"))
         self.assertEqual(self.found("git push origin work"), [])
+        sent = [f for f in self.judged("git push origin work:main") if f.kind == "push.agent_files"]
+        self.assertEqual(sent[0].detail, "the push would send .claude/notes.md")  # the message keeps its words
         self.on_main()
         self.assertEqual(self.found("git add CLAUDE.md"), ["push.agent_files"])
 
@@ -177,17 +189,35 @@ class GitRulesTest(unittest.TestCase):
         self.assertEqual(self.found("git -C . status"), [])
 
     def test_the_rules_ask_and_never_refuse(self):
-        rules = Decide.load(CLAUDE_DIR).rules
+        codes = Decide.load(CLAUDE_DIR, vocabulary=set(GitRuleFacts.VOCABULARY)).codes
         for kind in ("git.add_all", "git.no_verify", "git.reset_hard", "git.force_push", "git.protected_write",
                      "push.never_repo", "push.agent_files", "git.unread"):
             with self.subTest(kind=kind):
-                self.assertEqual(rules[kind]["verdict"], "ask")
-                self.assertIn("run('git', 'run'", rules[kind]["why"])
-        self.assertIn("git_rules", PipelineBook(CLAUDE_DIR / "harness" / "assemble" / "pipelines").resolve("base").detectors)
+                self.assertEqual(codes[kind]["verdict"], "ask")
+                self.assertTrue(codes[kind]["when"]["protected"])  # every git rule holds only on a protected branch
+                self.assertIn("run('git', 'run'", codes[kind]["why"])
+        base = PipelineBook(CLAUDE_DIR / "harness" / "assemble" / "pipelines").resolve("base")
+        self.assertIn("git_rules", base.translators)
+        self.assertNotIn("git_rules", base.detectors)
 
     def test_only_a_call_before_it_runs_is_judged(self):
-        event = Event("PostToolUse", "Bash", {"command": "git push --force origin main"}, "s1", str(self.repo))
-        self.assertEqual(GitRules().detect(event, {**GitCommands().translate(event), "git_view": self.view}), [])
+        self.assertEqual(self.judged("git push --force origin main", kind="PostToolUse"), [])
+
+    def test_a_when_row_added_to_the_rules_tightens_a_git_rule_without_python(self):
+        home = copy_tree(self)
+        rules = home / "harness" / "gear" / "rules" / "git.json"
+        data = json.loads(rules.read_text(encoding="utf-8"))
+        data["rules"].append({"code": "git.force_anywhere", "verdict": "refuse", "why": "No force push, on any branch.",
+                              "when": {"sub": "push", "force": True},
+                              "test": "harness/tests/gear/test_git.py#test_a_when_row_added_to_the_rules_tightens_a_git_rule_without_python"})
+        rules.write_text(json.dumps(data), encoding="utf-8")
+        payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "git push -f origin work"},
+                   "session_id": "s", "cwd": str(self.repo)}
+        code, out, err = run(entry_of(home, "hook"), json.dumps(payload))
+        self.assertEqual(code, 0, err)
+        answer = json.loads(out)["hookSpecificOutput"]
+        self.assertEqual(answer["permissionDecision"], "deny")  # work is no protected branch: before, it was free
+        self.assertIn("No force push, on any branch. (git push -f origin work)", answer["permissionDecisionReason"])
 
 
 if __name__ == "__main__":
