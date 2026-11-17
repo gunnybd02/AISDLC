@@ -9,8 +9,10 @@ says). The user approved the plan with its children once, in the form; these act
 A child (a session opened from a brief, utils/orchestra/child.py) runs the rest (utils/orchestra/work.py):
 - take: its card plan opens, approved by the parent's grant, on its branch orch/p<plan>/<name>;
 - push: its own branch, after every step;
-- question {question}: kept, then sent to the parent with send_message;
+- question {question}: a note on its branch, pushed; then it stops;
 - handback {changed, checked, notChecked, risks, testsChanged, added?, faults?}: the receipt on its branch, pushed.
+
+Parent and child talk through the child's branch, never by message (utils/orchestra/work.py).
 
 The parent's check, accept and reject come in part 3."""
 from __future__ import annotations
@@ -151,12 +153,14 @@ class Started(McpAction):
         except ValueError as e:
             raise ActionError(str(e)) from e
         ticket = ctx.ports["plans"].ticket(sid)
-        checkin = (" This is the first child: set ONE check-in now, for a child that dies silently: "
-                   "mcp__claude-code-remote__send_later {\"delay_minutes\": 180, \"message\": \"Orchestra check-in: "
-                   "run('orchestra', 'digest', {}) and look at any child that has not handed back.\"}. "
-                   "Delete it when the plan is delivered.") if first else ""
+        checkin = (" This is the first child: set a check-in now, since no child messages you: "
+                   "mcp__claude-code-remote__send_later {\"delay_minutes\": 30, \"message\": \"Orchestra check-in: "
+                   "run('orchestra', 'digest', {}), check each child with a receipt or a question on its branch, and "
+                   "set the next check-in while a child still runs.\"}.") if first else ""
         return (f"Child {args['name']} runs in session {entry['sid']} ({len(crew.running(ticket))} of {crew.CAP} "
-                f"running). It hands back by itself and tells you with send_message; do not poll it.{checkin}")
+                "running). It talks only through its branch: it pushes its receipt, or a question, and stops; it "
+                "sends no message. run('orchestra', 'digest', {}) shows which child has something on its branch; "
+                f"then run('orchestra', 'check', {{name}}).{checkin}")
 
 
 class Status(McpAction):
@@ -222,15 +226,17 @@ class Push(McpAction):
 class Question(McpAction):
     """orchestra.question: a child's question for its parent."""
     block, name, effect = "orchestra", "question", WRITE
-    summary = "A child's question outside its card: kept, and the answer says what to send the parent with send_message"
+    summary = "A child's question outside its card: a note on its branch, pushed; then the child stops"
     args_schema = {"type": "object", "properties": {"question": {"type": "string"}}, "required": ["question"]}
-    needs = ("plans", "session")
+    needs = ("plans", "session", "commit_judge", "git_judge")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Keep the question on the child's ticket (utils/orchestra/work.ask). ActionError for a session that is no
-        child, or a question empty or longer than 400 characters."""
+        """Commit the question as a note on the child's branch and push it (utils/orchestra/work.ask). ActionError for
+        a session that is no child, a question empty or longer than 400 characters, no card plan, another branch, or a
+        rule that stops the commit or the push."""
         sid = session_of(ctx)
-        return child_run(lambda: work.ask(ctx.ports["plans"], sid, args["question"]))
+        return child_run(lambda: work.ask(ctx.ports["plans"], sid, args["question"], ctx.ports["commit_judge"],
+                                           ctx.ports["git_judge"]))
 
 
 class Handback(McpAction):
