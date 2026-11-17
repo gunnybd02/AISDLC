@@ -33,7 +33,7 @@ AskUserQuestion                          the user answers; only "Approve" to tha
                                          the approval opens the plan in one transaction (utils/plan/opening.py):
                                          rec_plans, pl_behaviors with tests, the ticket, pl_approval, the events
                                          approved and executing, pl_logs gate-open and form
-Write / Edit, or a write by the shell     allowed only for the files of the approved plan (detect/tracked.py, detect/planfiles.py)
+Write / Edit, or a write by the shell     allowed only for the files of the approved plan (detect/tracked.py, translate/planfiles.py)
 python3 anchor.py cli verify [--in F] [--timeout S] [-- cmd]  (or run("verify", "run", {plan})): the test command
                                          (after --, else the config's verify) of the session's plan, no shell, under
                                          a lock in the git common dir (shared with worktrees), with HARNESS_DB set to
@@ -97,8 +97,8 @@ What the gates refuse, so they always see what they judge:
   a shell expansion (`$ { } * ? [ ~ %`) is refused too, unless it is one plain git command that makes no commit.
   A first word that is git spelled another way (`g\it`) or `git-<subcommand>` is refused; a commit in a folder that
   does not exist is outside the plan.
-- The git rules (`gear/detect/git.py` on the git commands `gear/translate/git_cli.py` reads, rows in
-  `gear/rules/git.json`) hold only where a protected branch is touched (`protected` in `project.json`, main and master
+- The git rules (`gear/translate/git_rules.py` describes the git commands `gear/translate/git_cli.py` reads; when
+  rows in `gear/rules/git.json`) hold only where a protected branch is touched (`protected` in `project.json`, main and master
   by default): the repository is on one, a push names one or `--all`/`--mirror`, a `branch -d/-D/-f/-m` names one.
   There each one asks, never refuses: `git add -A`/`.` (P1), `--no-verify` or `commit -n` (P2), `reset --hard` (P3),
   a force push (P4), any write on the branch (P5), a push from the home (P6), agent files staged or pushed (P7), git
@@ -112,7 +112,7 @@ What the gates refuse, so they always see what they judge:
   `HarnessCommit`, `gear/translate/commit.py`): a secret in a line it adds (`gear/detect/secret.py`, commit.secret),
   an AI mark (AI co-author or footer, an AI tool's name or address, a robot emoji) or a Mermaid diagram in the message
   (`gear/detect/mark.py`, `utils/git/marks.py`, commit.ai_mark), a word of `banned` in `project.json`
-  (commit.banned_word), agent files in a unit's commit (`gear/detect/agent.py`, commit.agent_files). A write into
+  (commit.banned_word), agent files in a unit's commit (`gear/translate/agent.py`, commit.agent_files). A write into
   `.claude/rules/` (a skill instead), a `memory/` folder of `.claude` (a note instead) or the behaviour registry file
   (`add test` instead) is refused (agent.rules, agent.memory, agent.registry).
 - A plan path inside `.git`, with `~`, `%` or a comma, or a title with a double quote.
