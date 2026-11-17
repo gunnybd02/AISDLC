@@ -105,6 +105,27 @@ class ImportsNetTest(unittest.TestCase):
         self.assertEqual(joined(imports_net, self, {"harness/assemble/engine/loader.py": "import importlib\n"}), "")
 
 
+    def test_a_third_party_package_text_as_code_and_sys_path_are_reported(self):
+        files = {"harness/utils/a.py": "import requests\nfrom yaml import safe_load\nimport json\n",
+                 "harness/gear/b.py": "def f(text):\n    return eval(text)\n",
+                 "harness/mcp/c.py": "import sys\n\nsys.path.insert(0, '/x')\n",
+                 "harness/entry/hook.py": "import sys\n\nsys.path.insert(0, '/x')\n",  # an entry finds its code
+                 "harness/assemble/engine/loader.py": "def f(t):\n    return compile(t, 'x', 'exec')\n"}
+        self.assertEqual(imports_net.check(tree(self, files)), [
+            "imports: harness/gear/b.py:2 runs a text as code (eval)",
+            "imports: harness/mcp/c.py:3 sys.path is edited or read: modules are found by their package only",
+            "imports: harness/utils/a.py:1 imports requests, which is neither the standard library nor harness",
+            "imports: harness/utils/a.py:2 imports yaml.safe_load, which is neither the standard library nor harness"])
+
+    def test_an_entry_imports_only_the_named_wiring_modules(self):
+        files = {"harness/entry/cli.py": ("def main():\n    from harness.assemble.engine.cli_wire import run_cli\n"
+                                          "    from harness.assemble.engine.runner import Runner\n")}
+        found = imports_net.check(tree(self, files))
+        self.assertEqual(len(found), 1)
+        self.assertTrue(found[0].startswith("imports: harness/entry/cli.py:3 imports harness.assemble.engine.runner.Runner;"
+                                            " entry may import only harness.assemble.engine.build"), found[0])
+
+
 class BridgesNetTest(unittest.TestCase):
     def test_a_file_that_only_re_exports_is_reported(self):
         for text in ("from harness.gear.decide.arbiter import Decide\n",

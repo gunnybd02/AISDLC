@@ -1,10 +1,13 @@
 """imports: mcp and gear import only themselves and utils; utils imports no block; assemble connects them (it loads
 mcp and gear through its loader, the one place of a dynamic import, and imports the nets only inside a function, so
-they never load on a hook call); an entry (harness/entry/) imports only assemble. It also reports a file that does not parse, for every
-net."""
+they never load on a hook call); an entry (harness/entry/) imports only the named wiring modules (ENTRY_MODULES). Every
+import is the standard library or the harness, never a third-party package; no code runs from a text (a builtin exec,
+eval or compile), and sys.path is read or written only by the loader and the entries, which must find the code they
+run (spec 13 section 4.1). It also reports a file that does not parse, for every net."""
 from __future__ import annotations
 
 import ast
+import sys
 from pathlib import Path
 
 from harness.nets import files, module_level, read
@@ -15,11 +18,14 @@ ALLOWED = {
     "gear": ("harness.gear", "harness.utils"),
     "utils": ("harness.utils",),
     "assemble": ("harness.assemble", "harness.utils", "harness.nets"),
-    "entry": ("harness.assemble",),
+    "entry": ("harness.assemble.engine.build", "harness.assemble.engine.checks", "harness.assemble.engine.cli_install",
+              "harness.assemble.engine.cli_live", "harness.assemble.engine.cli_wire", "harness.assemble.engine.live_mcp"),
     "harness": (),
 }
 INTERNAL = ("harness", "entry")
 DYNAMIC_OK = ("harness/assemble/engine/loader.py", "harness/assemble/engine/live_mcp.py")
+STDLIB = set(sys.stdlib_module_names) | {"__future__"}
+TEXT_AS_CODE = ("exec", "eval", "compile")
 
 
 def owner(rel: str) -> str:
@@ -114,6 +120,16 @@ def check(claude_dir: Path) -> list[str]:
                 if name.split(".")[0] in INTERNAL and not under(name, ALLOWED.get(who, ())):
                     out.append(f"imports: {rel}:{node.lineno} imports {name}; {who} may import only "
                                f"{', '.join(ALLOWED.get(who, ())) or 'nothing of the harness'}")
+                elif name.split(".")[0] not in INTERNAL and name.split(".")[0] not in STDLIB:
+                    out.append(f"imports: {rel}:{node.lineno} imports {name}, which is neither the standard library "
+                               "nor harness")
             if rel not in DYNAMIC_OK and (dynamic(node) or any(n.split(".")[0] == "importlib" for n in names)):
                 out.append(f"imports: {rel}:{node.lineno} is a dynamic import; only assemble/loader.py loads by name")
+            if rel not in DYNAMIC_OK and isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
+                    and node.func.id in TEXT_AS_CODE:
+                out.append(f"imports: {rel}:{node.lineno} runs a text as code ({node.func.id})")
+            if rel not in DYNAMIC_OK and who != "entry" and isinstance(node, ast.Attribute) and node.attr == "path" \
+                    and isinstance(node.value, ast.Name) and node.value.id == "sys":
+                out.append(f"imports: {rel}:{node.lineno} sys.path is edited or read: modules are found by their "
+                           "package only")
     return out
