@@ -166,6 +166,18 @@ def judged_allow(verdict: Verdict) -> bool:
     return verdict.decision == ALLOW and bool(verdict.findings)
 
 
+def waived(verdict: Verdict) -> Verdict:
+    """The verdict while the user turned the guards off: nothing is held, and the findings are kept for the ledger.
+
+    Args:
+        verdict: the verdict the rules gave.
+
+    Returns:
+        An allow with the same findings and no reason.
+    """
+    return Verdict(ALLOW, "", verdict.findings)
+
+
 def asked(verdict: Verdict) -> bool:
     """Whether the rules want the user's word before the call runs.
 

@@ -2,13 +2,15 @@
 N minutes at most 120, as a row of the ledger written with its trace; it works when the harness itself is broken, and
 the model can neither answer the form nor ask for the grant around a broken harness."""
 import json
+import re
 import sqlite3
 import time
 import unittest
 
 from harness.utils.contracts import YES
 from harness.tests import CLAUDE_DIR, entry_of
-from harness.tests.e2e import WINDOWS_CONSOLE, copy_tree, run
+from harness.tests.e2e import WINDOWS_CONSOLE, copy_tree, git_repo, run
+from harness.tests.e2e.test_flow import CONFIG, Flow
 
 BROKEN = {"harness/assemble/engine/build.py": "raise RuntimeError('broken')\n"}
 Q = "Turn guards off for 15 min: fix harness?"
@@ -148,6 +150,52 @@ class GrantTest(unittest.TestCase):
 
     def test_a_working_harness_refuses_a_prefilled_form_too(self):
         self.assertEqual(hook(copy_tree(self), form(Q, "PreToolUse", prefilled=True))[0], 2)
+
+    def test_a_broken_harness_under_a_grant_passes_and_says_it_did_not_record(self):
+        hook(self.root, form(Q, answer=YES))
+        code, _, err = hook(self.root, write_call())
+        self.assertEqual(code, 0)
+        self.assertIn("not recorded", err)
+
+
+class RecordUnderGrantTest(unittest.TestCase):
+    """A grant lifts the checks, never the recording: a working harness records each call and keeps the user's
+    answers while the guards are off."""
+
+    def setUp(self):
+        self.root = copy_tree(self, {"project.json": json.dumps(CONFIG)})
+        self.repo = git_repo(self, {"a.py": "X = 1\n"})
+        self.flow = Flow(self.root, self.repo)
+        self.prompt("start")
+
+    def prompt(self, text):
+        hook(self.root, {"hook_event_name": "UserPromptSubmit", "prompt": text, "session_id": "flow",
+                         "cwd": str(self.repo)})
+
+    def test_a_prompt_and_a_call_the_rules_refuse_are_recorded_and_the_call_passes(self):
+        write_a = {"file_path": str(self.repo / "a.py"), "content": "X = 2\n"}
+        self.assertEqual(self.flow.decision("Write", write_a), "deny")
+        hook(self.root, form(Q, answer=YES))
+        self.prompt("go on")
+        self.assertEqual(self.flow.decision("Write", write_a), "allow")
+        self.assertEqual(rows(self.root, "SELECT text FROM pl_prompts WHERE sid = 'flow' ORDER BY n"),
+                         [("start",), ("go on",)])
+        self.assertEqual(rows(self.root, "SELECT status, name FROM pl_spans WHERE sid = 'flow' AND kind = 'gate' "
+                                         "ORDER BY rowid"), [("denied", "Write"), ("ok", "Write")])
+        words = [w for (w,) in rows(self.root, "SELECT verdict FROM act_rule_decisions WHERE sid = 'flow' AND "
+                                               "tool = 'Write' ORDER BY rowid")]
+        self.assertIn("allow", words)  # the findings are kept, with the word Claude Code was given
+        self.assertIn("deny", words)
+
+    def test_a_plan_approved_while_the_guards_are_off_is_kept(self):
+        hook(self.root, form(Q, answer=YES))
+        out = self.flow.mcp("plan", "plan_present", {"plan": {"title": "Set X", "what": ["X becomes 2"],
+                                                              "files": ["a.py"]}})
+        q = re.search(r'Approve plan "Set X" \((pd-[0-9a-z]+-[0-9a-f]{6}) rev 1\)\?(?= Header)', out).group(0)
+        plan_form = {"questions": [{"question": q, "options": [{"label": "Approve"}, {"label": "Change plan"}]}]}
+        note = self.flow.hook("PostToolUse", "AskUserQuestion", plan_form, {"answers": {q: "Approve"}})
+        self.assertIn("approved", note["additionalContext"])
+        self.assertNotIn("waiting", self.flow.mcp("plan", "plan_status", {}).splitlines()[0])
 
 
 if __name__ == "__main__":

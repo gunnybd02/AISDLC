@@ -6,7 +6,8 @@ Before the harness is even imported, this file (standard library only, entry_net
 - the user's approval word to the form 'Turn guards off for N min: <why>?' (read from the PostToolUse of
   AskUserQuestion, which the model cannot write) turns every guard off for N minutes, at most 120: a pl_notes row of
   kind maint.grant, written in one transaction with its trace in pl_logs;
-- while a grant lasts, each call passes without the harness and is traced in pl_logs;
+- while a grant lasts, each call passes and is traced in pl_logs; the harness still records it and keeps the user's
+  answers, with nothing held (run_hook with waive), and a broken harness only says on stderr that it did not record;
 - AskUserQuestion is answered here: refused when the model filled the answers in or built a question to look like an
   answer ('"="' in it), let through otherwise even when the harness is broken, so the user can always be asked.
 - A form not shaped as one (questions and options that are not lists of objects) is refused too, and any error while
@@ -271,6 +272,27 @@ def answer(context: Optional[str] = None) -> int:
     return 0
 
 
+def recorded(raw: str) -> int:
+    """A call while the guards are off: the harness records it and keeps the user's answers, and nothing is held
+    (run_hook with waive). A broken harness only says so on stderr: the call still passes.
+
+    Args:
+        raw: the hook's payload.
+
+    Returns:
+        0, the exit code: the call goes on.
+    """
+    try:
+        sys.path.insert(0, str(CODE_DIR))
+        from harness.assemble.engine.build import run_hook
+        out = run_hook(raw, CLAUDE_DIR, waive=True)
+    except BaseException as e:
+        say(f"harness: the guards are off and this call was not recorded: {type(e).__name__}: {e}")
+        return 0
+    sys.stdout.buffer.write(out.encode("utf-8"))
+    return 0
+
+
 def main() -> int:
     """Answer one hook call: a form checked here, a grant kept or used, else the harness's own answer (run_hook).
 
@@ -303,7 +325,7 @@ def main() -> int:
                 trace(con, "passed", data)
             finally:
                 con.close()
-            return 0
+            return recorded(raw)
         sys.path.insert(0, str(CODE_DIR))
         from harness.assemble.engine.build import run_hook
         out = run_hook(raw, CLAUDE_DIR)
