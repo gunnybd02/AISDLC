@@ -91,6 +91,14 @@ class RecipeTest(unittest.TestCase):
             "pipeline old: extends is not allowed: a pipeline is self-contained; the floor runs under it by itself",
             "pipeline ui: unknown detector nope"])
 
+    def test_the_doctor_checks_the_unit_to_pipeline_map(self):
+        from harness.assemble.engine.checks import pipelines
+        units = {"api": {"pipeline": "backend"}, "web": {"pipeline": "base"}, "docs": {}}
+        home = copy_tree(self, {"project.json": json.dumps({"name": "x", "units": units})})
+        self.assertEqual(pipelines(home), ["unit api: its pipeline backend has no file in assemble/pipelines"])
+        (home / "harness/assemble/pipelines/backend.json").write_text(json.dumps({"detectors": ["secret_scan"]}))
+        self.assertEqual(pipelines(home), [])
+
 
 if __name__ == "__main__":
     unittest.main()

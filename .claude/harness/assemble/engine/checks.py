@@ -38,7 +38,8 @@ def doctor(claude_dir: str | Path = CLAUDE_DIR) -> list[str]:
 
 
 def pipelines(claude_dir: Path) -> list[str]:
-    """Every pipeline file that does not read, names extends, or names a gear no block declares (spec 13 section 7).
+    """Every pipeline file that does not read, names extends, or names a gear no block declares (spec 13 section 7), and
+    every unit of project.json that names a pipeline with no file (section 11.6).
 
     Args:
         claude_dir: the home, the .claude folder.
@@ -49,7 +50,13 @@ def pipelines(claude_dir: Path) -> list[str]:
     items = items_of(claude_dir)
     known = {"translators": {n for n, i in items.items() if i.kind == "translator"},
              "detectors": {n for n, i in items.items() if i.kind == "detector"}}
-    return PipelineBook(code_of(claude_dir) / "harness" / "assemble" / "pipelines").problems(known)
+    book = PipelineBook(code_of(claude_dir) / "harness" / "assemble" / "pipelines")
+    try:
+        mapped = Config.load(claude_dir).pipelines()
+    except ConfigError:
+        mapped = {}  # the build check names a config that does not load
+    return book.problems(known) + [f"unit {unit}: its pipeline {name} has no file in assemble/pipelines"
+                                   for unit, name in sorted(mapped.items()) if name not in book.names()]
 
 
 def built(claude_dir: Path) -> list[str]:
