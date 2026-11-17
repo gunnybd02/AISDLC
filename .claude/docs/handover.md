@@ -68,8 +68,9 @@ session cannot read the old chat; it reads this file. The frame of every plan is
 | #51 | Spec 13 gaps closed: a broken harness blocks only a tool call; a gear fault is a verdict (`gear.fault`, `gear.fault_after`); the english net; the imports net refuses third-party packages, code from text, `sys.path` use and unnamed entry imports; fitness tests for a new detector (4 files) and a new action (1 file) |
 | #52 | Pipelines stand alone (spec 13 section 7): `extends` is refused, the engine puts the floor under a plan's pipeline, the doctor reads every pipeline file and names unknown gears |
 | #53 | A unit's pipeline comes from the config (spec 13 section 11.6): `units.<name>.pipeline` in `project.json`; a plan runs the floor plus the pipelines of its services; the doctor names a unit whose pipeline has no file |
+| #54 | When rows (spec 13 section 7): a row `code, verdict, why, when, test` matches the facts of rule actions; translators declare their vocabulary (READS for the port facts they read); the git rules are when rows, `gear/detect/git.py` gone, every git verdict and message kept; a stricter row (a force push anywhere) needs no Python |
 
-527 tests pass (1 skipped, Windows only); doctor: 0 errors.
+531 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 ## The cloud, as it runs now
 

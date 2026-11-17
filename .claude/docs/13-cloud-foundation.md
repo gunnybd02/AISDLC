@@ -68,7 +68,7 @@ not a policy) and `DEAD_AFTER` (6 hours: a guess of when a session no longer run
 
 | Spec | Here | Why it differs |
 |---|---|---|
-| A rule row is `code, verdict, reason, when`, with facts from a declared vocabulary | A row is `finding, verdict, why, test`: detectors make named findings, rows judge them | Proposed, not yet decided by the user: the detectors of command policy (git, commit, planfiles, agent, action, child, drive) move their conditions into `when` rows, git first; content and state detectors (secret, mark, tracked, stop, store, forms) stay detectors, as the spec has them |
+| A rule row is `code, verdict, reason, when`, with facts from a declared vocabulary | Both kinds of row: **when rows** for what translators describe (the git rules since PR 54: `gear/translate/git_rules.py` gives each git command's facts, `gear/rules/git.json` says when each rule applies), and **finding rows** for what detectors find in content or state | The other command-policy detectors (commit, planfiles, agent, action, child, drive) still decide their condition in Python; proposed: one plan each. Content and state detectors (secret, mark, tracked, stop, store, forms) stay detectors, as spec 13 has them |
 
 ## 5. Still open (from the check of 2026-11-17)
 
@@ -76,7 +76,7 @@ not a policy) and `DEAD_AFTER` (6 hours: a guess of when a session no longer run
   themselves still sit in `utils`, one place per answer.
 - **Refusals in code.** `utils/plan` and `utils/orchestra` refuse in code (`raise ...Error`) where the hook path refuses
   through rule rows. Many are input checks; which are policy is not yet sorted.
-- Rule rows keyed by `when` facts (section 4): a proposal for the user to decide.
+- The other command-policy detectors as `when` rows (section 4): one plan each, for the user to decide.
 
 Closed on 2026-11-17 (PR 51): the hook's failure policy, gear faults as verdicts, the english net, the whole imports
-rule, and the fitness tests. Closed by PR 52: pipelines stand alone; by PR 53: a unit's pipeline comes from the config.
+rule, and the fitness tests. Closed by PR 52: pipelines stand alone; by PR 53: a unit's pipeline comes from the config; by PR 54: the git rules are when rows.
