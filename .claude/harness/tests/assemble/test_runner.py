@@ -11,7 +11,7 @@ from harness.assemble.engine.pipeline import PipelineBook, PipelineError
 from harness.assemble.engine.runner import Runner, RunnerError
 from harness.assemble.engine.select import select
 from harness.gear.decide.arbiter import Decide
-from harness.utils.contracts import ALLOW, ASK, Detector, Event, Finding, Port, Translator
+from harness.utils.contracts import ALLOW, ASK, REFUSE, Detector, Event, Finding, Port, Translator
 from harness.tests import CLAUDE_DIR, tree
 from harness.tests.e2e import copy_tree
 
@@ -36,6 +36,16 @@ class SeesPort(Detector):
         return [Finding("port.seen")] if facts.get("port_tool") == "Edit" else []
 
 
+class Breaks(Detector):
+    def detect(self, event, facts):
+        raise KeyError("boom")
+
+
+class GivesNoDict(Translator):
+    def translate(self, event):
+        return ["not facts"]
+
+
 class Notes:
     def run(self, event, facts, verdict):
         return [f"{event.tool}:{verdict.decision}"]
@@ -50,6 +60,22 @@ class RunnerTest(unittest.TestCase):
     def test_ports_give_facts_and_act_runs_after_decide(self):
         out = Runner([Kind()], [SeesPort()], Decide({}), ports=[ToolPort()], act=Notes()).run(Event("PreToolUse", "Edit"))
         self.assertEqual((out.verdict.decision, out.notes), (ASK, ("Edit:" + ASK,)))
+
+    def test_a_gear_fault_is_a_verdict_never_a_crash(self):
+        rules = Decide.load(CLAUDE_DIR)  # the real rows: gear.fault refuses, gear.fault_after allows
+        before = Runner([Kind()], [Breaks()], rules).run(Event("PreToolUse", "Bash"))
+        self.assertEqual(before.verdict.decision, REFUSE)  # fail closed before a tool call
+        self.assertIn("Breaks: KeyError", before.verdict.reason)
+        self.assertEqual([f.kind for f in before.verdict.findings], ["gear.fault"])
+        for kind in ("Stop", "PostToolUse", "UserPromptSubmit"):
+            after = Runner([Kind()], [Breaks()], rules).run(Event(kind, "Bash"))
+            self.assertEqual(after.verdict.decision, ALLOW, kind)  # a broken gear never holds a turn
+        bad = Runner([GivesNoDict()], [], rules).run(Event("PreToolUse", "Bash"))
+        self.assertEqual(bad.verdict.findings[0].kind, "gear.fault")
+        self.assertIn("not a dict of facts", bad.verdict.reason)
+        both = Runner([Kind()], [Breaks(), SeesBash()], Decide({"tool.bash": {"verdict": REFUSE, "why": "no bash"},
+                                                                 **rules.rules})).run(Event("Stop", "Bash"))
+        self.assertEqual(both.verdict.decision, REFUSE)  # another detector's refusal still stands
 
     def test_two_translators_giving_the_same_fact_is_an_error(self):
         with self.assertRaises(RunnerError):

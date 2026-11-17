@@ -65,8 +65,9 @@ session cannot read the old chat; it reads this file. The frame of every plan is
 | #47 | Parent and child talk through git, never by message (`05b-orchestra-cloud.md` 2b): a cloud child cannot message its parent (live checks 2026-11-17). A question and the receipt are pushed on the child's branch and the child stops; `reject` and `answer` push a note there and `spawn` opens a fresh session that reads it, its rounds kept. The `peer` span reads the notifications answer's strings, not its JSON text |
 | #49 | Leftovers of talking through git: `started` points to `check`; the store step sends no message; `check` shows a question a child pushed |
 | #50 | One owner per concept (`13-cloud-foundation.md`): `now`, `session_of`, `answered`, `ProblemsError` in contracts; one reader of the plan in force; the **owners net** (copied bodies, `ports.get` in actions, `run(...)` naming no action); orchestra `limits` {children, rounds} in `project.json` |
+| #51 | Spec 13 gaps closed: a broken harness blocks only a tool call; a gear fault is a verdict (`gear.fault`, `gear.fault_after`); the english net; the imports net refuses third-party packages, code from text, `sys.path` use and unnamed entry imports; fitness tests for a new detector (4 files) and a new action (1 file) |
 
-517 tests pass (1 skipped, Windows only); doctor: 0 errors.
+524 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 ## The cloud, as it runs now
 

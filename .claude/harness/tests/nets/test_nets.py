@@ -1,11 +1,12 @@
 """h1.blocks-and-nets: each net finds its break in a fake tree and nothing in the real one."""
 import unittest
 
-from harness.nets import (bridges_net, config_net, entry_net, hints_net, imports_net, layout_net, owners_net,
-                          size_net, verdict_net)
+from harness.nets import (bridges_net, config_net, english_net, entry_net, hints_net, imports_net, layout_net,
+                          owners_net, size_net, verdict_net)
 from harness.tests import CLAUDE_DIR, tree
 
-NETS = (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net, entry_net, hints_net, owners_net)
+NETS = (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net, entry_net, hints_net, owners_net,
+        english_net)
 
 
 def joined(net, test, files):
@@ -102,6 +103,27 @@ class ImportsNetTest(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertIn("dynamic", joined(imports_net, self, {"harness/assemble/runner.py": text + "\n"}))
         self.assertEqual(joined(imports_net, self, {"harness/assemble/engine/loader.py": "import importlib\n"}), "")
+
+
+    def test_a_third_party_package_text_as_code_and_sys_path_are_reported(self):
+        files = {"harness/utils/a.py": "import requests\nfrom yaml import safe_load\nimport json\n",
+                 "harness/gear/b.py": "def f(text):\n    return eval(text)\n",
+                 "harness/mcp/c.py": "import sys\n\nsys.path.insert(0, '/x')\n",
+                 "harness/entry/hook.py": "import sys\n\nsys.path.insert(0, '/x')\n",  # an entry finds its code
+                 "harness/assemble/engine/loader.py": "def f(t):\n    return compile(t, 'x', 'exec')\n"}
+        self.assertEqual(imports_net.check(tree(self, files)), [
+            "imports: harness/gear/b.py:2 runs a text as code (eval)",
+            "imports: harness/mcp/c.py:3 sys.path is edited or read: modules are found by their package only",
+            "imports: harness/utils/a.py:1 imports requests, which is neither the standard library nor harness",
+            "imports: harness/utils/a.py:2 imports yaml.safe_load, which is neither the standard library nor harness"])
+
+    def test_an_entry_imports_only_the_named_wiring_modules(self):
+        files = {"harness/entry/cli.py": ("def main():\n    from harness.assemble.engine.cli_wire import run_cli\n"
+                                          "    from harness.assemble.engine.runner import Runner\n")}
+        found = imports_net.check(tree(self, files))
+        self.assertEqual(len(found), 1)
+        self.assertTrue(found[0].startswith("imports: harness/entry/cli.py:3 imports harness.assemble.engine.runner.Runner;"
+                                            " entry may import only harness.assemble.engine.build"), found[0])
 
 
 class BridgesNetTest(unittest.TestCase):
@@ -238,6 +260,19 @@ class OwnersNetTest(unittest.TestCase):
                  "harness/utils/x.py": 'HINT = "then run(\'plan\', \'plan_show\') or run(\'orchestra\', \'nope\', {name})"\n'}
         self.assertEqual(owners_net.check(tree(self, files)),
                          ["owners: harness/utils/x.py:1 tells the model run('orchestra', 'nope'), which is no action"])
+
+
+
+class EnglishNetTest(unittest.TestCase):
+    def test_a_foreign_letter_is_reported_a_symbol_or_an_escape_is_not(self):
+        files = {"docs/a.md": "# Notes\n\nApprove \u2192 go \u2714\n\"Duy\u1ec7t\"\n",
+                 "harness/utils/a.py": 'WORD = "caf\\u00e9"  # an escape is free\nNAME = "caf\u00e9"\n',
+                 "harness/tests/utils/test_a.py": 'TEXT = "Duy\u1ec7t"\n',  # the tests are free
+                 "harness/utils/b.txt": "\u00fc\n"}
+        self.assertEqual(english_net.check(tree(self, files)), [
+            "english: docs/a.md: line 4 holds a letter outside ASCII (U+1EC7); write English, or an escape",
+            "english: harness/utils/a.py: line 2 holds a letter outside ASCII (U+00E9); write English, or an escape",
+            "english: harness/utils/b.txt: line 1 holds a letter outside ASCII (U+00FC); write English, or an escape"])
 
 
 class ConfigNetTest(unittest.TestCase):

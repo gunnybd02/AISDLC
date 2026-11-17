@@ -1,0 +1,16 @@
+{
+ "rules": [
+  {
+   "finding": "gear.fault",
+   "verdict": "refuse",
+   "why": "A part of the harness failed while judging this call, so the call is refused (fail closed); the failure is on stderr. Try again, or tell the user the harness needs a fix.",
+   "test": "harness/tests/assemble/test_runner.py#test_a_gear_fault_is_a_verdict_never_a_crash"
+  },
+  {
+   "finding": "gear.fault_after",
+   "verdict": "allow",
+   "why": "A part of the harness failed after a call; nothing is held, and the failure is on stderr.",
+   "test": "harness/tests/assemble/test_runner.py#test_a_gear_fault_is_a_verdict_never_a_crash"
+  }
+ ]
+}

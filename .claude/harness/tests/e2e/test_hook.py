@@ -64,6 +64,14 @@ class HookEntryTest(unittest.TestCase):
         self.assertEqual((code, out), (2, ""))
         self.assertIn("broken", err)
 
+    def test_a_broken_harness_blocks_only_a_tool_call(self):
+        root = copy_tree(self, {"harness/assemble/engine/build.py": "raise RuntimeError('broken')\n"})
+        self.assertEqual(hook(root, {k: v for k, v in PAYLOAD.items() if k != "hook_event_name"})[0], 2)
+        for kind in ("Stop", "PostToolUse", "UserPromptSubmit"):
+            code, out, err = hook(root, {**PAYLOAD, "hook_event_name": kind})
+            self.assertEqual((code, out), (0, ""), kind)  # a broken harness never holds a turn's end or a prompt
+            self.assertIn("harness hook failed, nothing is held: RuntimeError: broken", err)
+
     def test_a_harness_that_exits_quietly_still_blocks(self):
         root = copy_tree(self, {"harness/assemble/engine/build.py": "raise SystemExit(0)\n"})
         self.assertEqual(hook(root, PAYLOAD)[0], 2)

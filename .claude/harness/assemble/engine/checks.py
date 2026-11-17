@@ -22,8 +22,8 @@ def doctor(claude_dir: str | Path = CLAUDE_DIR) -> list[str]:
     Returns:
         One line per problem; [] when the tree is clean.
     """
-    from harness.nets import (bridges_net, config_net, entry_net, hints_net, imports_net, layout_net, owners_net,
-                              size_net, verdict_net)
+    from harness.nets import (bridges_net, config_net, english_net, entry_net, hints_net, imports_net, layout_net,
+                              owners_net, size_net, verdict_net)
     claude_dir = Path(claude_dir)
     problems = Loader(code_of(claude_dir)).problems()
     if not problems:
@@ -31,7 +31,7 @@ def doctor(claude_dir: str | Path = CLAUDE_DIR) -> list[str]:
     problems += real_ledger(claude_dir)
     problems += chains(claude_dir)
     for net in (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net, entry_net, hints_net,
-                owners_net):
+                owners_net, english_net):
         problems += net.check(code_of(claude_dir))
     return problems
 

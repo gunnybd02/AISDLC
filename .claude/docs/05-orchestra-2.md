@@ -125,7 +125,7 @@ The brief contains paths and criteria only, never code or secrets. In order, it 
    - with a card plan: call `take` first. The brief gives the behaviour ids of AC1, AC2 and so on. Never present a plan.
      Never enter the worktree with the Claude Code feature; edit by absolute path.
    - without a card plan: present its own plan; the harness approves it inside the grant.
-4. **Nobody is at this keyboard:** never call AskUserQuestion, never wait for "Duyệt".
+4. **Nobody is at this keyboard:** never call AskUserQuestion, never wait for "Approve".
 5. **Permissions:** the actions the user approved for it (push), or "No push or MR is approved for you."
 6. **Questions:** anything outside its part, or a plan the grant does not open, goes through `ask`. The reply comes as a
    message.
