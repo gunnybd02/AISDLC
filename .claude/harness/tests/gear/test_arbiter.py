@@ -36,6 +36,17 @@ class WhenRowTest(unittest.TestCase):
         self.assertEqual(v.decision, REFUSE)
         self.assertEqual(judge.decide(found[:1]).reason, "because (git push -f)")
 
+    def test_a_kind_keeps_rows_apart_and_an_unjudged_action_is_asked(self):
+        judge = Decide.load(CLAUDE_DIR, rules(self, when_row("git.force_push", ASK, {"kind": "git", "force": True}),
+                                              when_row("action.plan.step_done", ALLOW, {"kind": "mcp_action",
+                                                                                         "name": "plan.step_done"})))
+        self.assertEqual(judge.matched([{"kind": "drive", "force": True}]), [])  # another kind: no match
+        unjudged = judge.matched([{"kind": "mcp_action", "name": "plan.new", "must_match": True, "detail": "plan.new"}])
+        self.assertEqual(unjudged, [Finding("rule.unmatched", "mcp_action: plan.new")])
+        self.assertEqual(judge.decide(unjudged).decision, ASK)  # no row names it: asked, never allowed
+        self.assertEqual(judge.matched([{"kind": "mcp_action", "name": "plan.step_done", "must_match": True}]),
+                         [Finding("action.plan.step_done", "")])
+
     def test_a_when_row_is_checked_when_it_loads(self):
         good = when_row("git.force_push", ASK, {"force": True})
         cases = {"unknown fact": [when_row("x.y", ASK, {"forse": True})],

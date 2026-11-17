@@ -195,6 +195,7 @@ class GitRulesTest(unittest.TestCase):
             with self.subTest(kind=kind):
                 self.assertEqual(codes[kind]["verdict"], "ask")
                 self.assertTrue(codes[kind]["when"]["protected"])  # every git rule holds only on a protected branch
+                self.assertEqual(codes[kind]["when"]["kind"], "git")  # a git rule never matches another kind
                 self.assertIn("run('git', 'run'", codes[kind]["why"])
         base = PipelineBook(CLAUDE_DIR / "harness" / "assemble" / "pipelines").resolve("base")
         self.assertIn("git_rules", base.translators)
