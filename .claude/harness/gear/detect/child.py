@@ -9,7 +9,7 @@ The port's child_role (() -> the session's ChildRole or None) says whether the s
 call before it runs (one read of the session's ticket)."""
 from __future__ import annotations
 
-from harness.gear.detect.git import push_parts
+from harness.gear.translate.git_rules import push_parts
 from harness.utils.contracts import Detector, Event, Finding
 from harness.utils.shapes import Facts
 

@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from harness.gear.detect.git import agent_file
+from harness.gear.translate.git_rules import agent_file
 from harness.utils.contracts import Detector, Event, Finding
 from harness.utils.shapes import Facts
 

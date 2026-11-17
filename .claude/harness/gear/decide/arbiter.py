@@ -4,8 +4,13 @@ in the question. No finding: allow.
 A finding of IN_PLACE_OF_ASK stands in for a person who is not there (child.no_keyboard: a child session, whose keyboard
 nobody watches): it counts only when the other findings would ask, and then its row's verdict replaces the question.
 
-A rule row: {"finding": kind, "verdict": allow|ask|refuse, "why": the sentence shown, "test": "harness/tests/<file>.py#<test>"};
-a row whose test is not a test function under harness/tests/ does not load."""
+A finding row: {"finding": kind, "verdict": allow|ask|refuse, "why": the sentence shown, "test":
+"harness/tests/<file>.py#<test>"}; it judges what a detector found (in content, or in a state).
+A when row (spec 13 section 7): {"code", "verdict", "why", "when": {fact: value or [values]}, "test"}; it judges the
+rule actions translators give (RULE_ACTIONS): it matches an action whose facts equal every key of when (a list means
+any of), and a match is a finding of its code, the action's detail in brackets. A when row names only facts of the
+vocabulary the translators declare, when one is given. A code or finding is one row across both kinds; a row whose test
+is not a test function under harness/tests/ does not load."""
 from __future__ import annotations
 
 import json
@@ -17,6 +22,8 @@ from harness.utils.contracts import ALLOW, ASK, Finding, ProblemsError, VERDICTS
 
 RULES = ("harness", "gear", "rules")  # under the .claude folder
 FIELDS = ("finding", "verdict", "why", "test")
+WHEN_FIELDS = ("code", "verdict", "why", "when", "test")
+VALUE = (str, bool, int)
 IN_PLACE_OF_ASK = ("child.no_keyboard",)
 TEST = re.compile(r"^harness/tests/(?:[A-Za-z_][\w]*/)*test_\w+\.py#test_\w+$")
 
@@ -37,29 +44,35 @@ class RuleError(ProblemsError):
 class Decide:
     """The judge: turns the findings of a hook call into one verdict by the rule rows."""
 
-    def __init__(self, rules: dict[str, RuleRow]) -> None:
+    def __init__(self, rules: dict[str, RuleRow], when_rows: Optional[list[dict[str, Any]]] = None) -> None:
         """Keep the rule rows.
 
         Args:
             rules: {finding kind: its rule row}.
+            when_rows: the when rows, in the order of their files; None for none.
         """
         self.rules = rules  # {finding kind: row}
+        self.when_rows = list(when_rows or [])
+        self.codes = {row["code"]: row for row in self.when_rows}
 
     @classmethod
-    def load(cls, claude_dir: str | Path, rules_dir: Optional[str | Path] = None) -> Decide:
+    def load(cls, claude_dir: str | Path, rules_dir: Optional[str | Path] = None,
+             vocabulary: Optional[set[str]] = None) -> Decide:
         """Load every rules file (*.json) of the rules folder into a judge.
 
         Args:
             claude_dir: the .claude folder; the rows' tests are looked up under it.
             rules_dir: the folder of the rules files; None for <claude_dir>/harness/gear/rules.
+            vocabulary: the facts the translators of the pipeline declare; a when row naming another does not load.
+                None leaves the facts unchecked.
 
         Returns:
-            A Decide holding every row, by finding kind.
+            A Decide holding every finding row by kind and every when row.
 
         Raises:
-            RuleError: a file that is not a rules file, a bad row, or two rows for the same finding.
+            RuleError: a file that is not a rules file, a bad row, or two rows for the same finding or code.
         """
-        rules, problems = {}, []
+        rules, when_rows, problems = {}, [], []
         for path in sorted(Path(rules_dir or Path(claude_dir).joinpath(*RULES)).glob("*.json")):
             try:
                 rows = json.loads(path.read_text(encoding="utf-8-sig"))["rules"]
@@ -70,16 +83,87 @@ class Decide:
                 problems.append(f"{path.name}: rules is a list of rows")
                 continue
             for n, row in enumerate(rows, 1):
-                why = Decide.row_problem(row, Path(claude_dir))
+                when = isinstance(row, dict) and "when" in row
+                why = Decide.when_problem(row, Path(claude_dir), vocabulary) if when else \
+                    Decide.row_problem(row, Path(claude_dir))
+                key = row.get("code" if when else "finding") if not why else ""
                 if why:
                     problems.append(f"{path.name} rule {n}: {why}")
-                elif row["finding"] in rules:
-                    problems.append(f"{path.name} rule {n}: the finding {row['finding']} has a rule already")
+                elif key in rules or any(r["code"] == key for r in when_rows):
+                    problems.append(f"{path.name} rule {n}: {key} has a rule already")
+                elif when:
+                    when_rows.append(row)
                 else:
-                    rules[row["finding"]] = row
+                    rules[key] = row
         if problems:
             raise RuleError(problems)
-        return cls(rules)
+        return cls(rules, when_rows)
+
+    @staticmethod
+    def when_problem(row: dict[str, Any], claude_dir: Path, vocabulary: Optional[set[str]]) -> str:
+        """What is wrong with one when row, or "".
+
+        Args:
+            row: the row as read.
+            claude_dir: the .claude folder the row's test path is read from.
+            vocabulary: the facts a when may name; None for any.
+
+        Returns:
+            "" for a good row; else why it does not load.
+        """
+        if sorted(row) != sorted(WHEN_FIELDS) or not all(isinstance(row[k], str) for k in WHEN_FIELDS if k != "when"):
+            return f"a when row's fields are exactly {', '.join(WHEN_FIELDS)}; all but when are strings"
+        when = row["when"]
+        if not isinstance(when, dict) or not when or not all(
+                isinstance(v, VALUE) or (isinstance(v, list) and v and all(isinstance(x, VALUE) for x in v))
+                for v in when.values()):
+            return "when is an object of facts, each a value or a list of values"
+        unknown = sorted(set(when) - vocabulary) if vocabulary is not None else []
+        if unknown:
+            return f"when names {', '.join(unknown)}, which no translator declares"
+        return Decide.row_problem({"finding": row["code"], **{k: row[k] for k in ("verdict", "why", "test")}}, claude_dir)
+
+    @staticmethod
+    def matches(when: dict[str, Any], facts: dict[str, Any]) -> bool:
+        """Whether an action's facts meet a when: every key equal (a list: any of its values).
+
+        Args:
+            when: the row's when.
+            facts: the rule action's facts.
+
+        Returns:
+            True when every key matches.
+        """
+        return all(k in facts and any(facts[k] == x and type(facts[k]) is type(x)
+                                      for x in (v if isinstance(v, list) else [v])) for k, v in when.items())
+
+    def matched(self, actions: list[dict[str, Any]]) -> list[Finding]:
+        """The findings of the when rows the rule actions meet: one per row and action, the action's detail kept.
+
+        Args:
+            actions: the rule actions of the event (RULE_ACTIONS), each its facts, and an optional detail or details
+                by fact.
+
+        Returns:
+            Finding(code, detail) for each match, in the order of the actions, then of the rows.
+        """
+        return [Finding(row["code"], self.detail_of(row["when"], action)) for action in actions
+                if isinstance(action, dict) for row in self.when_rows if self.matches(row["when"], action)]
+
+    @staticmethod
+    def detail_of(when: dict[str, Any], action: dict[str, Any]) -> str:
+        """The words a match shows in brackets: the detail of the first fact of the when that has one (details), else
+        the action's detail.
+
+        Args:
+            when: the matched row's when.
+            action: the rule action.
+
+        Returns:
+            The detail, "" when there is none.
+        """
+        details = action.get("details") if isinstance(action.get("details"), dict) else {}
+        return str(next((details[k] for k in when if k in details), action.get("detail", "")))
 
     @staticmethod
     def row_problem(row: Any, claude_dir: Path) -> str:
@@ -140,7 +224,7 @@ class Decide:
             question naming the finding when no row names it.
         """
         detail = f" ({finding.detail})" if finding.detail else ""
-        row = self.rules.get(finding.kind)
+        row = self.rules.get(finding.kind) or self.codes.get(finding.kind)
         if row is None:
             return ASK, f"no rule for the finding {finding.kind}{detail}: allow it?"
         return row["verdict"], row["why"] + detail

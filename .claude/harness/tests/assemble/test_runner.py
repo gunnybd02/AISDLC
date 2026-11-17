@@ -46,6 +46,22 @@ class GivesNoDict(Translator):
         return ["not facts"]
 
 
+class PushAction(Translator):
+    VOCABULARY = ("sub", "force")
+
+    def translate(self, event):
+        return {"rule_actions": [{"sub": "push", "force": True, "detail": "one"}]}
+
+
+class SeesView(Translator):
+    READS = ("port_tool",)
+    VOCABULARY = ("sub", "force")
+
+    def translate(self, event, facts=None):
+        return {"rule_actions": [{"sub": "push", "force": facts.get("port_tool") == "Bash", "detail": "two"}],
+                "seen": dict(facts)}
+
+
 class Notes:
     def run(self, event, facts, verdict):
         return [f"{event.tool}:{verdict.decision}"]
@@ -76,6 +92,15 @@ class RunnerTest(unittest.TestCase):
         both = Runner([Kind()], [Breaks(), SeesBash()], Decide({"tool.bash": {"verdict": REFUSE, "why": "no bash"},
                                                                  **rules.rules})).run(Event("Stop", "Bash"))
         self.assertEqual(both.verdict.decision, REFUSE)  # another detector's refusal still stands
+
+    def test_rule_actions_of_every_giver_are_judged_by_the_when_rows(self):
+        from harness.tests.gear.test_arbiter import rules, when_row
+        judge = Decide.load(CLAUDE_DIR, rules(self, when_row("git.force_push", ASK, {"sub": "push", "force": True})),
+                            vocabulary={"sub", "force"})
+        out = Runner([PushAction(), SeesView()], [], judge, ports=[ToolPort()]).run(Event("PreToolUse", "Bash"))
+        self.assertEqual(out.verdict.decision, ASK)
+        self.assertEqual([(f.kind, f.detail) for f in out.verdict.findings],
+                         [("git.force_push", "one"), ("git.force_push", "two")])  # both givers' actions, judged
 
     def test_two_translators_giving_the_same_fact_is_an_error(self):
         with self.assertRaises(RunnerError):

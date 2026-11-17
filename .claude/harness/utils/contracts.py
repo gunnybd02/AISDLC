@@ -15,6 +15,7 @@ CLAUDE_DECISION = {ASK: "ask", REFUSE: "deny"}  # what Claude Code reads; allow 
 PERMISSIONS_KEY = "allow"  # the list of allowed tools in Claude Code's settings.json (permissions), not a verdict
 YES = "Approve"  # the user's word in a form that approves (a plan, a grant)
 NO_SESSION = "no session: the harness has not seen this session's prompt yet"
+RULE_ACTIONS = "rule_actions"  # the fact list of rule actions every giver may add to; when rows judge them (spec 13)
 
 
 
@@ -57,7 +58,11 @@ class Verdict:
 
 
 class Translator(ABC):
-    """Describes what a tool call does, as facts; it never judges."""
+    """Describes what a tool call does, as facts; it never judges. READS names the facts of the ports it is given (as
+    a second argument of translate); VOCABULARY names the facts of the rule actions it gives (RULE_ACTIONS), the only
+    facts a when row may name (gear/decide/arbiter.py)."""
+    READS: tuple[str, ...] = ()
+    VOCABULARY: tuple[str, ...] = ()
 
     @abstractmethod
     def translate(self, event: Event) -> Facts:
