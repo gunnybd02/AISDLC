@@ -6,7 +6,8 @@ from harness.tests import CLAUDE_DIR
 
 BLOCKS = ("hooks", "gear", "mcp", "assemble", "utils")
 OTHERS = ("nets", "e2e")
-NAMED = {"mcp/test_action_registry.py"}  # the registry pin, by the name docs/mcp.md gives it
+NAMED = {"mcp/test_action_registry.py",  # the registry pin, by the name docs/mcp.md gives it
+         "assemble/test_fitness.py"}  # the cost of adding a gear or an action (spec 13 section 6)
 
 
 def problems(claude_dir):
