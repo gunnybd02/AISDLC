@@ -7,6 +7,7 @@ ITEMS = [
     {"kind": "translator", "name": "shell_commit", "ref": "harness.gear.translate.git_rules:ShellCommit"},
     {"kind": "translator", "name": "drive_calls", "ref": "harness.gear.translate.drive:DriveCalls"},
     {"kind": "translator", "name": "agent_places", "ref": "harness.gear.translate.agent:AgentPlaces"},
+    {"kind": "translator", "name": "child_calls", "ref": "harness.gear.translate.child:ChildCalls"},
     {"kind": "translator", "name": "commit_facts", "ref": "harness.gear.translate.commit:CommitFacts"},
     {"kind": "translator", "name": "actions", "ref": "harness.gear.translate.action:Actions"},
     {"kind": "detector", "name": "forms", "ref": "harness.gear.detect.forms:Forms"},
@@ -16,5 +17,4 @@ ITEMS = [
     {"kind": "detector", "name": "mark_scan", "ref": "harness.gear.detect.mark:MarkScan"},
     {"kind": "detector", "name": "stop_guard", "ref": "harness.gear.detect.stop:StopGuard"},
     {"kind": "detector", "name": "store_guard", "ref": "harness.gear.detect.store:StoreGuard"},
-    {"kind": "detector", "name": "child_guard", "ref": "harness.gear.detect.child:ChildGuard"},
 ]

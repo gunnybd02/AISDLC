@@ -9,7 +9,8 @@
     "actions",
     "commit_facts",
     "drive_calls",
-    "agent_places"
+    "agent_places",
+    "child_calls"
   ],
   "detectors": [
     "forms",
@@ -18,7 +19,6 @@
     "stop_guard",
     "secret_scan",
     "mark_scan",
-    "store_guard",
-    "child_guard"
+    "store_guard"
   ]
 }
