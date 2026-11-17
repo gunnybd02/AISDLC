@@ -170,6 +170,20 @@ class ReviewTest(Scenario):
         with self.assertRaisesRegex(review.ReviewError, "not handed back since it was sent back"):
             self.check()
 
+    def test_check_shows_the_question_a_child_pushed_and_stopped_on(self):
+        self.hand_back()
+        child = tree(self, {})
+        git(child, "clone", "-q", "-b", f"orch/p{self.plan}/hello", str(self.origin), ".")
+        (child / ".harness" / "notes" / "hello").mkdir(parents=True)
+        (child / ".harness" / "notes" / "hello" / "question-1.md").write_text(
+            "# Question 1 from hello (plan 1)\n\nShould an empty name raise ValueError or TypeError?\n")
+        git(child, "add", "-A")
+        git(child, "-c", "user.name=c", "-c", "user.email=c@c", "commit", "-q", "-m", "Question 1 of hello")
+        git(child, "push", "-q", "origin", f"orch/p{self.plan}/hello")
+        with self.assertRaisesRegex(review.ReviewError, r"asked a question and stopped: \(1\) Should an empty name "
+                                                        r"raise ValueError or TypeError\? Answer it with"):
+            self.check()
+
     def test_a_fresh_session_keeps_the_childs_rounds(self):
         self.hand_back()
         review.reject(self.port, "s1", "hello", "AC2 is not tested", UNITS)

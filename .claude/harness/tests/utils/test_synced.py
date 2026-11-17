@@ -69,6 +69,8 @@ class SyncedTest(Scenario):
         github = self.accepted_and_merged()
         text = land.land(self.port, "s1", UNITS, [], github, folder=FOLDER)
         self.assertIn("Not synced yet: hello (no copy found)", text)
+        self.assertNotIn("send_message", text)  # no message reaches a child: search again, then ask the user
+        self.assertIn("search again a little later", text)
         self.assertIn(f"title contains 'orch.{self.port.ticket('s1')['draft']}.' and parentId = '{FOLDER}'", text)
         self.assertEqual(self.port.ticket("s1")["state"], "open")
         draft = self.port.ticket("s1")["draft"]
