@@ -74,6 +74,16 @@ class ConfigTest(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(ConfigError):
                 Config.load(tree(self, {"project.json": json.dumps({"name": "x", "units": bad})}))
 
+    def test_a_unit_may_name_its_pipeline(self):
+        units = {"api": {"pipeline": "backend"}, "docs": {}}
+        config = Config.load(tree(self, {"project.json": json.dumps({"name": "x", "units": units})}))
+        self.assertEqual(config.pipelines(), {"api": "backend"})
+        self.assertEqual(config.unit("api").pipeline, "backend")
+        self.assertNotIn("pipeline", config.unit("api").spec())  # a child's card carries no pipeline
+        for bad in ("Backend", "../base", 3, "a b"):
+            with self.subTest(bad=bad), self.assertRaisesRegex(ConfigError, "pipeline is the name of a pipeline"):
+                Config.load(tree(self, {"project.json": json.dumps({"name": "x", "units": {"api": {"pipeline": bad}}})}))
+
     def test_the_orchestra_limits_are_data_with_defaults(self):
         def load(limits=None):
             data = {"name": "x", **({} if limits is None else {"limits": limits})}

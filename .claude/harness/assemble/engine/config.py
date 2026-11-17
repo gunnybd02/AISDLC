@@ -9,7 +9,9 @@
            {"api": {"repo": "https://github.com/me/shop", "path": "services/api", "verify": [...], "base": "main"}}
            repo its repository (https; "" or none: the home's own), path its folder in it (default "."), verify its
            test command run in that folder (default: verify above), base the branch its pull requests target
-           (default "main"). Several units may share one repository, each with its own path (a repo of many units).
+           (default "main"), pipeline (optional) the pipeline a plan on it runs on top of the floor
+           (assemble/pipelines/<name>.json, spec 13 section 11.6). Several units may share one repository, each with
+           its own path (a repo of many units).
   limits   (optional) the orchestra's policy limits, each a whole number from 1 to 10: {"children": 3, "rounds": 3}
            children the children of a delegated plan that run at once, rounds the send-backs of one child before the
            user decides. A limit not given is its default (LIMITS, spec 05)."""
@@ -33,7 +35,8 @@ OPTIONAL = ("verify", "ledger", "protected", "banned", "units", "limits")
 LIMITS = {"children": 3, "rounds": 3}  # the defaults; the one place the values live (owners)
 UNIT_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 RESERVED = ("home", "none", "agent-code")
-UNIT_KEYS = ("repo", "path", "verify", "base")
+UNIT_KEYS = ("repo", "path", "verify", "base", "pipeline")
+PIPELINE_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]*$")  # as assemble/engine/pipeline.py reads a name
 
 
 class ConfigError(ValueError):
@@ -43,12 +46,13 @@ class ConfigError(ValueError):
 @dataclass(frozen=True)
 class Unit:
     """A project the plans and children work on (units in project.json): its repository URL ("" for the home's own),
-    its folder in it, its test command (words; "{python}" kept, filled where it runs) and the branch its pull
-    requests target."""
+    its folder in it, its test command (words; "{python}" kept, filled where it runs), the branch its pull
+    requests target, and the pipeline a plan on it adds to the floor ("" for none)."""
     repo: str = ""
     path: str = "."
     verify: tuple = ()
     base: str = "main"
+    pipeline: str = ""
 
     def spec(self) -> dict[str, object]:
         """The unit as a card carries it to a child: {repo, path, verify, base}.
@@ -89,7 +93,10 @@ def unit_of(name: str, value: object, verify: tuple) -> Unit:
         raise ConfigError(f"{where}: verify is a list of words, its test command")
     if not isinstance(base, str) or not re.match(r"^[A-Za-z0-9._/-]+$", base):
         raise ConfigError(f"{where}: base is a branch name")
-    return Unit(repo, path.replace("\\", "/").strip("/") or ".", tuple(words), base)
+    pipeline = value.get("pipeline", "")
+    if not isinstance(pipeline, str) or (pipeline and not PIPELINE_NAME.match(pipeline)):
+        raise ConfigError(f"{where}: pipeline is the name of a pipeline (lower case letters, digits, - and _)")
+    return Unit(repo, path.replace("\\", "/").strip("/") or ".", tuple(words), base, pipeline)
 
 
 def limits_of(value: object) -> tuple:
@@ -173,6 +180,14 @@ class Config:
         made = tuple((name, unit_of(name, value, tuple(verify))) for name, value in units.items())
         return cls(data["name"], tuple(sys.executable if w == "{python}" else w for w in verify), ledger,
                    tuple(protected), tuple(w.strip() for w in banned), made, limits_of(data.get("limits", {})))
+
+    def pipelines(self) -> dict[str, str]:
+        """The units that name a pipeline, and the pipeline each names.
+
+        Returns:
+            {unit name: pipeline name}.
+        """
+        return {name: unit.pipeline for name, unit in self.units if unit.pipeline}
 
     def unit(self, name: str) -> Optional[Unit]:
         """A declared unit by its name.
