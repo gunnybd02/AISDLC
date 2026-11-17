@@ -90,6 +90,35 @@ class LiveUpdateTest(unittest.TestCase):
         self.assertIn("finds problems", text)
         self.assertEqual(current(self.home), running)
 
+    def merge_event(self, owner, repo, response):
+        return Event("PostToolUse", "mcp__github__merge_pull_request",
+                     {"owner": owner, "repo": repo, "pullNumber": 7}, "s1", "/tmp", response)
+
+    def test_a_merge_of_the_harness_repo_puts_its_main_in_force(self):
+        running = stamp(self.home)
+        update_door(self.port, self.home)  # pins what runs
+        self.merge_on_origin()
+        owner, repo = self.origin.parent.name, self.origin.name
+        notes = Act(self.port).run(self.merge_event(owner, repo, {"merged": True, "sha": "abc"}), {},
+                                   Verdict("allow"))
+        self.assertTrue(any("After the merge" in n and "is in force" in n for n in notes), notes)
+        self.assertEqual(current(self.home), stamp(self.home))
+        self.assertNotEqual(current(self.home), running)
+
+    def test_another_repo_or_a_failed_merge_changes_nothing(self):
+        running = stamp(self.home)
+        update_door(self.port, self.home)
+        self.merge_on_origin()
+        owner, repo = self.origin.parent.name, self.origin.name
+        for event in (self.merge_event("someone", "other", {"merged": True}),
+                      self.merge_event(owner, repo, "Pull Request is not mergeable"),
+                      Event("PostToolUse", "mcp__github__get_pull_request", {"owner": owner, "repo": repo}, "s1",
+                            "/tmp", {"merged": True})):
+            notes = Act(self.port).run(event, {}, Verdict("allow"))
+            self.assertFalse(any("After the merge" in n for n in notes), notes)
+        self.assertEqual(current(self.home), running)
+        self.assertNotIn(NEW, (self.home / "/".join(HEALTH)).read_text(encoding="utf-8"))
+
     def test_a_file_git_does_not_track_under_harness_stops_the_update(self):
         self.merge_on_origin()
         loose = self.home / "harness" / "loose.py"

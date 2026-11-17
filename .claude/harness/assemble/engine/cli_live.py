@@ -18,11 +18,15 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 from harness.assemble.engine.live_mcp import healthy
 from harness.utils.gateway.release import ALLOW_LABEL, NO_LABEL, anchor, build, current, publish, release_dir, stamp
 from harness.utils.git.asks import take
-from harness.utils.git.pull import PullError, fast_forward
+from harness.utils.git.pull import PullError, clone_root, fast_forward
+from harness.utils.git.run import GitError, git
+
+MERGE_TOOL = "__merge_pull_request"  # the GitHub merge tool, whatever its server is named (mcp__github__, mcp__<id>__)
 from harness.utils.shapes import PlanStore
 
 
@@ -104,6 +108,67 @@ def publish_main(home: str | Path) -> tuple[int, str]:
                    f"Fix main with a new pull request.")
     publish(home, sha)
     return 0, f"Release {sha} is in force: hooks run it at once, MCP servers at their next call."
+
+
+def slug(url: str) -> str:
+    """The last two parts of a remote's URL or path, lower case: "owner/name" (".git" left out).
+
+    Args:
+        url: a git remote's URL or a folder path.
+
+    Returns:
+        "owner/name", or "" when the URL has fewer than two parts.
+    """
+    parts = [p for p in str(url).strip().replace("\\", "/").replace(":", "/").split("/") if p]
+    if len(parts) < 2:
+        return ""
+    name = parts[-1][:-4] if parts[-1].endswith(".git") else parts[-1]
+    return f"{parts[-2]}/{name}".lower()
+
+
+def merged(event: Any) -> str:
+    """The "owner/name" a merge tool's answer says was merged; "" for any other call or a merge that failed.
+
+    Args:
+        event: a hook call (PostToolUse of a merge tool: input owner, repo; its response).
+
+    Returns:
+        "owner/name" in lower case, or "".
+    """
+    if event.kind != "PostToolUse" or not str(event.tool or "").endswith(MERGE_TOOL):
+        return ""
+    text = event.response if isinstance(event.response, str) else json.dumps(event.response)
+    flat = (text or "").replace(" ", "").lower()
+    if '"merged":true' not in flat and "successfullymerged" not in flat:
+        return ""
+    owner, repo = str(event.input.get("owner") or ""), str(event.input.get("repo") or "")
+    return f"{owner}/{repo}".lower() if owner and repo else ""
+
+
+def after_merge(home: str | Path, event: Any) -> list[str]:
+    """After a merge of the harness's own repository, bring its main and put it in force (as live update does).
+
+    Args:
+        home: the home, the .claude folder of the harness's clone.
+        event: the hook call; only a PostToolUse of a merge tool that merged is read.
+
+    Returns:
+        One note for the model saying which release is in force, or why the old one stays; [] for any other call.
+    """
+    repo = merged(event)
+    if not repo:
+        return []
+    try:
+        if slug(git(clone_root(home), "remote", "get-url", "origin")) != repo:
+            return []
+    except (GitError, PullError):
+        return []
+    try:
+        before, after = fast_forward(home)
+    except PullError as e:
+        return [f"The harness keeps release {current(home)} after the merge: {e}"]
+    _, text = publish_main(home)
+    return [f"After the merge, main {before[:12]} -> {after[:12]}. {text}"]
 
 
 def pin(home: str | Path) -> str:

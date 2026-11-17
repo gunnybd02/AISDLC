@@ -6,7 +6,9 @@ from __future__ import annotations
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Protocol
+
 
 from harness.utils.contracts import RULE_ACTIONS, Detector, Event, Finding, Port, Translator, Verdict
 from harness.utils.git.asks import accepts
@@ -181,6 +183,8 @@ class Act:
             notes += synced.seen(self.port, event)  # a Drive answer shows copies of this session's orchestra run
             notes += delivery(self.port, event.session, facts.get("git_commit"), facts.get("plan"))
             notes += store.uploaded(self.port, event)  # a Drive tool answered with a copy of the ledger
+            from harness.assemble.engine.cli_live import after_merge  # cli_live imports build, which imports this
+            notes += after_merge(Path(self.port.path).parent.parent, event)  # the harness's main merged: put it in force
             plan = facts.get("plan")
             if plan and any(relative(path, plan["root"]) is not None and allows(plan, relative(path, plan["root"]))
                             for path in facts.get("writes", [])):
