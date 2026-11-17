@@ -10,6 +10,13 @@ class TrimTest(unittest.TestCase):
         self.assertEqual(trim(" hi "), "hi")
         self.assertEqual(trim("  a b  "), "a b")
 
+    def test_ac1_only_spaces_returns_empty(self):
+        """AC1: trim of a text made only of spaces returns an empty string"""
+        # behaviour p1.trim.ac1
+        self.assertEqual(trim("   "), "")
+        self.assertEqual(trim(" "), "")
+        self.assertEqual(trim(""), "")
+
     def test_ac2_not_a_string_raises(self):
         """AC2: trim of a value that is not a string raises TypeError"""
         # behaviour p1.trim.ac2
