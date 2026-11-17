@@ -116,9 +116,11 @@ def build_runner(claude_dir: str | Path = CLAUDE_DIR, items: Optional[dict[str, 
     config = Config.load(claude_dir)  # a config that does not load stops the hook, as before
     code = code_of(claude_dir)
     pipeline = select(PipelineBook(code / "harness" / "assemble" / "pipelines"), plan, config.pipelines())
-    decide = Loader.resolve(items["decide"]).load(code)
+    translators = pick(items, pipeline.translators, "translator")
+    vocabulary = {fact for t in translators for fact in getattr(t, "VOCABULARY", ())}
+    decide = Loader.resolve(items["decide"]).load(code, vocabulary=vocabulary)
     port = LedgerPort(claude_dir)
-    return Runner(pick(items, pipeline.translators, "translator"), pick(items, pipeline.detectors, "detector"), decide,
+    return Runner(translators, pick(items, pipeline.detectors, "detector"), decide,
                   ports=[PlanState(port, config.protected, config.banned)], act=Act(port))
 
 

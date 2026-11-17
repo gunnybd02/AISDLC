@@ -18,6 +18,37 @@ def row(finding, verdict, why="because", test=TEST):
     return {"finding": finding, "verdict": verdict, "why": why, "test": test}
 
 
+def when_row(code, verdict, when, why="because", test=TEST):
+    return {"code": code, "verdict": verdict, "why": why, "when": when, "test": test}
+
+
+class WhenRowTest(unittest.TestCase):
+    def test_a_when_row_matches_the_facts_of_an_action(self):
+        judge = Decide.load(CLAUDE_DIR, rules(self, when_row("git.force_push", ASK, {"sub": "push", "force": True}),
+                                              when_row("git.writes", REFUSE, {"sub": ["merge", "rebase"]}),
+                                              row("commit.secret", REFUSE)))
+        actions = [{"sub": "push", "force": True, "detail": "git push -f"}, {"sub": "push", "force": False},
+                   {"sub": "rebase", "detail": "git rebase"}, {"sub": "push", "force": 1}]  # 1 is no true
+        found = judge.matched(actions)
+        self.assertEqual(found, [Finding("git.force_push", "git push -f"), Finding("git.writes", "git rebase")])
+        self.assertEqual(judge.matched([{"sub": "status"}]), [])  # no match, no finding
+        v = judge.decide(found + [Finding("commit.secret", "a.py")])  # both kinds of row, the strongest wins
+        self.assertEqual(v.decision, REFUSE)
+        self.assertEqual(judge.decide(found[:1]).reason, "because (git push -f)")
+
+    def test_a_when_row_is_checked_when_it_loads(self):
+        good = when_row("git.force_push", ASK, {"force": True})
+        cases = {"unknown fact": [when_row("x.y", ASK, {"forse": True})],
+                 "a code twice": [good, row("git.force_push", ASK)],
+                 "an empty when": [when_row("x.y", ASK, {})],
+                 "a bad value": [when_row("x.y", ASK, {"force": {"a": 1}})],
+                 "a missing field": [{k: v for k, v in good.items() if k != "test"}]}
+        for name, rows in cases.items():
+            with self.subTest(name), self.assertRaises(RuleError):
+                Decide.load(CLAUDE_DIR, rules(self, *rows), vocabulary={"force", "sub"})
+        self.assertEqual(len(Decide.load(CLAUDE_DIR, rules(self, good), vocabulary={"force"}).when_rows), 1)
+
+
 class DecideTest(unittest.TestCase):
     def decide(self, *rows):
         return Decide.load(CLAUDE_DIR, rules(self, *rows))

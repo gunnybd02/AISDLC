@@ -8,7 +8,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional, Protocol
 
-from harness.utils.contracts import Detector, Event, Finding, Port, Translator, Verdict
+from harness.utils.contracts import RULE_ACTIONS, Detector, Event, Finding, Port, Translator, Verdict
 from harness.utils.git.asks import accepts
 from harness.utils.ledger import store
 from harness.utils.plan import stop
@@ -80,21 +80,29 @@ class Runner:
         facts, findings = {}, []
         for giver in self.givers:
             try:
-                new = giver.read(event) if isinstance(giver, Port) else giver.translate(event)
+                reads = getattr(giver, "READS", ())
+                new = giver.read(event) if isinstance(giver, Port) else \
+                    giver.translate(event, {k: facts[k] for k in reads if k in facts}) if reads else giver.translate(event)
                 if not isinstance(new, dict):
                     raise TypeError(f"gave {type(new).__name__}, not a dict of facts")
             except Exception as e:  # a gear fault is a finding, never a crash (spec 13 section 7)
                 findings.append(fault(event, giver, e))
                 continue
-            twice = sorted(set(new) & set(facts))
+            twice = sorted((set(new) & set(facts)) - {RULE_ACTIONS})
             if twice:
                 raise RunnerError(f"{type(giver).__name__} gives facts another giver gave: {', '.join(twice)}")
+            actions = list(facts.get(RULE_ACTIONS, [])) + list(new.get(RULE_ACTIONS, []))
             facts.update(new)
+            if actions:
+                facts[RULE_ACTIONS] = actions
         for detector in self.detectors:
             try:
                 findings += detector.detect(event, facts)
             except Exception as e:
                 findings.append(fault(event, detector, e))
+        matched = getattr(self.decide, "matched", None)
+        if matched:  # the when rows judge the rule actions (spec 13 section 7)
+            findings += matched(facts.get(RULE_ACTIONS, []))
         verdict = self.decide.decide(findings)
         notes = self.act.run(event, facts, verdict) if self.act else []
         return Outcome(verdict, tuple(notes))
