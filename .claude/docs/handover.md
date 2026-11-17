@@ -63,8 +63,10 @@ session cannot read the old chat; it reads this file. The frame of every plan is
 | #45 | The plan cycle as spec 04 says (a new plan replaces the waiting one, a revision shows only what changed, card files counted, replaced test items drop old behaviours, a staged deletion commits); the recording tells the user from others (notifications and peer messages, `peer` spans), names guide and find, counts what the backfill writes; verify makes no ledger copy; `docs/map.md`, the map of the brain |
 | #46 | A child's brief sends it to the ledger door (`ledger.db_query`), never the ledger file. (Its `send_message` allow rule did nothing and is gone again in #47.) |
 | #47 | Parent and child talk through git, never by message (`05b-orchestra-cloud.md` 2b): a cloud child cannot message its parent (live checks 2026-11-17). A question and the receipt are pushed on the child's branch and the child stops; `reject` and `answer` push a note there and `spawn` opens a fresh session that reads it, its rounds kept. The `peer` span reads the notifications answer's strings, not its JSON text |
+| #49 | Leftovers of talking through git: `started` points to `check`; the store step sends no message; `check` shows a question a child pushed |
+| #50 | One owner per concept (`13-cloud-foundation.md`): `now`, `session_of`, `answered`, `ProblemsError` in contracts; one reader of the plan in force; the **owners net** (copied bodies, `ports.get` in actions, `run(...)` naming no action); orchestra `limits` {children, rounds} in `project.json` |
 
-506 tests pass (1 skipped, Windows only); doctor: 0 errors.
+517 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 ## The cloud, as it runs now
 
