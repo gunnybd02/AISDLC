@@ -7,6 +7,7 @@ from typing import Any
 from harness.assemble.engine.build import CLAUDE_DIR, build_runner, code_of, items_of, skill_docs
 from harness.assemble.engine.config import Config, ConfigError
 from harness.assemble.engine.loader import Loader
+from harness.assemble.engine.pipeline import PipelineBook
 from harness.assemble.engine.ports import SERVER_PORTS
 from harness.utils.contracts import EFFECTS, McpAction
 from harness.utils.ledger.db import compare_real
@@ -27,13 +28,28 @@ def doctor(claude_dir: str | Path = CLAUDE_DIR) -> list[str]:
     claude_dir = Path(claude_dir)
     problems = Loader(code_of(claude_dir)).problems()
     if not problems:
-        problems += built(claude_dir)
+        problems += built(claude_dir) + pipelines(claude_dir)
     problems += real_ledger(claude_dir)
     problems += chains(claude_dir)
     for net in (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net, entry_net, hints_net,
                 owners_net, english_net):
         problems += net.check(code_of(claude_dir))
     return problems
+
+
+def pipelines(claude_dir: Path) -> list[str]:
+    """Every pipeline file that does not read, names extends, or names a gear no block declares (spec 13 section 7).
+
+    Args:
+        claude_dir: the home, the .claude folder.
+
+    Returns:
+        "pipeline <name>: ..." lines.
+    """
+    items = items_of(claude_dir)
+    known = {"translators": {n for n, i in items.items() if i.kind == "translator"},
+             "detectors": {n for n, i in items.items() if i.kind == "detector"}}
+    return PipelineBook(code_of(claude_dir) / "harness" / "assemble" / "pipelines").problems(known)
 
 
 def built(claude_dir: Path) -> list[str]:
