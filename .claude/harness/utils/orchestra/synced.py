@@ -202,8 +202,8 @@ def missing(port: PlanStore, ticket: Ticket) -> list[tuple[str, str]]:
 
 
 def ask_text(ticket: Ticket, folder: str, gaps: list[tuple[str, str]]) -> str:
-    """What the parent does for the children not synced: search the store (the hook reads the answer), ask a child to
-    upload, or ask the user's waiver for a child that can never upload.
+    """What the parent does for the children not synced: search the store (the hook reads the answer), search again
+    later, or ask the user's waiver for a child that did not upload (no message reaches a child).
 
     Args:
         ticket: the parent's ticket.
@@ -220,9 +220,8 @@ def ask_text(ticket: Ticket, folder: str, gaps: list[tuple[str, str]]) -> str:
              f"'orch.{draft}.' and parentId = '{folder}'. The harness reads Drive's answer itself; then run the "
              "same action again."]
     for name, _ in gaps:
-        lines.append(f"2. If {name} has no copy: send_message to {crew[name].get('sid')}: \"Save your ledger to the "
-                     "store now: run('ledger', 'export', {reason: 'handback'}) and upload the copy as its answer says, "
-                     "then reply 'saved'.\" Then search again.")
-        lines.append(f"3. Only if {name}'s session is gone and can never upload: ask the user exactly "
-                     f"{json.dumps({'questions': [waiver_question(draft, name)]}, ensure_ascii=False)}")
+        lines.append(f"2. A child saves its ledger at its handback, and nothing reaches it afterwards (parent and child "
+                     f"talk only through its branch): if {name} has no copy, search again a little later.")
+        lines.append(f"3. If {name} still has no copy (its session {crew[name].get('sid')} did not upload): ask the user "
+                     f"exactly {json.dumps({'questions': [waiver_question(draft, name)]}, ensure_ascii=False)}")
     return "\n".join(lines)

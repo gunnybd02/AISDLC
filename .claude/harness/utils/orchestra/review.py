@@ -119,6 +119,24 @@ def covered(receipt: dict[str, Any], card: Card) -> list[int]:
     return [n for n in range(1, len(card.get("ac", [])) + 1) if n not in found]
 
 
+def asked_at_tip(folder: str, name: str, tip: list[str]) -> str:
+    """The child's question when the tip commit of its branch is a question note (it asked and stopped).
+
+    Args:
+        folder: the checkout of the child's branch.
+        name: the child's name.
+        tip: the files of the tip commit.
+
+    Returns:
+        "(question n) <text>", or "" when the tip is no question note.
+    """
+    if len(tip) != 1 or not re.fullmatch(rf"{re.escape(NOTES)}/{re.escape(name)}/question-(\d+)\.md", tip[0]):
+        return ""
+    lines = (Path(folder) / tip[0]).read_text(encoding="utf-8").splitlines()
+    text = " ".join(l.strip() for l in lines[1:] if l.strip())
+    return f"({tip[0].rsplit('-', 1)[1][:-3]}) {text}"
+
+
 def check(port: PlanStore, sid: str, name: str, units: dict[str, Any], verify: list[str], timeout_min: int = 10) -> str:
     """Check a handed-back child: its receipt on its branch, the coverage of its criteria, and a rerun of its tests.
 
@@ -147,10 +165,14 @@ def check(port: PlanStore, sid: str, name: str, units: dict[str, Any], verify: l
         raise ReviewError("the unit has no test command: declare verify for it in the config's units")
     ref = branch(ticket["plan"]["id"], name)
     with checkout(unit, repo, ref) as folder:
+        tip = [f for f in git(folder, "show", "--name-only", "--format=", "HEAD").splitlines() if f.strip()]
+        asked = asked_at_tip(folder, name, tip)
+        if asked:
+            raise ReviewError(f"{name} asked a question and stopped: {asked} Answer it with run('orchestra', 'answer', "
+                              "{name, text}); a fresh session goes on from the answer.")
         receipt = find_receipt(folder, name)
         if receipt is None:
-            raise ReviewError(f"{ref} holds no receipt: {name} has not handed back")
-        tip = [f for f in git(folder, "show", "--name-only", "--format=", "HEAD").splitlines() if f.strip()]
+            raise ReviewError(f"{ref} holds no receipt: {name} has not handed back (it is still working)")
         if tip != [f"{RECEIPTS}/{name}.json"]:
             raise ReviewError(f"the tip of {ref} is not its receipt: the receipt does not describe the code after it")
         if receipt.get("parent") != sid or receipt.get("name") != name:

@@ -143,7 +143,10 @@ class CrewTest(unittest.TestCase):
 
     def test_started_records_a_running_child_once(self):
         self.approve()
-        self.assertIn("1 of 3 running", Started().run(self.ctx, {"name": "c1", "sid": "session_child0001"}))
+        started = Started().run(self.ctx, {"name": "c1", "sid": "session_child0001"})
+        self.assertIn("1 of 3 running", started)
+        self.assertNotIn("digest", started)  # digest reads no branch
+        self.assertIn("To look at it, run('orchestra', 'check', {name})", started)
         entry = self.port.ticket("s1")["crew"]["c1"]
         self.assertEqual((entry["state"], entry["sid"], entry["reportSid"]), ("running", "session_child0001", "s1"))
         with self.assertRaisesRegex(ActionError, "has started already"):
