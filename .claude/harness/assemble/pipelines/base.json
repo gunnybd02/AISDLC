@@ -1,5 +1,5 @@
 {
-  "about": "The floor: every session runs it; a pipeline of a plan extends it.",
+  "about": "The floor: every event runs it; a plan's pipeline only adds gears, and the engine puts the floor under it.",
   "translators": [
     "answers",
     "places",

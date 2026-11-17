@@ -1,6 +1,6 @@
-"""select: which pipeline an event runs, by the state of its session. No approved plan: the floor (base). A plan that
-names a pipeline runs it; a pipeline that does not hold every translator and detector of the floor is refused, so no
-plan makes the guards looser."""
+"""select: which pipeline an event runs, by the state of its session. No approved plan, or a plan that names none: the
+floor (base). A plan that names a pipeline runs the floor with that pipeline's gears added after it, each once: the
+engine puts the floor under it, so no plan makes the guards looser (spec 13 section 7)."""
 from __future__ import annotations
 
 from typing import Optional
@@ -12,23 +12,22 @@ FLOOR = "base"
 
 
 def select(book: PipelineBook, plan: Optional[ApprovedPlan]) -> Pipeline:
-    """The pipeline of the session's plan (None: no plan), never less than the floor.
+    """The pipeline an event of the session runs: the floor, and the gears its plan's pipeline adds.
 
     Args:
         book: the pipelines (assemble/pipelines/*.json).
-        plan: the plan in force in the session, or None; its "pipeline" key names a pipeline (base when absent).
+        plan: the plan in force in the session, or None; its "pipeline" key names a pipeline (the floor when absent).
 
     Returns:
-        The resolved Pipeline.
+        The Pipeline: the floor's translators and detectors first, then those of the plan's pipeline not among them.
 
     Raises:
-        PipelineError: the pipeline cannot be read, or leaves out a translator or detector of the floor.
+        PipelineError: the floor or the plan's pipeline cannot be read.
     """
     floor = book.resolve(FLOOR)
     name = (plan or {}).get("pipeline") or FLOOR
-    chosen = book.resolve(name)
-    for kind in ("translators", "detectors"):
-        missing = [n for n in getattr(floor, kind) if n not in getattr(chosen, kind)]
-        if missing:
-            raise PipelineError(f"pipeline {name} leaves out {', '.join(missing)} of the floor; extend {FLOOR}")
-    return chosen
+    if name == FLOOR:
+        return floor
+    added = book.resolve(name)
+    return Pipeline(name, *(tuple(dict.fromkeys(getattr(floor, k) + getattr(added, k)))
+                            for k in ("translators", "detectors")))

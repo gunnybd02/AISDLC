@@ -43,15 +43,13 @@ class RecipeTest(unittest.TestCase):
     def book(self, **recipes):
         return PipelineBook(tree(self, {f"{n}.json": json.dumps(r) for n, r in recipes.items()}))
 
-    def test_an_overlay_only_adds_to_its_base(self):
-        book = self.book(base={"translators": ["t1"], "detectors": ["d1"]},
-                         unit={"extends": "base", "detectors": ["d2", "d1"]})
-        r = book.resolve("unit")
-        self.assertEqual((r.translators, r.detectors), (("t1",), ("d1", "d2")))
+    def test_a_pipeline_that_names_extends_is_refused(self):
+        book = self.book(base={"detectors": ["d1"]}, unit={"extends": "base", "detectors": ["d2"]})
+        with self.assertRaisesRegex(PipelineError, "pipeline unit: extends is not allowed: a pipeline is self-contained"):
+            book.resolve("unit")
 
     def test_a_wrong_recipe_is_refused(self):
-        cases = (("missing", {}), ("cut", {"base": {}, "cut": {"extends": "base", "remove": ["d1"]}}),
-                 ("a", {"a": {"extends": "b"}, "b": {"extends": "a"}}), ("bad", {"bad": {"detectors": "d1"}}))
+        cases = (("missing", {}), ("cut", {"base": {}, "cut": {"remove": ["d1"]}}), ("bad", {"bad": {"detectors": "d1"}}))
         for name, recipes in cases:
             with self.subTest(name=name), self.assertRaises(PipelineError):
                 self.book(**recipes).resolve(name)
@@ -67,14 +65,26 @@ class RecipeTest(unittest.TestCase):
     def test_the_real_base_recipe_resolves(self):
         PipelineBook(CLAUDE_DIR / "harness" / "assemble" / "pipelines").resolve("base")
 
-    def test_select_gives_the_floor_without_a_plan_and_never_less(self):
-        book = self.book(base={"translators": ["t"], "detectors": ["d"]},
-                         ui={"extends": "base", "detectors": ["ui"]}, loose={"detectors": ["ui"]})
+    def test_the_engine_puts_the_floor_under_every_plan_pipeline(self):
+        book = self.book(base={"translators": ["t"], "detectors": ["d1", "d2"]},
+                         ui={"detectors": ["ui", "d1"]}, bare={})
         self.assertEqual(select(book, None).name, "base")
         self.assertEqual(select(book, {"plan_id": "p"}).name, "base")
-        self.assertEqual(select(book, {"pipeline": "ui"}).detectors, ("d", "ui"))
+        ui = select(book, {"pipeline": "ui"})
+        self.assertEqual((ui.name, ui.translators, ui.detectors), ("ui", ("t",), ("d1", "d2", "ui")))  # floor first, once
+        bare = select(book, {"pipeline": "bare"})  # a pipeline that lists nothing still runs the whole floor
+        self.assertEqual((bare.translators, bare.detectors), (("t",), ("d1", "d2")))
         with self.assertRaises(PipelineError):
-            select(book, {"pipeline": "loose"})
+            select(book, {"pipeline": "missing"})
+
+    def test_the_doctor_reads_every_pipeline_file(self):
+        from harness.assemble.engine.checks import pipelines
+        self.assertEqual(pipelines(CLAUDE_DIR), [])
+        home = copy_tree(self, {"harness/assemble/pipelines/ui.json": json.dumps({"detectors": ["secret_scan", "nope"]}),
+                                "harness/assemble/pipelines/old.json": json.dumps({"extends": "base"})})
+        self.assertEqual(pipelines(home), [
+            "pipeline old: extends is not allowed: a pipeline is self-contained; the floor runs under it by itself",
+            "pipeline ui: unknown detector nope"])
 
 
 if __name__ == "__main__":
