@@ -3,7 +3,9 @@ when rows: spec 13 section 7). It only describes; the rows say when a rule appli
 reader saw whole (git_actions of gear/translate/git_cli.py), with the git view of the port (git_view: the branch a
 repository is on, what a push would send, the home). A command whose repository has no view gives no action.
 
-The facts (VOCABULARY), each a bool but kind (git) and sub:
+ShellCommit (below) gives the action of a shell line that commits: kind commit (commit.raw).
+
+The facts of a git command (VOCABULARY), each a bool but kind (git) and sub:
 - sub: the git subcommand;
 - protected: it touches a protected branch: the repository is on one, a push names one (or --all, --mirror), a branch
   -d/-D/-f/-m names one (protected: project.json, default main and master). Every rule of git.json holds only there,
@@ -189,3 +191,18 @@ class GitRuleFacts(Translator):
         agents = sorted({f for src, _ in pairs if src for f in view.unpushed(repo, remote, src) if agent_file(f)})
         if agents:
             mark("agent_files", f"the push would send {', '.join(agents[:5])}")
+
+
+class ShellCommit(Translator):
+    """A shell line that commits, before it runs (git_commit of gear/translate/git.py), safe to read or not: one rule
+    action, kind commit, its detail why it is unsafe or its repository. Commits go through
+    run('plan', 'step_done') or run('git', 'commit'), where the harness checks the change (commit.raw)."""
+    READS = ("git_commit",)
+    VOCABULARY = ("kind",)
+
+    def translate(self, event: Event, facts: Optional[Facts] = None) -> Facts:
+        """The commit action of a shell line that commits, before it runs; {} for any other call."""
+        target = (facts or {}).get("git_commit")
+        if event.kind != "PreToolUse" or not target:
+            return {}
+        return {RULE_ACTIONS: [{"kind": "commit", "detail": target.get("unsafe") or f"git commit in {target['repo']}"}]}
