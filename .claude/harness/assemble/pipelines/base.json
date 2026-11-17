@@ -8,7 +8,8 @@
     "shell_commit",
     "actions",
     "commit_facts",
-    "drive_calls"
+    "drive_calls",
+    "agent_places"
   ],
   "detectors": [
     "forms",
@@ -17,7 +18,6 @@
     "stop_guard",
     "secret_scan",
     "mark_scan",
-    "agent_files",
     "store_guard",
     "child_guard"
   ]

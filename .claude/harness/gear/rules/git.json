@@ -12,6 +12,6 @@
     {"finding": "commit.secret", "verdict": "refuse", "why": "A secret never reaches a commit: take it out of the file (and revoke it), read it from the environment or a vault, verify again, then step_done.", "test": "harness/tests/gear/test_secret.py#test_a_secret_in_an_added_line_is_refused"},
     {"finding": "commit.ai_mark", "verdict": "refuse", "why": "Commit text holds no AI mark (no AI co-author or footer, no AI tool's name or address, no robot emoji) and no Mermaid diagram: write the message as the author of the change.", "test": "harness/tests/gear/test_mark.py#test_an_ai_mark_in_the_message_is_refused"},
     {"finding": "commit.banned_word", "verdict": "refuse", "why": "The message holds a word the project bans (project.json banned): say it another way.", "test": "harness/tests/gear/test_mark.py#test_a_banned_word_is_refused"},
-    {"finding": "commit.agent_files", "verdict": "refuse", "why": "Agent files (.claude/, CLAUDE.md, .mcp.json, AGENTS.md) never go into a unit's commit: take them out of the step (add drop-file).", "test": "harness/tests/gear/test_agent.py#test_agent_files_never_go_into_a_unit_commit"}
+    {"code": "commit.agent_files", "verdict": "refuse", "why": "Agent files (.claude/, CLAUDE.md, .mcp.json, AGENTS.md) never go into a unit's commit: take them out of the step (add drop-file).", "when": {"kind": "agent", "what": "unit_commit"}, "test": "harness/tests/gear/test_agent.py#test_agent_files_never_go_into_a_unit_commit"}
   ]
 }
