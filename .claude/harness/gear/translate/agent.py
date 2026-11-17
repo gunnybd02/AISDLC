@@ -1,4 +1,5 @@
-"""AgentFiles: what agent files never take.
+"""AgentPlaces: what agent files never take, as rule actions (kind agent, what: the rule's place); the when rows
+of gear/rules decide them.
 - commit.agent_files: a commit of a unit (any repository but the home, which holds the harness) holds agent files
   (.claude/, CLAUDE.md, CLAUDE.local.md, .mcp.json, AGENTS.md);
 - agent.rules: a write into a .claude/rules/ folder (a rule is a skill: harness/mcp/skill_docs/);
@@ -13,9 +14,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any, Optional
 
 from harness.gear.translate.git_rules import agent_file
-from harness.utils.contracts import Detector, Event, Finding
+from harness.utils.contracts import RULE_ACTIONS, Event, Translator
 from harness.utils.shapes import Facts
 
 
@@ -43,36 +45,40 @@ def parts(path: str | Path) -> list[str]:
     return [p.lower() for p in str(path).replace("\\", "/").split("/") if p]
 
 
-class AgentFiles(Detector):
-    """What agent files never take: commit.agent_files, agent.rules, agent.memory, agent.registry, agent.anchor,
-    agent.session_start."""
+class AgentPlaces(Translator):
+    """The rule actions of agent files: what is one of session_start, unit_commit, rules, memory, registry, anchor."""
+    READS = ("harness_session_start", "commit_repo", "commit_files", "git_view", "writes")
+    VOCABULARY = ("kind", "what")
 
-    def detect(self, event: Event, facts: Facts) -> list[Finding]:
-        """Report agent.session_start for a shell line that runs the SessionStart entry, commit.agent_files for a
-        unit's commit that holds agent files, and agent.rules, agent.memory, agent.registry or agent.anchor for each
-        write to such a place."""
-        out = []
+    def translate(self, event: Event, facts: Optional[Facts] = None) -> Facts:
+        """One rule action (kind agent) for a shell line that runs the SessionStart entry, a unit's commit that holds
+        agent files, and each write to a rules, memory, registry or anchor place; {} when there is none."""
+        facts = facts or {}
+        out: list[dict[str, Any]] = []
+
+        def add(what: str, detail: str) -> None:
+            out.append({"kind": "agent", "what": what, "detail": detail})
         if event.kind == "PreToolUse" and facts.get("harness_session_start"):
-            out.append(Finding("agent.session_start", event.input.get("command", "")))
+            add("session_start", event.input.get("command", ""))
         repo, view = facts.get("commit_repo"), facts.get("git_view")
         agents = [f for f in facts.get("commit_files", []) if agent_file(f)]
         if agents and repo and not (view and view.is_home(repo)):
-            out.append(Finding("commit.agent_files", ", ".join(agents)))
+            add("unit_commit", ", ".join(agents))
         for path in facts.get("writes", []):
             p = parts(path)
             if ".claude" not in p:
                 continue
             below = p[p.index(".claude") + 1:]
             if below[:1] == ["rules"]:
-                out.append(Finding("agent.rules", path))
+                add("rules", path)
             elif "memory" in below[:-1]:
-                out.append(Finding("agent.memory", path))
+                add("memory", path)
             elif below == ["project", "behaviors.json"]:
-                out.append(Finding("agent.registry", path))
+                add("registry", path)
             elif below in (["entry", "boot.py"], ["settings.json"]):
-                out.append(Finding("agent.anchor", path))
+                add("anchor", path)
         for path in facts.get("writes", []):
             p = parts(path)
             if p[-1:] == [".mcp.json"] or (p[-1:] == ["anchor.py"] and beside_harness(path)):
-                out.append(Finding("agent.anchor", path))
-        return out
+                add("anchor", path)
+        return {RULE_ACTIONS: out} if out else {}

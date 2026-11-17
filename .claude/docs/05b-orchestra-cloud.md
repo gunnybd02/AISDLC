@@ -161,10 +161,10 @@ Whoever opens a session writes its first prompt: the user or one of their sessio
 | `question {question}` | Kept on the child's ticket (`asks`), written as `.harness/notes/<name>/question-<n>.md`, committed through the commit gate and pushed; the child stops. Named `question`, not `ask`: the verdict net keeps the word `ask` for the arbiter. |
 | `handback {changed, checked, notChecked, risks, testsChanged, added?, faults?}` | Checks the report (spec 11.4: at most 10 entries of 200 characters, 400 for two-part ones). Adds what harness code reads: commits and their files, the newest verify (ok, red, missing), the behaviours `p<plan>.<name>.ac*`, uncommitted files, the base. Writes `.harness/handback/<name>.json`, commits it through the commit gate, pushes the branch, and tells the model to stop: it sends no message. |
 
-**Child refusals.** `plan_present`, `plan_close` and `maint grant` refuse in a child. The detector `child_guard`
-refuses `child.ask_user` (AskUserQuestion), `child.merge` (git merge, pull, rebase) and `child.push_other` (a push to
+**Child refusals.** `plan_present`, `plan_close` and `maint grant` refuse in a child. The translator `child_calls`
+(when rows) refuses `child.ask_user` (AskUserQuestion), `child.merge` (git merge, pull, rebase) and `child.push_other` (a push to
 another branch, `--all`, `--mirror`, `--tags`). **Nobody is asked in a child** (spec 11.2; found by the live run,
-where a child hung on `python3 -m unittest` and on `git push`): `child_guard` reports `child.no_keyboard` on each call
+where a child hung on `python3 -m unittest` and on `git push`): `child_calls` gives `child.no_keyboard` on each call
 of a child, and the arbiter counts it only when the call would ask (`IN_PLACE_OF_ASK`); then the call is refused with
 "go on, name it under notChecked", the question's reason after it. Each such step is kept (`act_rule_decisions`, the
 tool and the first word only) and listed under `refused` in the receipt. Not refused yet: leaving its branch by

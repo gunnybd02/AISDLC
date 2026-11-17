@@ -10,12 +10,11 @@ from harness.assemble.engine.desk_port import question
 from harness.assemble.engine.ports import LedgerPort
 from harness.gear.decide.arbiter import Decide
 from harness.gear.detect.forms import Forms
-from harness.gear.detect.planfiles import PlanFiles
 from harness.gear.detect.tracked import Tracked
 from harness.hooks.forms import Answers
 from harness.gear.translate.place import Places
 from harness.utils.contracts import Event, Finding
-from harness.tests import CLAUDE_DIR, WINDOWS, native, tree
+from harness.tests import CLAUDE_DIR, WINDOWS, edit_gate, native, plan_paths, tree
 from harness.tests.e2e import copy_tree
 
 ROOT = native("C:/repo")
@@ -25,7 +24,7 @@ STATE = native("C:/harness/.claude/state")
 
 def gate(event, facts):
     """The findings of the three detectors of the edit gate, in the order the recipe runs them."""
-    return [f for d in (Forms(), Tracked(), PlanFiles()) for f in d.detect(event, facts)]
+    return edit_gate(event, facts)
 
 
 def write(path, tool="Write", cwd=ROOT):
@@ -100,17 +99,21 @@ def shell_facts(command, **kw):
 class RulesTest(unittest.TestCase):
     def test_each_finding_of_the_gate_is_refused_by_a_rule(self):
         decide = Decide.load(CLAUDE_DIR)
+        rows = {**decide.rules, **decide.codes}  # finding rows and when rows
         for kind in ("plan.none", "plan.outside", "write.state", "form.prefilled", "form.forged",
                      "shell.unexplained"):
             with self.subTest(kind=kind):
-                self.assertEqual(decide.rules[kind]["verdict"], "refuse")
-        self.assertEqual(decide.rules["shell.unread"]["verdict"], "ask")
+                self.assertEqual(rows[kind]["verdict"], "refuse")
+        self.assertEqual(rows["shell.unread"]["verdict"], "ask")
+        self.assertEqual(rows["plan.outside"]["when"], {"kind": "write", "in_plan": False, "has_plan": True,
+                                                        "in_state": False})
 
     def test_gear_declares_the_gate_and_the_recipe_runs_it(self):
         names = {i["name"] for i in gear_block.ITEMS}
-        self.assertLessEqual({"places", "forms", "tracked", "planfiles"}, names)
+        self.assertLessEqual({"places", "forms", "tracked", "plan_paths"}, names)
         recipe = json.loads((CLAUDE_DIR / "harness" / "assemble" / "pipelines" / "base.json").read_text(encoding="utf-8"))
-        self.assertLessEqual({"forms", "tracked", "planfiles"}, set(recipe["detectors"]))
+        self.assertLessEqual({"forms", "tracked"}, set(recipe["detectors"]))
+        self.assertIn("plan_paths", recipe["translators"])
 
 
 class StateReadTest(unittest.TestCase):
@@ -123,7 +126,7 @@ class StateReadTest(unittest.TestCase):
     def found(self, tool, tool_input, cwd=None):
         event = Event("PreToolUse", tool, tool_input, "s1", cwd or self.repo)
         facts = {**Places().translate(event), "plan": None, "state_dir": self.state.replace("\\", "/")}
-        return [f.kind for f in PlanFiles().detect(event, facts) if f.kind.endswith(".state")]  # not the shell's asks
+        return [f.kind for f in plan_paths(event, facts) if f.kind.endswith(".state")]  # not the shell's asks
 
     def test_the_state_is_never_read_by_any_tool(self):
         db = f"{self.state}/harness.db"
@@ -137,8 +140,8 @@ class StateReadTest(unittest.TestCase):
                                  ("LS", {"path": self.state})):
             with self.subTest(tool=tool, tool_input=tool_input):
                 self.assertEqual(self.found(tool, tool_input), ["read.state"])
-        self.assertEqual(Decide.load(CLAUDE_DIR).rules["read.state"]["verdict"], "refuse")
-        self.assertIn("db_query", Decide.load(CLAUDE_DIR).rules["read.state"]["why"])
+        self.assertEqual(Decide.load(CLAUDE_DIR).codes["read.state"]["verdict"], "refuse")
+        self.assertIn("db_query", Decide.load(CLAUDE_DIR).codes["read.state"]["why"])
 
     def test_a_tool_inside_the_state_folder_reads_it(self):
         self.assertEqual(self.found("Grep", {"pattern": "x"}, cwd=self.state), ["read.state"])

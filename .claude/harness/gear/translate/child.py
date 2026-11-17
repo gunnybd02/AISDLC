@@ -1,4 +1,5 @@
-"""ChildGuard: what a child session of a delegated plan never does (docs/05b-orchestra-cloud.md part 2). Nobody is at
+"""ChildCalls: the calls of a child session of a delegated plan, as rule actions (kind child, what: ask_user, call,
+merge or push_other); the when rows decide what a child never does (docs/05b-orchestra-cloud.md part 2). Nobody is at
 a child's keyboard, and only the orchestrator merges:
 - child.ask_user: AskUserQuestion; nobody would answer it, and the child would wait for ever;
 - child.merge: git merge, pull or rebase; the orchestrator merges the child's branch on accept;
@@ -9,8 +10,10 @@ The port's child_role (() -> the session's ChildRole or None) says whether the s
 call before it runs (one read of the session's ticket)."""
 from __future__ import annotations
 
+from typing import Any, Optional
+
 from harness.gear.translate.git_rules import push_parts
-from harness.utils.contracts import Detector, Event, Finding
+from harness.utils.contracts import RULE_ACTIONS, Event, Translator
 from harness.utils.shapes import Facts
 
 MERGES = ("merge", "pull", "rebase")
@@ -53,25 +56,31 @@ def what_of(event: Event) -> str:
     return f"{event.tool} {word}".strip()
 
 
-class ChildGuard(Detector):
-    """What a child never does: child.ask_user, child.merge, child.push_other; and child.no_keyboard on its calls."""
+class ChildCalls(Translator):
+    """The rule actions of a child's call before it runs: ask_user, or call (child.no_keyboard) with each merge and
+    push_other."""
+    READS = ("child_role", "git_actions")
+    VOCABULARY = ("kind", "what")
 
-    def detect(self, event: Event, facts: Facts) -> list[Finding]:
-        """Report the findings of a child's call before it runs; nothing for a session that is no child."""
+    def translate(self, event: Event, facts: Optional[Facts] = None) -> Facts:
+        """The child's rule actions before a call runs; {} for a session that is no child."""
+        facts = facts or {}
         if event.kind != "PreToolUse" or "child_role" not in facts:
-            return []
+            return {}
         role = facts["child_role"]()
         if not role:
-            return []
+            return {}
+
+        def act(what: str, detail: str) -> dict[str, Any]:
+            return {"kind": "child", "what": what, "detail": detail}
         if event.tool == "AskUserQuestion":
-            return [Finding("child.ask_user", f"the child {role['name']} asked the user")]
-        gits = [a for a in facts.get("git_actions") or [] if a.get("sub") in MERGES + ("push",)]
-        out = [Finding("child.no_keyboard", what_of(event))]
-        for action in gits:
+            return {RULE_ACTIONS: [act("ask_user", f"the child {role['name']} asked the user")]}
+        out = [act("call", what_of(event))]
+        for action in [a for a in facts.get("git_actions") or [] if a.get("sub") in MERGES + ("push",)]:
             if action["sub"] in MERGES:
-                out.append(Finding("child.merge", f"git {action['sub']} in the child {role['name']}"))
+                out.append(act("merge", f"git {action['sub']} in the child {role['name']}"))
             else:
                 others = pushed_branches(action.get("args", []), role["branch"])
                 if others:
-                    out.append(Finding("child.push_other", f"git push to {', '.join(others)}"))
-        return out
+                    out.append(act("push_other", f"git push to {', '.join(others)}"))
+        return {RULE_ACTIONS: out}

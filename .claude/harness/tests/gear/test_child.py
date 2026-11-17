@@ -7,7 +7,7 @@ from harness.assemble.engine.build import build_runner
 from harness.assemble.engine.ports import LedgerPort
 from harness.assemble.engine.runner import Act
 from harness.assemble.engine.wire_mcp import items_of
-from harness.gear.detect.child import pushed_branches
+from harness.gear.translate.child import pushed_branches
 from harness.utils.contracts import Event, Verdict
 from harness.utils.orchestra import brief
 from harness.tests.e2e import copy_tree, git_repo

@@ -23,6 +23,14 @@ from harness.tests import CLAUDE_DIR, WINDOWS, native, tree
 from harness.tests.e2e import copy_tree, git_repo
 
 
+def declared_vocabulary():
+    """The facts of every translator the blocks declare: what the real build checks the when rows against."""
+    from harness.assemble.engine.build import items_of, pick
+    items = items_of(CLAUDE_DIR)
+    return {f for t in pick(items, [n for n, i in items.items() if i.kind == "translator"], "translator")
+            for f in getattr(t, "VOCABULARY", ())}
+
+
 def bash(command, cwd, kind="PreToolUse"):
     return Event(kind, "Bash", {"command": command}, "s1", str(cwd))
 
@@ -113,7 +121,7 @@ class GitRulesTest(unittest.TestCase):
     def judged(self, command, view=None, kind="PreToolUse"):
         """The findings the real when rows give for a command: GitCommands, then GitRuleFacts, then the matcher."""
         if GitRulesTest.JUDGE is None:
-            GitRulesTest.JUDGE = Decide.load(CLAUDE_DIR, vocabulary=set(GitRuleFacts.VOCABULARY))
+            GitRulesTest.JUDGE = Decide.load(CLAUDE_DIR, vocabulary=declared_vocabulary())
         event = Event(kind, "Bash", {"command": command}, "s1", str(self.repo))
         facts = {**GitCommands().translate(event), "git_view": view or self.view}
         return self.JUDGE.matched(GitRuleFacts().translate(event, facts).get("rule_actions", []))
@@ -189,12 +197,13 @@ class GitRulesTest(unittest.TestCase):
         self.assertEqual(self.found("git -C . status"), [])
 
     def test_the_rules_ask_and_never_refuse(self):
-        codes = Decide.load(CLAUDE_DIR, vocabulary=set(GitRuleFacts.VOCABULARY)).codes
+        codes = Decide.load(CLAUDE_DIR, vocabulary=declared_vocabulary()).codes
         for kind in ("git.add_all", "git.no_verify", "git.reset_hard", "git.force_push", "git.protected_write",
                      "push.never_repo", "push.agent_files", "git.unread"):
             with self.subTest(kind=kind):
                 self.assertEqual(codes[kind]["verdict"], "ask")
                 self.assertTrue(codes[kind]["when"]["protected"])  # every git rule holds only on a protected branch
+                self.assertEqual(codes[kind]["when"]["kind"], "git")  # a git rule never matches another kind
                 self.assertIn("run('git', 'run'", codes[kind]["why"])
         base = PipelineBook(CLAUDE_DIR / "harness" / "assemble" / "pipelines").resolve("base")
         self.assertIn("git_rules", base.translators)

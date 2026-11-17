@@ -24,6 +24,7 @@ RULES = ("harness", "gear", "rules")  # under the .claude folder
 FIELDS = ("finding", "verdict", "why", "test")
 WHEN_FIELDS = ("code", "verdict", "why", "when", "test")
 VALUE = (str, bool, int)
+UNMATCHED = "rule.unmatched"  # no row names it: asked, never allowed
 IN_PLACE_OF_ASK = ("child.no_keyboard",)
 TEST = re.compile(r"^harness/tests/(?:[A-Za-z_][\w]*/)*test_\w+\.py#test_\w+$")
 
@@ -145,10 +146,17 @@ class Decide:
                 by fact.
 
         Returns:
-            Finding(code, detail) for each match, in the order of the actions, then of the rows.
+            Finding(code, detail) for each match, in the order of the actions, then of the rows; for an action marked
+            must_match that meets no row, rule.unmatched (which no row names, so it is asked).
         """
-        return [Finding(row["code"], self.detail_of(row["when"], action)) for action in actions
-                if isinstance(action, dict) for row in self.when_rows if self.matches(row["when"], action)]
+        out = []
+        for action in (a for a in actions if isinstance(a, dict)):
+            hits = [Finding(row["code"], self.detail_of(row["when"], action)) for row in self.when_rows
+                    if self.matches(row["when"], action)]
+            if not hits and action.get("must_match"):  # an action that must be judged and meets no row is asked
+                hits = [Finding(UNMATCHED, f"{action.get('kind', '')}: {action.get('detail', '')}")]
+            out += hits
+        return out
 
     @staticmethod
     def detail_of(when: dict[str, Any], action: dict[str, Any]) -> str:

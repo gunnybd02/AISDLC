@@ -3,13 +3,18 @@ uploading, reading and searching are free, and so is every tool that is not a Dr
 import unittest
 
 from harness.gear.decide.arbiter import Decide
-from harness.gear.detect.drive import DriveGuard
+from harness.gear.translate.drive import DriveCalls
 from harness.utils.contracts import Event
 from harness.tests import CLAUDE_DIR
 
 
+JUDGE = Decide.load(CLAUDE_DIR)
+
+
 def found(tool, given=None, kind="PreToolUse"):
-    return [(f.kind, f.detail) for f in DriveGuard().detect(Event(kind, tool, given or {}, "s1"), {})]
+    """The findings of the real when rows for a call: DriveCalls, then the matcher."""
+    actions = DriveCalls().translate(Event(kind, tool, given or {}, "s1")).get("rule_actions", [])
+    return [(f.kind, f.detail) for f in JUDGE.matched(actions)]
 
 
 class DriveTest(unittest.TestCase):
@@ -18,7 +23,7 @@ class DriveTest(unittest.TestCase):
                      "mcp__caaed075-fab9-4852-ba97-a638e8eac9e4__trash_file"):  # a connector named by its id
             with self.subTest(tool=tool):
                 self.assertEqual(found(tool, {"fileId": "f1"}), [("drive.remove", "f1")])
-        self.assertEqual(Decide.load(CLAUDE_DIR).rules["drive.remove"]["verdict"], "ask")
+        self.assertEqual(JUDGE.codes["drive.remove"]["verdict"], "ask")
 
     def test_moving_or_renaming_a_drive_file_asks_the_user(self):
         self.assertEqual(found("mcp__Google_Drive__update_file", {"fileId": "f1", "title": "x.db"}), [("drive.move", "f1")])
@@ -27,7 +32,7 @@ class DriveTest(unittest.TestCase):
         by_id = "mcp__caaed075-fab9-4852-ba97-a638e8eac9e4__update_file"  # a connector named by its id
         self.assertEqual(found(by_id, {"fileId": "f1", "title": "x.db"}), [("drive.move", "f1")])
         self.assertEqual(found(by_id, {"fileId": "f1", "description": "d"}), [])
-        self.assertEqual(Decide.load(CLAUDE_DIR).rules["drive.move"]["verdict"], "ask")
+        self.assertEqual(JUDGE.codes["drive.move"]["verdict"], "ask")
 
     def test_uploading_reading_and_other_tools_are_free(self):
         for tool, given in (("mcp__Google_Drive__create_file", {"title": "a.db", "parentId": "p"}),

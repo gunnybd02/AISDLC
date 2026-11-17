@@ -5,21 +5,20 @@
     "places",
     "git_commands",
     "git_rules",
+    "shell_commit",
     "actions",
-    "commit_facts"
+    "commit_facts",
+    "drive_calls",
+    "agent_places",
+    "child_calls",
+    "plan_paths"
   ],
   "detectors": [
     "forms",
     "tracked",
-    "planfiles",
-    "raw_commit",
-    "write_action",
     "stop_guard",
     "secret_scan",
     "mark_scan",
-    "agent_files",
-    "drive_guard",
-    "store_guard",
-    "child_guard"
+    "store_guard"
   ]
 }
