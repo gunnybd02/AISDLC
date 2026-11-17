@@ -10,6 +10,7 @@ from typing import Any
 
 from harness.utils.contracts import YES
 from harness.utils.orchestra.card import with_card_files
+from harness.utils.plan.item_checks import one_line as one
 from harness.utils.shapes import Card, PlanItems
 
 REFINE_LABEL = "Change plan"
@@ -43,18 +44,6 @@ def form_call(items: PlanItems, plan_id: str, rev: int) -> str:
     """
     return (f"Ask it now with AskUserQuestion, one question, exactly: {question(items, plan_id, rev)} Header: "
             f"\"{HEADER}\". Options: \"{YES}\", \"{REFINE_LABEL}\". Never fill in the answer.")
-
-
-def one(text: Any) -> str:
-    """A text on one line: every run of spaces and line breaks becomes one space.
-
-    Args:
-        text: any value (shown with str formatting).
-
-    Returns:
-        The text without line breaks, stripped.
-    """
-    return " ".join(str(text).split())
 
 
 def line(label: str, values: Any, sep: str = "; ") -> list[str]:

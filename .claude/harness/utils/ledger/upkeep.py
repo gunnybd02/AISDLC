@@ -15,6 +15,8 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from harness.utils.contracts import now
+
 KEEP_DAYS = 180
 PRUNED = ("act_tool_calls", "act_rule_decisions", "pl_prompts")
 SOURCES = (("tool", "act_tool_calls", "t.tool", "t.service", "0"),
@@ -138,10 +140,3 @@ def backup(con: sqlite3.Connection, ledger_path: str | Path, now_ms: int) -> str
     return made
 
 
-def now() -> int:
-    """The time now in ms.
-
-    Returns:
-        Milliseconds since the epoch.
-    """
-    return int(time.time() * 1000)

@@ -22,7 +22,7 @@ import os
 import re
 from typing import Any
 
-from harness.utils.contracts import READ, WRITE, ActionContext, ActionError, McpAction
+from harness.utils.contracts import ActionContext, ActionError, McpAction, READ, WRITE, answered, session_of
 from harness.utils.git.facts import top
 from harness.utils.git.run import GitError, git
 from harness.utils.orchestra import brief as briefs
@@ -33,27 +33,9 @@ from harness.utils.shapes import PlanStore
 ACTIONS = [("orchestra.spawn", "Spawn"), ("orchestra.started", "Started"), ("orchestra.status", "Status"),
            ("orchestra.take", "Take"), ("orchestra.push", "Push"), ("orchestra.question", "Question"),
            ("orchestra.handback", "Handback")]
+CHILD_ERRORS = (work.WorkError, GitError)  # the refusals of its steps, answered as the action's error
 SESSION_ID = re.compile(r"^session_[A-Za-z0-9]{8,64}$")
-NO_SESSION = "no session: the harness has not seen this session's prompt yet"
 NAME_ARG = {"type": "string", "description": "the child's name, as its card names it"}
-
-
-def session_of(ctx: ActionContext) -> str:
-    """The session the action runs for: the parent.
-
-    Args:
-        ctx: the action's ports, with session (session() -> the session id the hook saw last).
-
-    Returns:
-        The Claude Code session id.
-
-    Raises:
-        ActionError: no session yet.
-    """
-    sid = ctx.ports["session"]()
-    if not sid:
-        raise ActionError(NO_SESSION)
-    return sid
 
 
 def source_url(root: str) -> str:
@@ -75,13 +57,14 @@ def source_url(root: str) -> str:
     return url if re.match(r"^https://(?!127\.|localhost)", url) else ""
 
 
-def room(port: PlanStore, sid: str, name: str) -> tuple[int, str, Any]:
+def room(port: PlanStore, sid: str, name: str, cap: int) -> tuple[int, str, Any]:
     """The plan number, draft and card of a child the parent may start now.
 
     Args:
         port: the ledger port.
         sid: the parent's session.
         name: the child's name.
+        cap: the children that may run at once (the config's limits.children).
 
     Returns:
         (plan number, desk id, Card).
@@ -91,7 +74,7 @@ def room(port: PlanStore, sid: str, name: str) -> tuple[int, str, Any]:
     """
     ticket = port.ticket(sid)
     try:
-        card = crew.room(ticket, name)
+        card = crew.room(ticket, name, cap)
     except ValueError as e:
         raise ActionError(str(e)) from e
     return ticket["plan"]["id"], ticket["draft"], card
@@ -104,15 +87,16 @@ class Spawn(McpAction):
                "make; then record it with started {name, sid}")
     args_schema = {"type": "object", "properties": {"name": NAME_ARG, "model": {"type": "string"}},
                    "required": ["name"]}
-    needs = ("plans", "session", "units")
+    needs = ("plans", "session", "units", "limits")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """The brief and the create_session call of the named child; nothing is written until started. A child that
         waits for a fresh session (a note on its branch) gets the brief of a fresh session. ActionError when no approved
-        delegated plan is in force, the name is no child of it, it has started, CAP children run, or its card names no
+        delegated plan is in force, the name is no child of it, it has started, limits.children run, or its card names no
         change paths or an open session to adopt."""
         sid = session_of(ctx)
-        plan, draft, card = room(ctx.ports["plans"], sid, args["name"])
+        limits = ctx.ports["limits"]()
+        plan, draft, card = room(ctx.ports["plans"], sid, args["name"], limits["children"])
         if not card.get("change"):
             raise ActionError(f"{card['name']}'s card names no files to change: a cloud child's plan is made from its "
                               "change paths; revise the card with change")
@@ -120,10 +104,10 @@ class Spawn(McpAction):
             raise ActionError(f"{card['name']}'s card names the session {card['session']!r} to adopt; adopting an open "
                               "session is not built yet: revise the card without session, or start it by hand")
         ticket = ctx.ports["plans"].ticket(sid)
-        unit = unit_spec(card, ctx.ports.get("units", dict)())
+        unit = unit_spec(card, ctx.ports["units"]())
         url = unit["repo"] or source_url(ticket["plan"].get("root") or os.getcwd())
         fresh = ((ticket.get("crew") or {}).get(card["name"]) or {}).get("fresh") or {}
-        prompt = briefs.brief(plan, draft, card, sid, unit, fresh.get("note", ""))
+        prompt = briefs.brief(plan, draft, card, sid, unit, fresh.get("note", ""), rounds=limits["rounds"])
         call = briefs.create_call(plan, card, prompt, url, args.get("model", ""))
         where = "" if url else (" The unit's repository has no URL another machine can clone: add source_url to "
                                 "the call by hand.")
@@ -139,19 +123,19 @@ class Started(McpAction):
     summary = "Record the session id create_session gave for a spawned child; from now on it runs"
     args_schema = {"type": "object", "properties": {"name": NAME_ARG, "sid": {"type": "string"},
                                                     "model": {"type": "string"}}, "required": ["name", "sid"]}
-    needs = ("plans", "session")
+    needs = ("plans", "session", "limits")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Write the child's crew entry (running, its session) and a story row in one transaction. ActionError for a
         session id of the wrong shape, this session's own id, a session that is another child already, or any reason
         spawn refuses."""
-        sid = session_of(ctx)
+        sid, cap = session_of(ctx), ctx.ports["limits"]()["children"]
         child_sid = str(args["sid"]).strip()
         if not SESSION_ID.match(child_sid):
             raise ActionError(f"{child_sid!r} is no session id: give the id create_session answered (session_...)")
         first = not ((ctx.ports["plans"].ticket(sid) or {}).get("crew"))  # no child started before this one
         try:
-            entry = ctx.ports["plans"].write(lambda con, rec: crew.start(con, sid, args["name"], child_sid,
+            entry = ctx.ports["plans"].write(lambda con, rec: crew.start(con, sid, args["name"], child_sid, cap,
                                                                          str(args.get("model") or "")))
         except ValueError as e:
             raise ActionError(str(e)) from e
@@ -160,7 +144,7 @@ class Started(McpAction):
                    "mcp__claude-code-remote__send_later {\"delay_minutes\": 30, \"message\": \"Orchestra check-in: "
                    "run('orchestra', 'check', {name}) for each running child (it reads the child's branch: a receipt or "
                    "a question), and set the next check-in while a child still runs.\"}.") if first else ""
-        return (f"Child {args['name']} runs in session {entry['sid']} ({len(crew.running(ticket))} of {crew.CAP} "
+        return (f"Child {args['name']} runs in session {entry['sid']} ({len(crew.running(ticket))} of {cap} "
                 "running). It talks only through its branch: it pushes its receipt, or a question, and stops; it "
                 "sends no message. To look at it, run('orchestra', 'check', {name}): it reads the branch and "
                 f"says whether the child handed back, asked a question, or is still working.{checkin}")
@@ -171,30 +155,12 @@ class Status(McpAction):
     block, name, effect = "orchestra", "status", READ
     summary = "The children of the delegated plan in force: each one's unit, state, rounds and session"
     args_schema = {"type": "object", "properties": {}}
-    needs = ("plans", "session")
+    needs = ("plans", "session", "limits")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """The status of the session's delegated plan (utils/orchestra/crew.status)."""
-        return crew.status(ctx.ports["plans"].ticket(session_of(ctx)))
+        return crew.status(ctx.ports["plans"].ticket(session_of(ctx)), ctx.ports["limits"]()["children"])
 
-
-
-def child_run(step: Any) -> str:
-    """Run one step of a child's work, its refusal turned into the action's error.
-
-    Args:
-        step: a callable with no argument that returns the answer (utils/orchestra/work.py).
-
-    Returns:
-        The step's answer.
-
-    Raises:
-        ActionError: the step refused (WorkError), or git failed.
-    """
-    try:
-        return step()
-    except (work.WorkError, GitError) as e:
-        raise ActionError(str(e)) from e
 
 
 class Take(McpAction):
@@ -209,7 +175,7 @@ class Take(McpAction):
         """Open the child's card plan in the server's folder (utils/orchestra/work.take). ActionError for a session that
         is no child, a card without change paths, another plan in force, or git refusing the branch."""
         sid = session_of(ctx)
-        return child_run(lambda: work.take(ctx.ports["plans"], sid, os.getcwd()))
+        return answered(CHILD_ERRORS, lambda: work.take(ctx.ports["plans"], sid, os.getcwd()))
 
 
 class Push(McpAction):
@@ -223,7 +189,7 @@ class Push(McpAction):
         """Push the child's branch (utils/orchestra/work.push). ActionError for a session that is no child, no card
         plan, another branch checked out, a git rule that stops it, or git failing."""
         sid = session_of(ctx)
-        return child_run(lambda: work.push(ctx.ports["plans"], sid, ctx.ports["git_judge"]))
+        return answered(CHILD_ERRORS, lambda: work.push(ctx.ports["plans"], sid, ctx.ports["git_judge"]))
 
 
 class Question(McpAction):
@@ -238,7 +204,7 @@ class Question(McpAction):
         a session that is no child, a question empty or longer than 400 characters, no card plan, another branch, or a
         rule that stops the commit or the push."""
         sid = session_of(ctx)
-        return child_run(lambda: work.ask(ctx.ports["plans"], sid, args["question"], ctx.ports["commit_judge"],
+        return answered(CHILD_ERRORS, lambda: work.ask(ctx.ports["plans"], sid, args["question"], ctx.ports["commit_judge"],
                                            ctx.ports["git_judge"]))
 
 
@@ -259,5 +225,5 @@ class Handback(McpAction):
         """Write, commit and push the child's receipt (utils/orchestra/work.handback). ActionError for a bad report, a
         session that is no child, no card plan, another branch, or a rule that stops the commit or the push."""
         sid = session_of(ctx)
-        return child_run(lambda: work.handback(ctx.ports["plans"], sid, args, ctx.ports["commit_judge"],
-                                               ctx.ports["git_judge"], bool(ctx.ports.get("store", str)())))
+        return answered(CHILD_ERRORS, lambda: work.handback(ctx.ports["plans"], sid, args, ctx.ports["commit_judge"],
+                                               ctx.ports["git_judge"], bool(ctx.ports["store"]())))

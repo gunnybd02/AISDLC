@@ -26,7 +26,8 @@ from harness.utils.git.facts import blob, head, top
 from harness.utils.git.run import GitError, git
 from harness.utils.plan.files import matches
 from harness.utils.plan.grants import test_missing
-from harness.utils.plan.tickets import EXECUTE, approved_plan, steps_of
+from harness.utils.plan import tickets
+from harness.utils.plan.tickets import EXECUTE, steps_of
 from harness.utils.plan.verify import dirty
 from harness.utils.shapes import ApprovedPlan, CommitJudge, PlanBehaviour, PlanStore, Step, Ticket
 
@@ -52,13 +53,12 @@ def in_force(port: PlanStore, sid: str) -> tuple[Ticket, ApprovedPlan]:
     Raises:
         StepError: no plan in force, or the ticket is not in execute.
     """
-    ticket = port.ticket(sid) if sid else None
-    plan = approved_plan(ticket)
-    if plan is None:
+    found = tickets.in_force(port, sid)
+    if found is None:
         raise StepError(NO_PLAN)
-    if ticket["phase"] != EXECUTE:
-        raise StepError(NOT_EXECUTE.format(phase=ticket["phase"]))
-    return ticket, {**plan, "grants": port.grants(plan)}
+    if found[0]["phase"] != EXECUTE:
+        raise StepError(NOT_EXECUTE.format(phase=found[0]["phase"]))
+    return found
 
 
 def step_behaviors(plan: ApprovedPlan, n: int) -> list[PlanBehaviour]:

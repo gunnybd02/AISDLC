@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 from typing import Any, Optional, TypedDict
 
-from harness.utils.contracts import ALLOW, ASK, VERDICTS, Finding, Verdict
+from harness.utils.contracts import ALLOW, ASK, Finding, ProblemsError, VERDICTS, Verdict
 
 RULES = ("harness", "gear", "rules")  # under the .claude folder
 FIELDS = ("finding", "verdict", "why", "test")
@@ -30,17 +30,8 @@ class RuleRow(TypedDict):
     test: str
 
 
-class RuleError(Exception):
+class RuleError(ProblemsError):
     """The rules files do not load; problems holds one line per bad file or row."""
-
-    def __init__(self, problems: list[str]) -> None:
-        """Keep the problems, one per line in the message.
-
-        Args:
-            problems: one line per problem: "<file> rule <n>: <why>" or "<file>: <why>".
-        """
-        super().__init__("\n".join(problems))
-        self.problems = problems
 
 
 class Decide:

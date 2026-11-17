@@ -17,12 +17,11 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-import time
 import uuid
 from collections.abc import Collection, Iterable, Sequence
 from typing import TYPE_CHECKING, Any, Optional
 
-from harness.utils.contracts import CLAUDE_DECISION, Event, Finding
+from harness.utils.contracts import CLAUDE_DECISION, Event, Finding, now
 from harness.utils.ledger.mask import REDACTED, mask, stored
 from harness.utils.shapes import ApprovedPlan
 
@@ -42,15 +41,6 @@ SLASH = re.compile(r"^/([A-Za-z0-9_.:-]+)(?:\s|$)")
 ANNOTATED = ("span", "turn", "session", "plan")  # what a judgment is about
 MODEL = "LLM"  # the annotator of every row the model writes: evidence for a pattern, never authority
 NEW_EPOCH = ("compact", "clear")  # the sources of a session start after which earlier loads no longer count
-
-
-def now() -> int:
-    """The time now in ms.
-
-    Returns:
-        Milliseconds since the epoch.
-    """
-    return int(time.time() * 1000)
 
 
 def turn_now(con: sqlite3.Connection, sid: str) -> int:

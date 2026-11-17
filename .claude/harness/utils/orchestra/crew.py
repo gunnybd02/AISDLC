@@ -14,28 +14,18 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import time
 import uuid
 from typing import Optional
 
+from harness.utils.contracts import now
 from harness.utils.orchestra import card as cards
 from harness.utils.plan import tickets
 from harness.utils.shapes import ApprovedPlan, Card, CrewEntry, Ticket
 
-CAP = 3
 PENDING, RUNNING, HANDED_BACK = "pending", "running", "handed back"
 ACCEPTED, FORGOTTEN, RELEASED, REMOVED = "accepted", "forgotten", "released", "removed"
 ENDED = (ACCEPTED, FORGOTTEN, RELEASED, REMOVED)
 BUSY = (RUNNING, "reserved")
-
-
-def now() -> int:
-    """The time now in ms.
-
-    Returns:
-        Milliseconds since the epoch.
-    """
-    return int(time.time() * 1000)
 
 
 def delegated(ticket: Optional[Ticket]) -> Optional[ApprovedPlan]:
@@ -142,14 +132,15 @@ def running(ticket: Ticket) -> list[str]:
     return [name for name, entry in (ticket.get("crew") or {}).items() if entry.get("state") in BUSY]
 
 
-def room(ticket: Optional[Ticket], name: str) -> Card:
+def room(ticket: Optional[Ticket], name: str, cap: int) -> Card:
     """The card of a child the parent may start now: a delegated plan the user approved is in force, the name is one of
-    its children, the child has not started (or was forgotten) and fewer than CAP children run, or the child waits for
+    its children, the child has not started (or was forgotten) and fewer than cap children run, or the child waits for
     a fresh session (sent back or answered through a note on its branch).
 
     Args:
         ticket: the parent's ticket.
         name: the child's name.
+        cap: the children that may run at once (the config's limits.children).
 
     Returns:
         The child's Card.
@@ -171,13 +162,13 @@ def room(ticket: Optional[Ticket], name: str) -> Card:
     if entry and entry.get("state") != FORGOTTEN:
         raise ValueError(f"{name} has started already (state {entry.get('state')}, session {entry.get('sid')})")
     busy = running(ticket)
-    if len(busy) >= CAP:
-        raise ValueError(f"{CAP} children run already ({', '.join(busy)}): accept or forget one before you spawn "
+    if len(busy) >= cap:
+        raise ValueError(f"{cap} children run already ({', '.join(busy)}): accept or forget one before you spawn "
                          "another")
     return card
 
 
-def start(con: sqlite3.Connection, sid: str, name: str, child_sid: str, model: str = "") -> CrewEntry:
+def start(con: sqlite3.Connection, sid: str, name: str, child_sid: str, cap: int, model: str = "") -> CrewEntry:
     """Record a started child: its crew entry as running with its cloud session, and a running story row. Every check
     of room is made again inside the transaction, and the session may be the child of no other crew entry.
 
@@ -186,6 +177,7 @@ def start(con: sqlite3.Connection, sid: str, name: str, child_sid: str, model: s
         sid: the parent's session.
         name: the child's name.
         child_sid: the child's cloud session id.
+        cap: the children that may run at once (the config's limits.children).
         model: the model it was started with, if one was named.
 
     Returns:
@@ -195,7 +187,7 @@ def start(con: sqlite3.Connection, sid: str, name: str, child_sid: str, model: s
         ValueError: the reason it may not be recorded.
     """
     ticket = tickets.latest(con, sid)
-    card = room(ticket, name)
+    card = room(ticket, name, cap)
     if child_sid == sid:
         raise ValueError("that is this session: give the new child's session id")
     taken = [n for n, e in (ticket.get("crew") or {}).items() if e.get("sid") == child_sid and e.get("state") not in ENDED]
@@ -217,12 +209,13 @@ def start(con: sqlite3.Connection, sid: str, name: str, child_sid: str, model: s
     return entry
 
 
-def status(ticket: Optional[Ticket]) -> str:
+def status(ticket: Optional[Ticket], cap: int) -> str:
     """The state of a delegated plan: "Plan N: x of y accepted", then one line per child (name | unit | state |
     session | rounds); a child not yet started is pending.
 
     Args:
         ticket: the parent's ticket.
+        cap: the children that may run at once (the config's limits.children).
 
     Returns:
         The text; a sentence when no delegated plan is in force.
@@ -232,7 +225,7 @@ def status(ticket: Optional[Ticket]) -> str:
         return "No delegated plan is in force in this session."
     crew = ticket.get("crew") or {}
     done = sum(1 for e in crew.values() if e.get("state") == ACCEPTED)
-    lines = [f"Plan {plan['id']}: {done} of {len(plan['children'])} accepted; {len(running(ticket))} of {CAP} may run."]
+    lines = [f"Plan {plan['id']}: {done} of {len(plan['children'])} accepted; {len(running(ticket))} of {cap} may run."]
     for child in plan["children"]:
         entry = crew.get(child["name"], {})
         rounds = f", sent back {entry['backs']}x" if entry.get("backs") else ""

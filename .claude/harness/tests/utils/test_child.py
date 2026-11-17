@@ -16,7 +16,7 @@ from harness.tests.e2e import copy_tree
 CARD = {"name": "api", "unit": "home", "goal": "List the orders of a user",
         "ac": ["GET /orders returns the user's orders", "an unknown user gets 404"],
         "change": ["app/orders.py"], "tests": ["tests/test_orders.py"]}
-BRIEF = brief.brief(7, "pd-x", CARD, "session_parent01")
+BRIEF = brief.brief(7, "pd-x", CARD, "session_parent01", rounds=3)
 
 
 class ChildTest(unittest.TestCase):
@@ -55,14 +55,14 @@ class ChildTest(unittest.TestCase):
 
     def test_a_child_never_presents_or_closes_a_plan_nor_asks_for_the_grant(self):
         self.prompt("c1", BRIEF)
-        ctx = ActionContext({"plans": self.port, "session": lambda: "c1"})
+        ctx = ActionContext({"plans": self.port, "session": lambda: "c1", "limits": lambda: {"children": 3, "rounds": 3}})
         with self.assertRaisesRegex(ActionError, "never presents a plan of its own"):
             PlanPresent().run(ctx, {"plan": {"title": "Other work", "what": ["w"], "files": ["x.py"]}})
         with self.assertRaisesRegex(ActionError, "never closes its plan"):
             PlanClose().run(ctx, {})
         with self.assertRaisesRegex(ActionError, "never asks to turn the guards off"):
             Grant().run(ctx, {"minutes": 5, "why": "w"})
-        other = ActionContext({"plans": self.port, "session": lambda: "s9"})
+        other = ActionContext({"plans": self.port, "session": lambda: "s9", "limits": lambda: {"children": 3, "rounds": 3}})
         self.assertIn("Turn guards off", Grant().run(other, {"minutes": 5, "why": "w"}))
 
 

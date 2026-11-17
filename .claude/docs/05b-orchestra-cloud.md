@@ -3,7 +3,8 @@
 > How this harness builds the user's spec 05 (`05-orchestra.md` to `05-orchestra-4.md`), which assumes one PC.
 > Decided by the user on 2026-11-16: a child is a **cloud session**; the card travels **in the brief** and the
 > handback receipt **on the child's branch** (no refs of the harness on the remote); at most **3** children run; a
-> live probe first, then one plan per part. All four parts are built.
+> live probe first, then one plan per part. All four parts are built. The cap of 3 running children and the 3
+> send-back rounds are `limits.children` and `limits.rounds` of `project.json` (`13-cloud-foundation.md`).
 > Changed by the user on 2026-11-17: parent and child **talk through git, never by message** (section 2b).
 
 ## 1. Why spec 05 changes here
@@ -248,7 +249,7 @@ for GitHub to decide whether a pull request can merge, and a refusal while the l
 |---|---|---|
 | Children running at once | 3 | Each child is a whole cloud session: cost and the user's attention |
 | Children per plan | 4 (skill rule, as spec 05) | Quota |
-| Send-back rounds | 3, then the user decides | Spec 05 |
+| Send-back rounds | `limits.rounds` in `project.json` (default 3), then the user decides | Spec 05 |
 | Card | as spec 21 | Spec 05 |
 
 ## 10. Trust

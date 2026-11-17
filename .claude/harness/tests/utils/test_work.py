@@ -31,7 +31,7 @@ class WorkTest(unittest.TestCase):
         self.origin = tree(self, {})
         git(self.origin, "init", "-q", "--bare")
         git(self.repo, "remote", "add", "origin", str(self.origin))
-        Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": brief.brief(7, "pd-x", CARD, "session_p1")},
+        Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": brief.brief(7, "pd-x", CARD, "session_p1", rounds=3)},
                                  "c1", str(self.repo)), {}, ALLOW)
 
     def take(self):
@@ -94,7 +94,7 @@ class WorkTest(unittest.TestCase):
         fresh = tree(self, {})  # a new machine: a clone of origin and its own ledger
         git(fresh, "clone", "-q", str(self.origin), ".")
         port = LedgerPort(copy_tree(self, {"project.json": json.dumps({"name": "t"})}))
-        prompt = brief.brief(7, "pd-x", CARD, "session_p1", resume=".harness/notes/api/sendback-1.md")
+        prompt = brief.brief(7, "pd-x", CARD, "session_p1", resume=".harness/notes/api/sendback-1.md", rounds=3)
         Act(port).run(Event("UserPromptSubmit", "", {"prompt": prompt}, "c2", str(fresh)), {}, ALLOW)
         text = work.take(port, "c2", str(fresh))
         self.assertIn("you are on orch/p7/api (tracked)", text)
@@ -137,7 +137,7 @@ class WorkTest(unittest.TestCase):
         unit = {"repo": "https://github.com/me/shop", "path": "services/api", "verify": ["{python}", "-c", "pass"],
                 "base": "develop"}
         Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": brief.brief(7, "pd-x", {**CARD, "unit": "api"},
-                                                                              "session_p1", unit)}, "u1", str(repo)),
+                                                                              "session_p1", unit, rounds=3)}, "u1", str(repo)),
                            {}, ALLOW)
         work.take(self.port, "u1", str(repo / "web"))  # anywhere in the clone: the plan is rooted in the unit
         plan = self.port.approved("u1")
@@ -147,7 +147,7 @@ class WorkTest(unittest.TestCase):
         self.assertEqual(command_of(plan, ["other"])[1:], ["-c", "pass"])
         bad = {**unit, "path": "nowhere"}
         Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": brief.brief(7, "pd-x", {**CARD, "unit": "api"},
-                                                                              "session_p1", bad)}, "u2", str(repo)),
+                                                                              "session_p1", bad, rounds=3)}, "u2", str(repo)),
                            {}, ALLOW)
         with self.assertRaisesRegex(work.WorkError, "folder nowhere is not in this clone"):
             work.take(self.port, "u2", str(repo))

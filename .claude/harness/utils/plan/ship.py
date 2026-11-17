@@ -23,7 +23,8 @@ from harness.utils.git.marks import banned_in, marks_in
 from harness.utils.git.run import GitError, git, run_git
 from harness.utils.plan.files import allows
 from harness.utils.plan.stop import is_code
-from harness.utils.plan.tickets import DELIVER, approved_plan
+from harness.utils.plan import tickets
+from harness.utils.plan.tickets import DELIVER
 from harness.utils.shapes import ApprovedPlan, CommitJudge, GitJudge, PlanStore, Ticket
 
 ALLOW_LABEL, NO_LABEL = "Allow", "Deny"
@@ -48,11 +49,10 @@ def in_force(port: PlanStore, sid: str) -> tuple[Ticket, ApprovedPlan]:
     Raises:
         ShipError: no plan in force in the session.
     """
-    ticket = port.ticket(sid) if sid else None
-    plan = approved_plan(ticket)
-    if plan is None:
+    found = tickets.in_force(port, sid)
+    if found is None:
         raise ShipError("git-commit-no-plan: no plan in force in this session; present a light plan")
-    return ticket, {**plan, "grants": port.grants(plan)}
+    return found
 
 
 def git_commit(port: PlanStore, sid: str, files: list[str], message: Optional[str], judge: CommitJudge) -> str:

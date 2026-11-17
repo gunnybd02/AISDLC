@@ -2,9 +2,10 @@
 and a port. The verdict words live here and in gear/decide/arbiter.py only (verdict_net)."""
 from __future__ import annotations
 
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from harness.utils.shapes import Facts
 
@@ -13,6 +14,21 @@ VERDICTS = (ALLOW, ASK, REFUSE)  # from the weakest to the strongest
 CLAUDE_DECISION = {ASK: "ask", REFUSE: "deny"}  # what Claude Code reads; allow says nothing
 PERMISSIONS_KEY = "allow"  # the list of allowed tools in Claude Code's settings.json (permissions), not a verdict
 YES = "Approve"  # the user's word in a form that approves (a plan, a grant)
+NO_SESSION = "no session: the harness has not seen this session's prompt yet"
+
+
+
+class ProblemsError(Exception):
+    """A refusal that lists its problems: one line each, the message is them joined (the loader, the rule rows)."""
+
+    def __init__(self, problems: list[str]) -> None:
+        """Keep the problems, one per line in the message.
+
+        Args:
+            problems: what is wrong, one line each.
+        """
+        super().__init__("\n".join(problems))
+        self.problems = problems
 
 
 @dataclass(frozen=True)
@@ -171,3 +187,49 @@ def refused(verdict: Verdict) -> bool:
 
 PREPARE, EXECUTE, DELIVER = "prepare", "execute", "deliver"
 PHASES = (EXECUTE, DELIVER)  # the phases in which a ticket's plan is in force
+
+
+def now() -> int:
+    """The time now in ms: the one clock of the harness (owners net).
+
+    Returns:
+        Milliseconds since the epoch.
+    """
+    return int(time.time() * 1000)
+
+
+def session_of(ctx: ActionContext) -> str:
+    """The session an MCP action runs for.
+
+    Args:
+        ctx: the action's ports, with session (session() -> the session id the hook saw last).
+
+    Returns:
+        The Claude Code session id.
+
+    Raises:
+        ActionError: no session yet (NO_SESSION).
+    """
+    sid = ctx.ports["session"]()
+    if not sid:
+        raise ActionError(NO_SESSION)
+    return sid
+
+
+def answered(errors: tuple[type[BaseException], ...], step: Callable[[], str]) -> str:
+    """Run one step of an action, a listed error turned into the action's error (its message kept).
+
+    Args:
+        errors: the exception classes that are refusals of the step.
+        step: a callable with no argument that returns the answer.
+
+    Returns:
+        The step's answer.
+
+    Raises:
+        ActionError: the step raised one of errors.
+    """
+    try:
+        return step()
+    except errors as e:
+        raise ActionError(str(e)) from e

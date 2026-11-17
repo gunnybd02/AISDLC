@@ -124,14 +124,26 @@ def drop_receipt(unit: dict[str, Any], repo: str, ref: str, name: str) -> str:
         with checkout(unit, repo, ref) as folder:
             if not git(folder, "ls-files", "--", rel).strip():
                 return "The branch holds no receipt to take off."
-            who = [] if git_or_empty(folder, "config", "user.email") else \
-                ["-c", "user.name=harness", "-c", "user.email=harness@localhost"]
+            who = committer(folder)
             git(folder, "rm", "-q", "--", rel)
             git(folder, *who, "commit", "-q", "-m", f"Keep the receipt of {name} out of {unit.get('base', 'main')}")
             git(folder, "push", "-q", "origin", f"HEAD:refs/heads/{ref}", timeout=300)
     except (FetchError, GitError) as e:
         return f"The receipt stays on the branch ({str(e)[-300:]}); it lands with the merge."
     return "Its receipt is kept in the ledger and taken off the branch."
+
+
+def committer(folder: str) -> list[str]:
+    """The git options that name a committer when the checkout has none: the parent's own commits on a child's branch.
+
+    Args:
+        folder: the checkout.
+
+    Returns:
+        [] when user.email is set there; else -c options naming the harness.
+    """
+    return [] if git_or_empty(folder, "config", "user.email") else \
+        ["-c", "user.name=harness", "-c", "user.email=harness@localhost"]
 
 
 def git_or_empty(folder: str, *args: str) -> str:
@@ -172,8 +184,7 @@ def put_note(unit: dict[str, Any], repo: str, ref: str, rel: str, text: str, mes
             path = Path(folder) / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8")
-            who = [] if git_or_empty(folder, "config", "user.email") else \
-                ["-c", "user.name=harness", "-c", "user.email=harness@localhost"]
+            who = committer(folder)
             git(folder, "add", "--", rel)
             git(folder, *who, "commit", "-q", "-m", message)
             sha = git(folder, "rev-parse", "HEAD").strip()

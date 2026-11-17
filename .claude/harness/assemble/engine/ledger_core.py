@@ -4,10 +4,10 @@ at its first write or read once it exists. DeskPort (desk_port.py) and TicketPor
 from __future__ import annotations
 
 import sqlite3
-import time
 from pathlib import Path
 from typing import Callable, Optional, TypeVar
 
+from harness.utils.contracts import now
 from harness.utils.gateway.release import current, release_dir
 from harness.utils.plan import opening
 from harness.utils.ledger.db import Ledger
@@ -15,15 +15,6 @@ from harness.utils.ledger.recorder import Recorder
 from harness.utils.shapes import Change, Row
 
 T = TypeVar("T")
-
-
-def now() -> int:
-    """The time now, in milliseconds since the epoch (the `at` of every row the port writes).
-
-    Returns:
-        The current time in ms.
-    """
-    return int(time.time() * 1000)
 
 
 def in_force(claude_dir: str | Path) -> bool:

@@ -20,6 +20,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from harness.utils.contracts import now
+
 TYPES = {"input_tokens": "input", "output_tokens": "output", "cache_creation_input_tokens": "cache_write",
          "cache_read_input_tokens": "cache_read"}
 PRICED_FROM = "2025-01-01"
@@ -33,15 +35,6 @@ LIST_PRICES = {
     "claude-sonnet-5-5": (2.0, 10.0, 0.10), "claude-sonnet-5": (2.0, 10.0, 0.2), "claude-sonnet-4-6": (3.0, 15.0, 0.3),
     "claude-haiku-5-5": (0.10, 0.50, 0.01), "claude-haiku-4-5": (1.0, 5.0, 0.1),
 }
-
-
-def now() -> int:
-    """The time now in ms.
-
-    Returns:
-        Milliseconds since the epoch.
-    """
-    return int(time.time() * 1000)
 
 
 def at_of(stamp: Any) -> int:
