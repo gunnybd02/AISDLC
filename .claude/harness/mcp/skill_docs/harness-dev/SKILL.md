@@ -117,8 +117,8 @@ From `.claude/`: `python3 -m unittest discover -s . -t .` passes and `python3 ha
 ## 6. Release
 A session never runs the files it edits. It runs a release: a copy of `harness/` under `state/live/<sha>/`.
 - A new session takes the newest main at its start, when the doctor is clean.
-- A running session: `python3 <core>/anchor.py cli live update`. It asks `Allow publishing harness release <sha>?`; after
-  the user's "Allow", run it again. No restart.
+- A running session: `python3 <core>/anchor.py cli live update` brings merged main and puts it in force when its doctor
+  is clean, with no form (the merge was the user's word). No restart.
 - The work tree's own code before a merge (a PC): `python3 <core>/anchor.py cli live publish`, the same form.
 - `python3 <core>/anchor.py cli live status` says which release is in force.
 

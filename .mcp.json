@@ -8,6 +8,15 @@
         "mcp_server",
         "--project"
       ]
+    },
+    "fallback": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "anchor.py",
+        "fallback",
+        "--project"
+      ]
     }
   }
 }

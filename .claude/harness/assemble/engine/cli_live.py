@@ -4,8 +4,9 @@ it in force only with the user's word: a one-use pass of exactly that sha, given
 form question 'Allow publishing harness release <sha>?' (a session cannot answer a form; utils/git/asks.py
 keeps the pass).
 update brings the newest main of the harness's own clone into a running session: it pins the code that runs now when
-no release is in force (so the new code is not run before the user's word), fast-forwards the clone (utils/git/pull.py)
-and publishes as above. Hooks run the new release at their next call, MCP servers at their next request.
+no release is in force, fast-forwards the clone (utils/git/pull.py: clean, on main, nothing untracked under harness/)
+and puts it in force when its doctor is clean, with no form: main changes only by a pull request the user allowed, so
+the merge was the user's word. Hooks run the new release at their next call, MCP servers at their next request.
 session_update is what Claude Code runs when a session starts (harness/entry/session_start.py, a SessionStart hook): a cloud
 machine is prepared ahead of time, so the harness is brought to the newest main then, with the trust of the setup
 script that installed it, and put in force when its doctor is clean; otherwise the session keeps what it runs. The
@@ -17,11 +18,16 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 from harness.assemble.engine.live_mcp import healthy
-from harness.utils.gateway.release import ALLOW_LABEL, NO_LABEL, anchor, build, current, publish, release_dir, stamp
+from harness.utils.gateway.release import (ALLOW_LABEL, NO_LABEL, anchor, bad, build, current, publish, release_dir,
+                                           stamp)
 from harness.utils.git.asks import take
-from harness.utils.git.pull import PullError, fast_forward
+from harness.utils.git.pull import PullError, clone_root, fast_forward
+from harness.utils.git.run import GitError, git
+
+MERGE_TOOL = "__merge_pull_request"  # the GitHub merge tool, whatever its server is named (mcp__github__, mcp__<id>__)
 from harness.utils.shapes import PlanStore
 
 
@@ -64,14 +70,15 @@ def publish_door(port: PlanStore, home: str | Path) -> tuple[int, str]:
 
 
 def update_door(port: PlanStore, home: str | Path) -> tuple[int, str]:
-    """Bring the newest main into the clone and publish it as publish_door does (the door live update).
+    """Bring the newest main into the clone and put it in force when its doctor is clean (the door live update). No
+    form: the clone is exactly origin's main, which changes only by a pull request the user allowed.
 
     Args:
-        port: the ledger port (the pass of the publish is taken from it).
+        port: the ledger port (kept for the door's shape; merged main needs no pass).
         home: the home, the .claude folder of the harness's clone.
 
     Returns:
-        (exit code, text): 0 up to date, asked or published; 1 refused.
+        (exit code, text): 0 up to date or published; 1 refused.
     """
     pinned = pin(home)  # what runs now is the work tree: pin it before the clone changes under it
     try:
@@ -80,9 +87,92 @@ def update_door(port: PlanStore, home: str | Path) -> tuple[int, str]:
         return 1, f"{pinned}refused: {e}"
     if before == after and stamp(home) == current(home):
         return 0, f"{pinned}Up to date: main {after[:12]} is the release in force."
-    code, text = publish_door(port, home)
+    code, text = publish_main(home)
     news = f"main {before[:12]} -> {after[:12]}. " if before != after else ""
     return code, pinned + news + text
+
+
+def publish_main(home: str | Path) -> tuple[int, str]:
+    """Put the clone's main, just fast-forwarded, in force when its own doctor is clean; no form (the merge was it).
+
+    Args:
+        home: the home, the .claude folder of the harness's clone, exactly origin's main.
+
+    Returns:
+        (exit code, text): 0 in force; 1 refused (its doctor finds problems, the release in force stays).
+    """
+    sha = build(home)
+    if current(home) == sha:
+        return 0, f"Release {sha} is in force already."
+    if sha in bad(home):
+        return 1, (f"refused: release {sha} failed once and the fallback left it; release {current(home)} stays in "
+                   f"force. Fix main with a new pull request.")
+    if not healthy(home, release_dir(home, sha)):
+        return 1, (f"refused: the doctor of release {sha} finds problems; release {current(home)} stays in force. "
+                   f"Fix main with a new pull request.")
+    publish(home, sha)
+    return 0, f"Release {sha} is in force: hooks run it at once, MCP servers at their next call."
+
+
+def slug(url: str) -> str:
+    """The last two parts of a remote's URL or path, lower case: "owner/name" (".git" left out).
+
+    Args:
+        url: a git remote's URL or a folder path.
+
+    Returns:
+        "owner/name", or "" when the URL has fewer than two parts.
+    """
+    parts = [p for p in str(url).strip().replace("\\", "/").replace(":", "/").split("/") if p]
+    if len(parts) < 2:
+        return ""
+    name = parts[-1][:-4] if parts[-1].endswith(".git") else parts[-1]
+    return f"{parts[-2]}/{name}".lower()
+
+
+def merged(event: Any) -> str:
+    """The "owner/name" a merge tool's answer says was merged; "" for any other call or a merge that failed.
+
+    Args:
+        event: a hook call (PostToolUse of a merge tool: input owner, repo; its response).
+
+    Returns:
+        "owner/name" in lower case, or "".
+    """
+    if event.kind != "PostToolUse" or not str(event.tool or "").endswith(MERGE_TOOL):
+        return ""
+    text = event.response if isinstance(event.response, str) else json.dumps(event.response)
+    flat = (text or "").replace(" ", "").lower()
+    if '"merged":true' not in flat and "successfullymerged" not in flat:
+        return ""
+    owner, repo = str(event.input.get("owner") or ""), str(event.input.get("repo") or "")
+    return f"{owner}/{repo}".lower() if owner and repo else ""
+
+
+def after_merge(home: str | Path, event: Any) -> list[str]:
+    """After a merge of the harness's own repository, bring its main and put it in force (as live update does).
+
+    Args:
+        home: the home, the .claude folder of the harness's clone.
+        event: the hook call; only a PostToolUse of a merge tool that merged is read.
+
+    Returns:
+        One note for the model saying which release is in force, or why the old one stays; [] for any other call.
+    """
+    repo = merged(event)
+    if not repo:
+        return []
+    try:
+        if slug(git(clone_root(home), "remote", "get-url", "origin")) != repo:
+            return []
+    except (GitError, PullError):
+        return []
+    try:
+        before, after = fast_forward(home)
+    except PullError as e:
+        return [f"The harness keeps release {current(home)} after the merge: {e}"]
+    _, text = publish_main(home)
+    return [f"After the merge, main {before[:12]} -> {after[:12]}. {text}"]
 
 
 def pin(home: str | Path) -> str:
@@ -193,6 +283,8 @@ def harness_update(home: str | Path) -> str:
     sha = build(home)
     if current(home) == sha:
         return f"{pinned}The harness is up to date: main {after[:12]}, release {sha}."
+    if sha in bad(home):
+        return f"{pinned}The harness keeps release {current(home)}: release {sha} of main {after[:12]} failed once."
     if not healthy(home, release_dir(home, sha)):
         return f"{pinned}The harness keeps release {current(home)}: the doctor of main {after[:12]} finds problems."
     publish(home, sha)

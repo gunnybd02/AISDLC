@@ -22,6 +22,8 @@ from harness.utils.gateway.release import anchor
 EVENTS = {"PreToolUse": "*", "PostToolUse": "*", "UserPromptSubmit": None, "Stop": None, "SessionStart": None}
 ENTRY = {"SessionStart": "session_start"}  # the entry of the anchor each event runs (hook when not named)
 SERVER = "harness"
+FALLBACK = "fallback"  # the anchor's own server: it rolls back a broken release and never loads one
+SERVERS = {SERVER: "mcp_server", FALLBACK: "fallback"}  # name -> the anchor's entry
 
 
 def read_json(path: str | Path) -> dict[str, Any]:
@@ -238,27 +240,30 @@ def remove_rules(settings_path: str | Path, boot: str | Path, user_home: Optiona
     return removed
 
 
-def server_entry(python: str, boot: str | Path) -> dict[str, Any]:
-    """The MCP server entry of the harness: the anchor's mcp_server entry over stdio.
+def server_entry(python: str, boot: str | Path, entry: str = "mcp_server") -> dict[str, Any]:
+    """An MCP server entry of the harness: one of the anchor's entries over stdio.
 
     Args:
         python: the Python that runs it.
         boot: the anchor.
+        entry: the anchor's entry (mcp_server, or fallback).
 
     Returns:
-        {type: "stdio", command: python, args: [boot, "mcp_server"]}.
+        {type: "stdio", command: python, args: [boot, entry]}.
     """
-    return {"type": "stdio", "command": str(python), "args": [str(boot), "mcp_server"]}
+    return {"type": "stdio", "command": str(python), "args": [str(boot), entry]}
 
 
-def install_server(claude_json: str | Path, python: str, boot: str | Path, use_cli: bool = True) -> str:
-    """Register the MCP server at user scope: through the claude CLI when there is one, else in ~/.claude.json.
+def install_server(claude_json: str | Path, python: str, boot: str | Path, use_cli: bool = True,
+                   name: str = SERVER) -> str:
+    """Register one MCP server at user scope: through the claude CLI when there is one, else in ~/.claude.json.
 
     Args:
         claude_json: the user's ~/.claude.json.
         python: the Python that runs the server.
         boot: the anchor.
         use_cli: whether to try the claude CLI first.
+        name: the server (harness, or fallback); its anchor entry is SERVERS[name].
 
     Returns:
         Where it was registered: "claude mcp add-json --scope user", or the path of claude_json.
@@ -266,39 +271,40 @@ def install_server(claude_json: str | Path, python: str, boot: str | Path, use_c
     Raises:
         ValueError: claude_json is not a JSON object (when it is written).
     """
-    entry = server_entry(python, boot)
+    entry = server_entry(python, boot, SERVERS[name])
     cli = shutil.which("claude") if use_cli else None
     if cli:
-        subprocess.run([cli, "mcp", "remove", "--scope", "user", SERVER], capture_output=True)
-        p = subprocess.run([cli, "mcp", "add-json", "--scope", "user", SERVER, json.dumps(entry)], capture_output=True,
+        subprocess.run([cli, "mcp", "remove", "--scope", "user", name], capture_output=True)
+        p = subprocess.run([cli, "mcp", "add-json", "--scope", "user", name, json.dumps(entry)], capture_output=True,
                            text=True)
         if p.returncode == 0:
             return "claude mcp add-json --scope user"
     data = read_json(claude_json)
-    data.setdefault("mcpServers", {})[SERVER] = entry
+    data.setdefault("mcpServers", {})[name] = entry
     write_json(claude_json, data)
     return str(claude_json)
 
 
-def remove_server(claude_json: str | Path, boot: str | Path, use_cli: bool = True) -> None:
-    """Take the harness's MCP server out: through the claude CLI when there is one, and from ~/.claude.json when its
-    entry there runs boot.
+def remove_server(claude_json: str | Path, boot: str | Path, use_cli: bool = True, name: str = SERVER) -> None:
+    """Take one MCP server of the harness out: through the claude CLI when there is one, and from ~/.claude.json
+    when its entry there runs boot.
 
     Args:
         claude_json: the user's ~/.claude.json.
         boot: the anchor (or the legacy boot.py) whose hooks, rules and server are the harness's.
         use_cli: whether to use the claude CLI too.
+        name: the server (harness, or fallback).
 
     Raises:
         ValueError: claude_json is not a JSON object.
     """
     cli = shutil.which("claude") if use_cli else None
     if cli:
-        subprocess.run([cli, "mcp", "remove", "--scope", "user", SERVER], capture_output=True)
+        subprocess.run([cli, "mcp", "remove", "--scope", "user", name], capture_output=True)
     data = read_json(claude_json)
-    server = data.get("mcpServers", {}).get(SERVER)
+    server = data.get("mcpServers", {}).get(name)
     if server and str(boot) in json.dumps(server):
-        del data["mcpServers"][SERVER]
+        del data["mcpServers"][name]
         write_json(claude_json, data)
 
 
@@ -338,8 +344,9 @@ def install(home: str | Path, user_dir: str | Path, claude_json: str | Path, pyt
     added = install_hooks(Path(user_dir) / "settings.json", python, boot)
     install_rules(Path(user_dir) / "settings.json", allow_rules(python, boot, Path(user_dir).resolve().parent))
     where = install_server(claude_json, python, boot, use_cli)
-    return (f"Hooks of {', '.join(added) or 'every event (already there)'} run {boot}; the MCP server '{SERVER}' is "
-            f"registered ({where}); its CLI is allowed. New Claude Code sessions run under the harness from their "
+    install_server(claude_json, python, boot, use_cli, FALLBACK)
+    return (f"Hooks of {', '.join(added) or 'every event (already there)'} run {boot}; the MCP servers '{SERVER}' and "
+            f"'{FALLBACK}' are registered ({where}); its CLI is allowed. New Claude Code sessions run under the harness from their "
             f"first prompt; its home is {Path(home).resolve()}.")
 
 
@@ -362,6 +369,7 @@ def uninstall(home: str | Path, user_dir: str | Path, claude_json: str | Path, u
     for script in (boot, legacy(home)):
         removed += remove_hooks(Path(user_dir) / "settings.json", script)
         remove_rules(Path(user_dir) / "settings.json", script, Path(user_dir).resolve().parent)
-        remove_server(claude_json, script, use_cli)
+        for name in SERVERS:
+            remove_server(claude_json, script, use_cli, name)
     return (f"Removed the harness's hooks ({', '.join(removed) or 'none were there'}), the rules that allow its CLI "
             f"and its MCP server.")

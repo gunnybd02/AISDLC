@@ -41,6 +41,7 @@ FORGE = '"="'
 PREFILLED = "Only the user answers a form: call AskUserQuestion with the questions alone, none holding '\"=\"'."
 
 BLOCKING = ("PreToolUse", None, "")  # the events a failure of the harness blocks (exit 2)
+CRASHED = "HARNESS_HOOK_FAILED"  # set when this release failed, not refused: the anchor then falls back
 
 def ledger(create: bool) -> Optional[sqlite3.Connection]:
     """The ledger, made from schema.sql as utils/ledger/db.py makes it when it has no table yet; None when it does not
@@ -316,6 +317,7 @@ def main() -> int:
                               "for is granted, and the guards stay on.")
             return 0
         say(f"harness hook failed, the call is blocked: {type(e).__name__}: {e}")
+        os.environ[CRASHED] = "1"  # a failure, not a refusal: the anchor may run the previous release instead
         return 2
     sys.stdout.buffer.write(out.encode("utf-8"))
     return 0

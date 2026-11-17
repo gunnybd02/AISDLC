@@ -11,7 +11,7 @@ from harness.assemble.engine.cli_live import session_update, update_door
 from harness.assemble.engine.ports import LedgerPort
 from harness.assemble.engine.runner import Act
 from harness.utils.contracts import Event, Verdict
-from harness.utils.gateway.release import current, stamp
+from harness.utils.gateway.release import build, current, previous, stamp
 from harness.tests import anchor_of, tree
 from harness.tests.e2e import copy_tree, run
 
@@ -62,12 +62,7 @@ class LiveUpdateTest(unittest.TestCase):
                       f'"{boot}" cli tool guide work --mode skills)', text)
         return text
 
-    def allow(self, text):
-        q = re.search(r"exactly: (.+?\?) Options", text).group(1)
-        event = Event("PostToolUse", "AskUserQuestion", {"questions": [{"question": q}]}, "s1", "/tmp")
-        Act(self.port).run(event, {"answers": {q: "Allow"}}, Verdict("allow"))
-
-    def test_an_update_pins_what_runs_and_goes_in_force_only_with_the_users_word(self):
+    def test_an_update_pins_what_runs_and_puts_merged_main_in_force_with_no_form(self):
         running = stamp(self.home)
         code, text = update_door(self.port, self.home)
         self.assertEqual(code, 0, text)
@@ -77,16 +72,87 @@ class LiveUpdateTest(unittest.TestCase):
         self.merge_on_origin()
         code, text = update_door(self.port, self.home)
         self.assertEqual(code, 0, text)
-        self.assertIn("Publishing needs the user's word", text)
-        self.assertEqual(current(self.home), running)  # pulled and built, not in force
-        self.assertIn(NEW, (self.home / "/".join(HEALTH)).read_text(encoding="utf-8"))
-
-        self.allow(text)
-        code, text = update_door(self.port, self.home)
-        self.assertEqual(code, 0, text)
+        self.assertNotIn("Publishing needs the user's word", text)  # the merge was the user's word
         self.assertIn("is in force", text)
+        self.assertIn(NEW, (self.home / "/".join(HEALTH)).read_text(encoding="utf-8"))
         self.assertEqual(current(self.home), stamp(self.home))
         self.assertNotEqual(current(self.home), running)
+
+    def test_merged_main_with_a_broken_doctor_is_not_put_in_force(self):
+        running = stamp(self.home)
+        update_door(self.port, self.home)  # pins what runs
+        self.change_on_origin(HEALTH, OLD, NEW, "Say what the doctor sees")
+        (self.origin / ".claude" / "harness" / "stray.py").write_text("x = 1\n", encoding="utf-8")  # off the layout
+        git(self.origin, "add", "-A")
+        git(self.origin, "commit", "-q", "-m", "A file the layout refuses")
+        code, text = update_door(self.port, self.home)
+        self.assertEqual(code, 1, text)
+        self.assertIn("finds problems", text)
+        self.assertEqual(current(self.home), running)
+
+    def merge_event(self, owner, repo, response):
+        return Event("PostToolUse", "mcp__github__merge_pull_request",
+                     {"owner": owner, "repo": repo, "pullNumber": 7}, "s1", "/tmp", response)
+
+    def test_a_merge_of_the_harness_repo_puts_its_main_in_force(self):
+        running = stamp(self.home)
+        update_door(self.port, self.home)  # pins what runs
+        self.merge_on_origin()
+        owner, repo = self.origin.parent.name, self.origin.name
+        notes = Act(self.port).run(self.merge_event(owner, repo, {"merged": True, "sha": "abc"}), {},
+                                   Verdict("allow"))
+        self.assertTrue(any("After the merge" in n and "is in force" in n for n in notes), notes)
+        self.assertEqual(current(self.home), stamp(self.home))
+        self.assertNotEqual(current(self.home), running)
+
+    def test_another_repo_or_a_failed_merge_changes_nothing(self):
+        running = stamp(self.home)
+        update_door(self.port, self.home)
+        self.merge_on_origin()
+        owner, repo = self.origin.parent.name, self.origin.name
+        for event in (self.merge_event("someone", "other", {"merged": True}),
+                      self.merge_event(owner, repo, "Pull Request is not mergeable"),
+                      Event("PostToolUse", "mcp__github__get_pull_request", {"owner": owner, "repo": repo}, "s1",
+                            "/tmp", {"merged": True})):
+            notes = Act(self.port).run(event, {}, Verdict("allow"))
+            self.assertFalse(any("After the merge" in n for n in notes), notes)
+        self.assertEqual(current(self.home), running)
+        self.assertNotIn(NEW, (self.home / "/".join(HEALTH)).read_text(encoding="utf-8"))
+
+    def test_a_publish_keeps_the_release_it_replaced_as_previous(self):
+        running = stamp(self.home)
+        update_door(self.port, self.home)
+        self.assertIsNone(previous(self.home))
+        self.merge_on_origin()
+        update_door(self.port, self.home)
+        self.assertNotEqual(current(self.home), running)
+        self.assertEqual(previous(self.home), running)
+
+    def test_an_update_to_a_release_marked_bad_keeps_the_one_in_force(self):
+        running = stamp(self.home)
+        update_door(self.port, self.home)
+        self.merge_on_origin()
+        git(self.home.parent, "pull", "-q", "--ff-only")
+        sha = build(self.home)  # the release of the new main
+        (self.home / "state" / "live" / "bad").write_text(f"{sha}\n", encoding="utf-8")
+        code, text = update_door(self.port, self.home)
+        self.assertEqual(code, 1, text)
+        self.assertIn("failed once", text)
+        self.assertEqual(current(self.home), running)
+        self.assertIn("failed once", session_update(self.home))
+        self.assertEqual(current(self.home), running)
+
+    def test_a_file_git_does_not_track_under_harness_stops_the_update(self):
+        self.merge_on_origin()
+        loose = self.home / "harness" / "loose.py"
+        loose.write_text("x = 1\n", encoding="utf-8")
+        code, text = update_door(self.port, self.home)
+        self.assertEqual(code, 1)
+        self.assertIn("does not track", text)
+        self.assertNotIn(NEW, (self.home / "/".join(HEALTH)).read_text(encoding="utf-8"))
+        loose.unlink()
+        code, text = update_door(self.port, self.home)
+        self.assertEqual(code, 0, text)
 
     def test_an_update_over_local_changes_or_off_main_is_refused(self):
         self.merge_on_origin()
