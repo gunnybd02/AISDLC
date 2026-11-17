@@ -13,11 +13,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-from harness.utils.contracts import asked, refused
+from harness.utils.contracts import asked, now, refused
 from harness.utils.git.commit import commit
 from harness.utils.git.facts import head, top
 from harness.utils.git.run import GitError, git, run_git
@@ -41,15 +40,6 @@ NO_CHILD = ("this session is no child: only a session opened from an orchestrato
 
 class WorkError(ValueError):
     """A child's action refuses; the message says why and what to do."""
-
-
-def now() -> int:
-    """The time now in ms.
-
-    Returns:
-        Milliseconds since the epoch.
-    """
-    return int(time.time() * 1000)
 
 
 def mine(port: PlanStore, sid: str) -> tuple[Ticket, ChildRole]:

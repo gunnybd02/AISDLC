@@ -23,7 +23,7 @@ import os
 import re
 from typing import Optional
 
-from harness.gear.translate.git_cli import git_actions
+from harness.gear.translate.git_cli import git_actions, holds_git
 from harness.utils.contracts import Event, Translator
 from harness.utils.shapes import Facts, GitCommit
 from harness.utils.shell.words import program, read as read_shell
@@ -102,21 +102,6 @@ def git_command(words: list[str], cwd: str) -> Optional[tuple[str, str]]:
     else:
         unsafe = unsafe or commit_flags(words[i + 1:])
     return os.path.normpath(repo).replace("\\", "/"), unsafe
-
-
-def holds_git(text: str) -> bool:
-    """Whether a shell line may hold git: "git" in it, lower case, with quotes and backslashes taken out.
-
-    Args:
-        text: the shell line.
-
-    Returns:
-        True when the line may run git (so g""it counts).
-    """
-    flat = text.lower()
-    for mark in "\"'\\":
-        flat = flat.replace(mark, "")
-    return "git" in flat
 
 
 def read(text: str, cwd: str, dialect: str = "bash") -> Optional[GitCommit]:

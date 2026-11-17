@@ -4,33 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from harness.utils.contracts import READ, WRITE, ActionContext, ActionError, McpAction
+from harness.utils.contracts import ActionContext, ActionError, McpAction, READ, WRITE, session_of
 from harness.utils.orchestra import child
 from harness.utils.plan.closing import close_question
 from harness.utils.plan.steps import step_done, step_skip
 
 ACTIONS = [("plan.step_done", "StepDone"), ("plan.step_skip", "StepSkip"), ("plan.plan_close", "PlanClose")]
-NO_SESSION = "no session: the harness has not seen this session's prompt yet"
-
-
-def session_of(ctx: ActionContext) -> str:
-    """The session the action runs for.
-
-    Args:
-        ctx: the action's ports, with session (session() -> the session id the hook saw last).
-
-    Returns:
-        The Claude Code session id.
-
-    Raises:
-        ActionError: no session yet (NO_SESSION).
-    """
-    sid = ctx.ports["session"]()
-    if not sid:
-        raise ActionError(NO_SESSION)
-    return sid
-
-
 class StepDone(McpAction):
     """plan.step_done: the harness checks the current step and commits it."""
     block, name, effect = "plan", "step_done", WRITE

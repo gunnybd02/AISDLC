@@ -12,11 +12,10 @@ from __future__ import annotations
 import itertools
 import json
 import sqlite3
-import time
 from typing import Any, Optional
 
-from harness.utils.contracts import DELIVER, EXECUTE, PHASES, PREPARE
-from harness.utils.shapes import ApprovedPlan, PlanItems, Step, Ticket
+from harness.utils.contracts import DELIVER, EXECUTE, PHASES, PREPARE, now
+from harness.utils.shapes import ApprovedPlan, PlanItems, PlanStore, Step, Ticket
 
 OPEN, CLOSED = "open", "closed"
 DELIVERED, ABANDONED, SUPERSEDED = "delivered", "abandoned", "superseded"
@@ -26,15 +25,6 @@ _count = itertools.count()
 
 
 CARRIED = ("child", "asks")  # what a new ticket of the session keeps (utils/orchestra/child.py)
-
-def now() -> int:
-    """The time now in ms.
-
-    Returns:
-        Milliseconds since the epoch.
-    """
-    return int(time.time() * 1000)
-
 
 def base36(n: int) -> str:
     """A whole number in base 36 (0-9, a-z).
@@ -88,6 +78,21 @@ def approved_plan(body: Optional[Ticket]) -> Optional[ApprovedPlan]:
         return None
     plan = body.get("plan")
     return plan if isinstance(plan, dict) and plan.get("type") == APPROVED_PLAN else None
+
+
+def in_force(port: PlanStore, sid: str) -> Optional[tuple[Ticket, ApprovedPlan]]:
+    """The one reader of the plan in force: the session's ticket and its approved plan with its grants.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id ("" for none).
+
+    Returns:
+        (ticket, plan with its grants), or None when the session has no approved plan.
+    """
+    ticket = port.ticket(sid) if sid else None
+    plan = approved_plan(ticket)
+    return None if plan is None else (ticket, {**plan, "grants": port.grants(plan)})
 
 
 def latest(con: sqlite3.Connection, sid: str) -> Optional[Ticket]:

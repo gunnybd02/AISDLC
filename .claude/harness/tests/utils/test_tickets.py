@@ -26,6 +26,14 @@ class TicketTest(unittest.TestCase):
         self.assertEqual(self.port.approved("s1")["id"], 7)
         self.assertIsNone(self.port.approved("s2"))
 
+    def test_in_force_is_the_one_reader_of_the_plan_in_force(self):
+        self.assertIsNone(tickets.in_force(self.port, "s1"))
+        self.assertIsNone(tickets.in_force(self.port, ""))
+        self.write(lambda con: tickets.open_plan(con, "s1", plan(7, "pd-a")))
+        ticket, held = tickets.in_force(self.port, "s1")
+        self.assertEqual((ticket["state"], held["id"], held["plan_id"]), ("open", 7, "pd-a"))
+        self.assertIn("grants", held)  # the plan comes with its grants
+
     def test_a_revision_keeps_its_ticket_and_root(self):
         first = self.write(lambda con: tickets.open_plan(con, "s1", plan(7, "pd-a")))
         second = self.write(lambda con: tickets.open_plan(con, "s1", {**plan(8, "pd-a"), "rev": 2}))

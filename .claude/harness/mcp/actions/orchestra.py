@@ -22,7 +22,7 @@ import os
 import re
 from typing import Any
 
-from harness.utils.contracts import READ, WRITE, ActionContext, ActionError, McpAction
+from harness.utils.contracts import ActionContext, ActionError, McpAction, READ, WRITE, answered, session_of
 from harness.utils.git.facts import top
 from harness.utils.git.run import GitError, git
 from harness.utils.orchestra import brief as briefs
@@ -33,27 +33,9 @@ from harness.utils.shapes import PlanStore
 ACTIONS = [("orchestra.spawn", "Spawn"), ("orchestra.started", "Started"), ("orchestra.status", "Status"),
            ("orchestra.take", "Take"), ("orchestra.push", "Push"), ("orchestra.question", "Question"),
            ("orchestra.handback", "Handback")]
+CHILD_ERRORS = (work.WorkError, GitError)  # the refusals of its steps, answered as the action's error
 SESSION_ID = re.compile(r"^session_[A-Za-z0-9]{8,64}$")
-NO_SESSION = "no session: the harness has not seen this session's prompt yet"
 NAME_ARG = {"type": "string", "description": "the child's name, as its card names it"}
-
-
-def session_of(ctx: ActionContext) -> str:
-    """The session the action runs for: the parent.
-
-    Args:
-        ctx: the action's ports, with session (session() -> the session id the hook saw last).
-
-    Returns:
-        The Claude Code session id.
-
-    Raises:
-        ActionError: no session yet.
-    """
-    sid = ctx.ports["session"]()
-    if not sid:
-        raise ActionError(NO_SESSION)
-    return sid
 
 
 def source_url(root: str) -> str:
@@ -179,24 +161,6 @@ class Status(McpAction):
 
 
 
-def child_run(step: Any) -> str:
-    """Run one step of a child's work, its refusal turned into the action's error.
-
-    Args:
-        step: a callable with no argument that returns the answer (utils/orchestra/work.py).
-
-    Returns:
-        The step's answer.
-
-    Raises:
-        ActionError: the step refused (WorkError), or git failed.
-    """
-    try:
-        return step()
-    except (work.WorkError, GitError) as e:
-        raise ActionError(str(e)) from e
-
-
 class Take(McpAction):
     """orchestra.take: a child opens its card plan."""
     block, name, effect = "orchestra", "take", WRITE
@@ -209,7 +173,7 @@ class Take(McpAction):
         """Open the child's card plan in the server's folder (utils/orchestra/work.take). ActionError for a session that
         is no child, a card without change paths, another plan in force, or git refusing the branch."""
         sid = session_of(ctx)
-        return child_run(lambda: work.take(ctx.ports["plans"], sid, os.getcwd()))
+        return answered(CHILD_ERRORS, lambda: work.take(ctx.ports["plans"], sid, os.getcwd()))
 
 
 class Push(McpAction):
@@ -223,7 +187,7 @@ class Push(McpAction):
         """Push the child's branch (utils/orchestra/work.push). ActionError for a session that is no child, no card
         plan, another branch checked out, a git rule that stops it, or git failing."""
         sid = session_of(ctx)
-        return child_run(lambda: work.push(ctx.ports["plans"], sid, ctx.ports["git_judge"]))
+        return answered(CHILD_ERRORS, lambda: work.push(ctx.ports["plans"], sid, ctx.ports["git_judge"]))
 
 
 class Question(McpAction):
@@ -238,7 +202,7 @@ class Question(McpAction):
         a session that is no child, a question empty or longer than 400 characters, no card plan, another branch, or a
         rule that stops the commit or the push."""
         sid = session_of(ctx)
-        return child_run(lambda: work.ask(ctx.ports["plans"], sid, args["question"], ctx.ports["commit_judge"],
+        return answered(CHILD_ERRORS, lambda: work.ask(ctx.ports["plans"], sid, args["question"], ctx.ports["commit_judge"],
                                            ctx.ports["git_judge"]))
 
 
@@ -259,5 +223,5 @@ class Handback(McpAction):
         """Write, commit and push the child's receipt (utils/orchestra/work.handback). ActionError for a bad report, a
         session that is no child, no card plan, another branch, or a rule that stops the commit or the push."""
         sid = session_of(ctx)
-        return child_run(lambda: work.handback(ctx.ports["plans"], sid, args, ctx.ports["commit_judge"],
+        return answered(CHILD_ERRORS, lambda: work.handback(ctx.ports["plans"], sid, args, ctx.ports["commit_judge"],
                                                ctx.ports["git_judge"], bool(ctx.ports.get("store", str)())))

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from harness.utils.contracts import READ, WRITE, ActionContext, ActionError, McpAction
+from harness.utils.contracts import ActionContext, ActionError, McpAction, READ, WRITE, answered, session_of
 from harness.utils.git.github import GitHubError
 from harness.utils.git.run import GitError
 from harness.utils.orchestra import cleanup, land, review
@@ -27,44 +27,9 @@ ACTIONS = [("orchestra.check", "Check"), ("orchestra.accept", "Accept"), ("orche
            ("orchestra.answer", "Answer"), ("orchestra.forget", "Forget"), ("orchestra.read", "Read"),
            ("orchestra.land", "Land"), ("orchestra.release", "Release"), ("orchestra.remove", "Remove"),
            ("orchestra.digest", "Digest")]
+PARENT_ERRORS = (review.ReviewError, FetchError, GitError, GitHubError)  # the refusals of its steps, answered as the action's error
 NAME = {"type": "string", "description": "the child's name, as its card names it"}
 MINUTES = {"type": "integer", "description": "minutes each test run may take, 1 to 30 (default 10)"}
-
-
-def session_of(ctx: ActionContext) -> str:
-    """The parent's session.
-
-    Args:
-        ctx: the action's ports, with session.
-
-    Returns:
-        The Claude Code session id.
-
-    Raises:
-        ActionError: no session yet.
-    """
-    sid = ctx.ports["session"]()
-    if not sid:
-        raise ActionError("no session: the harness has not seen this session's prompt yet")
-    return sid
-
-
-def parent_run(step: Callable[[], str]) -> str:
-    """Run one step of the parent's review, its refusals turned into the action's error.
-
-    Args:
-        step: a callable with no argument that returns the answer.
-
-    Returns:
-        The step's answer.
-
-    Raises:
-        ActionError: the step refused, or git or GitHub failed.
-    """
-    try:
-        return step()
-    except (review.ReviewError, FetchError, GitError, GitHubError) as e:
-        raise ActionError(str(e)) from e
 
 
 def store_folder(ctx: ActionContext) -> str:
@@ -102,7 +67,7 @@ class Check(McpAction):
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Check the child (utils/orchestra/review.check) and keep the result on its crew entry."""
         sid = session_of(ctx)
-        return parent_run(lambda: review.check(ctx.ports["plans"], sid, args["name"], units(ctx),
+        return answered(PARENT_ERRORS, lambda: review.check(ctx.ports["plans"], sid, args["name"], units(ctx),
                                                list(ctx.ports["verify_command"]()), args.get("timeoutMin", 10)))
 
 
@@ -116,7 +81,7 @@ class Accept(McpAction):
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Open the child's pull request (utils/orchestra/review.accept); nothing is merged."""
         sid = session_of(ctx)
-        return parent_run(lambda: review.accept(ctx.ports["plans"], sid, args["name"], units(ctx),
+        return answered(PARENT_ERRORS, lambda: review.accept(ctx.ports["plans"], sid, args["name"], units(ctx),
                                                 ctx.ports["github"]))
 
 
@@ -132,7 +97,7 @@ class Reject(McpAction):
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Push the send-back note and keep the round (utils/orchestra/review.reject)."""
         sid = session_of(ctx)
-        return parent_run(lambda: review.reject(ctx.ports["plans"], sid, args["name"], args["why"], units(ctx)))
+        return answered(PARENT_ERRORS, lambda: review.reject(ctx.ports["plans"], sid, args["name"], args["why"], units(ctx)))
 
 
 class Answer(McpAction):
@@ -146,7 +111,7 @@ class Answer(McpAction):
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Push the answer note (utils/orchestra/review.answer)."""
         sid = session_of(ctx)
-        return parent_run(lambda: review.answer(ctx.ports["plans"], sid, args["name"], args["text"], units(ctx)))
+        return answered(PARENT_ERRORS, lambda: review.answer(ctx.ports["plans"], sid, args["name"], args["text"], units(ctx)))
 
 
 class Forget(McpAction):
@@ -160,7 +125,7 @@ class Forget(McpAction):
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Forget the child (utils/orchestra/review.forget)."""
         sid = session_of(ctx)
-        return parent_run(lambda: review.forget(ctx.ports["plans"], sid, args["name"], args["why"]))
+        return answered(PARENT_ERRORS, lambda: review.forget(ctx.ports["plans"], sid, args["name"], args["why"]))
 
 
 class Read(McpAction):
@@ -173,7 +138,7 @@ class Read(McpAction):
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """The child's receipt (utils/orchestra/review.read)."""
         sid = session_of(ctx)
-        return parent_run(lambda: review.read(ctx.ports["plans"], sid, args["name"], units(ctx)))
+        return answered(PARENT_ERRORS, lambda: review.read(ctx.ports["plans"], sid, args["name"], units(ctx)))
 
 
 class Land(McpAction):
@@ -187,7 +152,7 @@ class Land(McpAction):
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Merge, test and close (utils/orchestra/land.land)."""
         sid = session_of(ctx)
-        return parent_run(lambda: land.land(ctx.ports["plans"], sid, units(ctx), list(ctx.ports["verify_command"]()),
+        return answered(PARENT_ERRORS, lambda: land.land(ctx.ports["plans"], sid, units(ctx), list(ctx.ports["verify_command"]()),
                                             ctx.ports["github"], args.get("timeoutMin", 10), store_folder(ctx)))
 
 
@@ -202,7 +167,7 @@ class Release(McpAction):
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Release the child (utils/orchestra/cleanup.release)."""
         sid = session_of(ctx)
-        return parent_run(lambda: cleanup.release(ctx.ports["plans"], sid, args["name"], args["why"]))
+        return answered(PARENT_ERRORS, lambda: cleanup.release(ctx.ports["plans"], sid, args["name"], args["why"]))
 
 
 class Remove(McpAction):
@@ -216,7 +181,7 @@ class Remove(McpAction):
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """The checklist, or the removal of the ticked children (utils/orchestra/cleanup.remove)."""
         sid = session_of(ctx)
-        return parent_run(lambda: cleanup.remove(ctx.ports["plans"], sid, store_folder(ctx)))
+        return answered(PARENT_ERRORS, lambda: cleanup.remove(ctx.ports["plans"], sid, store_folder(ctx)))
 
 
 class Digest(McpAction):

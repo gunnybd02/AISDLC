@@ -7,20 +7,20 @@ from __future__ import annotations
 
 import fnmatch
 import json
-import subprocess
 import sys
 import time
 from pathlib import Path
 from typing import Any, Callable
 
+from harness.utils.contracts import now
 from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError
-from harness.utils.git.run import GitError, env, git
+from harness.utils.git.run import GitError, git, run_git
 from harness.utils.orchestra import crew, synced
 from harness.utils.orchestra.brief import branch
 from harness.utils.orchestra.card import unit_spec
 from harness.utils.orchestra.fetch import checkout, rerun, same_repo
-from harness.utils.orchestra.review import ReviewError, now, set_entry
+from harness.utils.orchestra.review import ReviewError, set_entry
 from harness.utils.shapes import Card, PlanStore, Ticket
 
 MERGED = "merged"
@@ -71,13 +71,13 @@ def conflicts(repo: str, base: str, ref: str) -> list[str]:
     """
     try:
         git(repo, "fetch", "-q", "origin", base, ref, timeout=300)
-        p = subprocess.run(["git", "-C", repo, "merge-tree", "--write-tree", "--name-only", "--no-messages",
-                            f"origin/{base}", f"origin/{ref}"], capture_output=True, text=True, timeout=120, env=env())
-    except (GitError, OSError, subprocess.TimeoutExpired):
+    except GitError:
         return []
-    if p.returncode != 1:
+    code, out = run_git(repo, ["merge-tree", "--write-tree", "--name-only", "--no-messages", f"origin/{base}",
+                               f"origin/{ref}"])
+    if code != 1:
         return []
-    return [line.strip() for line in p.stdout.splitlines()[1:] if line.strip()][:20]
+    return [line.strip() for line in out.splitlines()[1:] if line.strip()][:20]
 
 
 def merges_cleanly(repo: str, base: str, ref: str) -> bool:

@@ -11,11 +11,10 @@ from __future__ import annotations
 import hashlib
 import os
 import sqlite3
-import time
 import uuid
 from typing import Any
 
-from harness.utils.contracts import Event
+from harness.utils.contracts import Event, now
 from harness.utils.ledger.mask import stored
 from harness.utils.shapes import Facts
 from harness.utils.shell.place_ops import shell_places
@@ -24,15 +23,6 @@ SHELLS = {"Bash": "bash", "PowerShell": "powershell"}
 SHELL_MOST = 4000
 MARK = "wrote:"
 CODES = ("exit_code", "exitCode", "returncode", "code")
-
-
-def now() -> int:
-    """The time now in ms.
-
-    Returns:
-        Milliseconds since the epoch.
-    """
-    return int(time.time() * 1000)
 
 
 def real(path: str) -> str:

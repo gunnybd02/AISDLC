@@ -11,17 +11,17 @@ import json
 import re
 import sqlite3
 import sys
-import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
+from harness.utils.contracts import now
 from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError, repo_of
 from harness.utils.git.run import GitError, git
 from harness.utils.orchestra import crew
 from harness.utils.orchestra.brief import NOTES, branch
 from harness.utils.orchestra.card import card_of, unit_spec
-from harness.utils.orchestra.fetch import FetchError, checkout, drop_receipt, put_note, rerun
+from harness.utils.orchestra.fetch import TAIL, FetchError, checkout, drop_receipt, put_note, rerun
 from harness.utils.orchestra.work import RECEIPTS, find_receipt
 from harness.utils.plan import tickets
 from harness.utils.shapes import Card, CrewEntry, PlanStore, Ticket
@@ -31,20 +31,10 @@ if TYPE_CHECKING:
 
 ROUNDS = 3
 CHECKED = "checked"
-TAIL = 1500
 
 
 class ReviewError(ValueError):
     """The parent's review refuses; the message says why and what to do."""
-
-
-def now() -> int:
-    """The time now in ms.
-
-    Returns:
-        Milliseconds since the epoch.
-    """
-    return int(time.time() * 1000)
 
 
 def child_of(port: PlanStore, sid: str, name: str, live: bool = True) -> tuple[Ticket, Card, CrewEntry]:

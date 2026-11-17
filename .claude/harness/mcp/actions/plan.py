@@ -6,7 +6,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from harness.utils.contracts import READ, WRITE, ActionContext, ActionError, McpAction
+from harness.utils.contracts import ActionContext, ActionError, McpAction, READ, WRITE, session_of
 from harness.utils.orchestra import child, crew
 from harness.utils.plan import desk
 from harness.utils.plan import render
@@ -14,26 +14,7 @@ from harness.utils.shapes import PlanItems, Revision
 
 ACTIONS = [("plan.plan_present", "PlanPresent"), ("plan.plan_revise", "PlanRevise"), ("plan.plan_show", "PlanShow"),
            ("plan.plan_status", "PlanStatus"), ("plan.plan_drop", "PlanDrop")]
-NO_SESSION = "no session: the harness has not seen this session's prompt yet"
 NOT_KEPT = "The plan was not kept: "
-
-
-def session_of(ctx: ActionContext) -> str:
-    """The session the action runs for.
-
-    Args:
-        ctx: the action's ports, with session (session() -> the session id the hook saw last).
-
-    Returns:
-        The Claude Code session id.
-
-    Raises:
-        ActionError: no session yet (NO_SESSION).
-    """
-    sid = ctx.ports["session"]()
-    if not sid:
-        raise ActionError(NO_SESSION)
-    return sid
 
 
 def declared(ctx: ActionContext) -> list[str]:

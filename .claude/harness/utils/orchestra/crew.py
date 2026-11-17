@@ -14,10 +14,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import time
 import uuid
 from typing import Optional
 
+from harness.utils.contracts import now
 from harness.utils.orchestra import card as cards
 from harness.utils.plan import tickets
 from harness.utils.shapes import ApprovedPlan, Card, CrewEntry, Ticket
@@ -27,15 +27,6 @@ PENDING, RUNNING, HANDED_BACK = "pending", "running", "handed back"
 ACCEPTED, FORGOTTEN, RELEASED, REMOVED = "accepted", "forgotten", "released", "removed"
 ENDED = (ACCEPTED, FORGOTTEN, RELEASED, REMOVED)
 BUSY = (RUNNING, "reserved")
-
-
-def now() -> int:
-    """The time now in ms.
-
-    Returns:
-        Milliseconds since the epoch.
-    """
-    return int(time.time() * 1000)
 
 
 def delegated(ticket: Optional[Ticket]) -> Optional[ApprovedPlan]:

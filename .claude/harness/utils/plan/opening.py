@@ -13,26 +13,16 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-import time
 import uuid
 from typing import TYPE_CHECKING, Any, Optional
 
-from harness.utils.contracts import YES
+from harness.utils.contracts import YES, now
 from harness.utils.orchestra import card, crew
 from harness.utils.plan import tickets
 from harness.utils.shapes import Revision
 
 if TYPE_CHECKING:
     from harness.utils.ledger.recorder import Recorder
-
-
-def now() -> int:
-    """The time now in ms.
-
-    Returns:
-        Milliseconds since the epoch.
-    """
-    return int(time.time() * 1000)
 
 
 def event(con: sqlite3.Connection, rec: Recorder, plan_id: str, name: str, rev: int, ref: Optional[int] = None,

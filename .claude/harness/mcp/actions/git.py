@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from harness.mcp.actions.ledger import store_note
-from harness.utils.contracts import WRITE, ActionContext, ActionError, McpAction, asked, refused
+from harness.utils.contracts import ActionContext, ActionError, McpAction, WRITE, asked, refused, session_of
 from harness.utils.git.asks import code_of, keep_run, question, take
 from harness.utils.git.run import run_git
 from harness.utils.plan.ship import git_commit, git_push
@@ -44,24 +44,6 @@ class Run(McpAction):
         keep_run(ctx.ports["ledger"], repo, words, code, reason, exit_code)
         head = f"git {' '.join(words)}: exit {exit_code}" + (" (accepted by the user)" if asked(verdict) else "")
         return head + ("\n" + output[-TAIL:] if output.strip() else "")
-
-
-def session_of(ctx: ActionContext) -> str:
-    """The session the action runs for.
-
-    Args:
-        ctx: the action's ports, with session (session() -> the session id the hook saw last).
-
-    Returns:
-        The Claude Code session id.
-
-    Raises:
-        ActionError: no session yet (the harness has not seen its prompt).
-    """
-    sid = ctx.ports["session"]()
-    if not sid:
-        raise ActionError("no session: the harness has not seen this session's prompt yet")
-    return sid
 
 
 class Commit(McpAction):
