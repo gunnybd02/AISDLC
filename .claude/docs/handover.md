@@ -66,8 +66,9 @@ session cannot read the old chat; it reads this file. The frame of every plan is
 | #49 | Leftovers of talking through git: `started` points to `check`; the store step sends no message; `check` shows a question a child pushed |
 | #50 | One owner per concept (`13-cloud-foundation.md`): `now`, `session_of`, `answered`, `ProblemsError` in contracts; one reader of the plan in force; the **owners net** (copied bodies, `ports.get` in actions, `run(...)` naming no action); orchestra `limits` {children, rounds} in `project.json` |
 | #51 | Spec 13 gaps closed: a broken harness blocks only a tool call; a gear fault is a verdict (`gear.fault`, `gear.fault_after`); the english net; the imports net refuses third-party packages, code from text, `sys.path` use and unnamed entry imports; fitness tests for a new detector (4 files) and a new action (1 file) |
+| #52 | Pipelines stand alone (spec 13 section 7): `extends` is refused, the engine puts the floor under a plan's pipeline, the doctor reads every pipeline file and names unknown gears |
 
-524 tests pass (1 skipped, Windows only); doctor: 0 errors.
+525 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 ## The cloud, as it runs now
 

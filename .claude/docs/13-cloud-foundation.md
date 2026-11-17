@@ -15,6 +15,7 @@ purpose, and what is still open. Checked on 2026-11-17 by reading the code and r
 | Text is English (no letter above code point 127 outside tests) | Yes | english net |
 | A broken harness blocks only a tool call (PreToolUse, or no event name); every other event goes on with the failure on stderr | Yes; an answer to a form it could not keep is told to the model | `entry/hook.py`, `tests/e2e/test_hook.py` |
 | A gear that raises becomes a verdict, never a crash | Yes: `gear.fault` refuses before a tool call, `gear.fault_after` allows after it; another gear's refusal still stands | `assemble/engine/runner.py`, `gear/rules/base.json` |
+| A pipeline stands alone: no `extends`; the engine puts the floor (base) under a plan's pipeline, which only adds gears | Yes | `assemble/engine/pipeline.py` refuses `extends`; `select.py` adds the floor; the doctor reads every pipeline file and names unknown gears |
 | Adding a detector takes at most four files and never the runner or the arbiter; an action takes one | Yes, proven through a copied tree's own hook and MCP server | `tests/assemble/test_fitness.py` |
 | Block declaration files only declare (`ITEMS`, `ACTIONS` literals) | Yes | the loader, in the doctor |
 | Every file sits where the layout list allows | Yes | layout net |
@@ -63,12 +64,11 @@ What the plan moved to one owner:
 Two numbers stay in code on purpose: `PER_QUESTION = 4` (the form tool shows at most 4 options: a fact of the host,
 not a policy) and `DEAD_AFTER` (6 hours: a guess of when a session no longer runs, not a rule anyone sets).
 
-## 4. Where the cloud differs from the spec (open, for the user to decide)
+## 4. Where the cloud differs from the spec
 
 | Spec | Here | Why it differs |
 |---|---|---|
-| A pipeline is self-contained, no `extends` | A plan pipeline `extends` the floor (`assemble/pipelines/`) | Built that way before spec 13 reached the cloud; changing it touches every pipeline |
-| A rule row is `code, verdict, reason, when`, with facts from a declared vocabulary | A row is `finding, verdict, why, test`: detectors make named findings, rows judge them | The same: one judge and data rows, but keyed by finding |
+| A rule row is `code, verdict, reason, when`, with facts from a declared vocabulary | A row is `finding, verdict, why, test`: detectors make named findings, rows judge them | Decided by the user (2026-11-17): next, the detectors of command policy (git, commit, planfiles, agent, action, child, drive) move their conditions into `when` rows, git first; content and state detectors (secret, mark, tracked, stop, store, forms) stay detectors, as the spec has them |
 
 ## 5. Still open (from the check of 2026-11-17)
 
@@ -76,7 +76,7 @@ not a policy) and `DEAD_AFTER` (6 hours: a guess of when a session no longer run
   themselves still sit in `utils`, one place per answer.
 - **Refusals in code.** `utils/plan` and `utils/orchestra` refuse in code (`raise ...Error`) where the hook path refuses
   through rule rows. Many are input checks; which are policy is not yet sorted.
-- The two design differences of section 4, for the user to decide.
+- Rule rows keyed by `when` facts (section 4), the next plan.
 
 Closed on 2026-11-17 (PR 51): the hook's failure policy, gear faults as verdicts, the english net, the whole imports
-rule, and the fitness tests.
+rule, and the fitness tests. Closed by PR 52: pipelines stand alone.
