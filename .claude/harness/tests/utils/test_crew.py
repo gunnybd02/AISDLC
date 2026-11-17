@@ -102,7 +102,7 @@ class CrewTest(unittest.TestCase):
         self.repo = git_repo(self, {"notes.md": "n\n"})
         self.port = LedgerPort(self.claude_dir)
         self.port.touch_session("s1")
-        self.ctx = ActionContext({"plans": self.port, "session": lambda: "s1"})
+        self.ctx = ActionContext({"plans": self.port, "session": lambda: "s1", "units": dict})
 
     def approve(self, extra=None, n=2):
         items = {**desk.normalize(desk.clean({**PLAN, "children": children(n), **(extra or {})})),

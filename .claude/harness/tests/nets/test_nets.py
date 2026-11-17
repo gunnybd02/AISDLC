@@ -1,11 +1,11 @@
 """h1.blocks-and-nets: each net finds its break in a fake tree and nothing in the real one."""
 import unittest
 
-from harness.nets import (bridges_net, config_net, entry_net, hints_net, imports_net, layout_net, size_net,
-                          verdict_net)
+from harness.nets import (bridges_net, config_net, entry_net, hints_net, imports_net, layout_net, owners_net,
+                          size_net, verdict_net)
 from harness.tests import CLAUDE_DIR, tree
 
-NETS = (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net, entry_net, hints_net)
+NETS = (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net, entry_net, hints_net, owners_net)
 
 
 def joined(net, test, files):
@@ -207,6 +207,37 @@ class EntryNetTest(unittest.TestCase):
 
 MAIN = ("def main():\n    try:\n        from harness.assemble.engine.build import run_hook\n"
         "    except BaseException:\n        return 2\n\n\n")
+
+
+
+BODY = ('    """Join the words."""\n    out = []\n    for word in words:\n        if word:\n'
+        '            out.append(word.strip())\n    return " ".join(out)\n')
+
+
+class OwnersNetTest(unittest.TestCase):
+    def test_a_copied_function_body_is_reported_with_both_places(self):
+        files = {"harness/utils/a.py": "def join(words):\n" + BODY,
+                 "harness/gear/b.py": "def glue(words):\n" + BODY.replace("Join the words", "Glue them"),
+                 "harness/tests/utils/test_a.py": "def join(words):\n" + BODY}  # tests are free
+        self.assertEqual(owners_net.check(tree(self, files)),
+                         ["owners: harness/utils/a.py:1 join is a copy of harness/gear/b.py:1 glue; import the one owner "
+                          "instead"])
+        self.assertEqual(owners_net.check(tree(self, {"harness/utils/a.py": "def x():\n    return 1\n",
+                                                      "harness/gear/b.py": "def y():\n    return 1\n"})), [])
+
+    def test_a_looked_up_port_in_an_action_is_reported(self):
+        text = ('ACTIONS = [("plan.show", "Show")]\n\n\nclass Show:\n    def run(self, ctx, args):\n'
+                '        return ctx.ports.get("units", dict)()\n')
+        found = owners_net.check(tree(self, {"harness/mcp/actions/plan.py": text,
+                                             "harness/mcp/tools/run.py": "def f(self):\n    return self.ports.get('x')\n"}))
+        self.assertEqual(found, ["owners: harness/mcp/actions/plan.py:6 looks a port up (ports.get); declare it in needs "
+                                 "and read ctx.ports[name]"])
+
+    def test_a_next_step_that_names_no_action_is_reported(self):
+        files = {"harness/mcp/actions/plan.py": 'ACTIONS = [("plan.plan_show", "Show")]\n',
+                 "harness/utils/x.py": 'HINT = "then run(\'plan\', \'plan_show\') or run(\'orchestra\', \'nope\', {name})"\n'}
+        self.assertEqual(owners_net.check(tree(self, files)),
+                         ["owners: harness/utils/x.py:1 tells the model run('orchestra', 'nope'), which is no action"])
 
 
 class ConfigNetTest(unittest.TestCase):

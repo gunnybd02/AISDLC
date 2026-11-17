@@ -102,7 +102,7 @@ class Spawn(McpAction):
             raise ActionError(f"{card['name']}'s card names the session {card['session']!r} to adopt; adopting an open "
                               "session is not built yet: revise the card without session, or start it by hand")
         ticket = ctx.ports["plans"].ticket(sid)
-        unit = unit_spec(card, ctx.ports.get("units", dict)())
+        unit = unit_spec(card, ctx.ports["units"]())
         url = unit["repo"] or source_url(ticket["plan"].get("root") or os.getcwd())
         fresh = ((ticket.get("crew") or {}).get(card["name"]) or {}).get("fresh") or {}
         prompt = briefs.brief(plan, draft, card, sid, unit, fresh.get("note", ""))
@@ -224,4 +224,4 @@ class Handback(McpAction):
         session that is no child, no card plan, another branch, or a rule that stops the commit or the push."""
         sid = session_of(ctx)
         return answered(CHILD_ERRORS, lambda: work.handback(ctx.ports["plans"], sid, args, ctx.ports["commit_judge"],
-                                               ctx.ports["git_judge"], bool(ctx.ports.get("store", str)())))
+                                               ctx.ports["git_judge"], bool(ctx.ports["store"]())))

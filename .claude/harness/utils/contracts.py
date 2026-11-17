@@ -17,6 +17,20 @@ YES = "Approve"  # the user's word in a form that approves (a plan, a grant)
 NO_SESSION = "no session: the harness has not seen this session's prompt yet"
 
 
+
+class ProblemsError(Exception):
+    """A refusal that lists its problems: one line each, the message is them joined (the loader, the rule rows)."""
+
+    def __init__(self, problems: list[str]) -> None:
+        """Keep the problems, one per line in the message.
+
+        Args:
+            problems: what is wrong, one line each.
+        """
+        super().__init__("\n".join(problems))
+        self.problems = problems
+
+
 @dataclass(frozen=True)
 class Event:
     """One hook call of Claude Code; response is the tool's answer, given to PostToolUse only."""

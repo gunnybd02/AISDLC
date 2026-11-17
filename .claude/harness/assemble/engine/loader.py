@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
+from harness.utils.contracts import ProblemsError
+
 KINDS = {"hooks": ("hook", "translator"), "mcp": ("server", "tool", "source", "table"),
          "gear": ("translator", "detector", "rule")}
 FIELDS = ("kind", "name", "ref")
@@ -36,17 +38,8 @@ class Item:
     ref: str
 
 
-class LoaderError(Exception):
+class LoaderError(ProblemsError):
     """The indexes or action files are not plain declarations; problems says how, one line each."""
-
-    def __init__(self, problems: list[str]) -> None:
-        """Keep the problems; the message is them, one per line.
-
-        Args:
-            problems: what is wrong, one line each.
-        """
-        super().__init__("\n".join(problems))
-        self.problems = problems
 
 
 class Loader:

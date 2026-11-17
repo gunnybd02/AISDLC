@@ -21,12 +21,12 @@ def declared(ctx: ActionContext) -> list[str]:
     """The names of the units project.json declares, for the services and children of a plan.
 
     Args:
-        ctx: the action's ports, with units (units() -> {name: {repo, path, verify, base}}) when the server gives it.
+        ctx: the action's ports, with units (units() -> {name: {repo, path, verify, base}}), declared in needs.
 
     Returns:
-        The names; [] when no unit is declared or the port is not there (a test's context).
+        The names; [] when no unit is declared.
     """
-    return list(ctx.ports.get("units", dict)())
+    return list(ctx.ports["units"]())
 
 
 def answer(head: str, items: PlanItems, plan_id: str, rev: int, shown: str = "", form: bool = True,

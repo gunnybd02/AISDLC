@@ -33,7 +33,7 @@ MINUTES = {"type": "integer", "description": "minutes each test run may take, 1 
 
 
 def store_folder(ctx: ActionContext) -> str:
-    """The store's Drive folder id, "" when none is set or the port is not there.
+    """The store's Drive folder id, "" when none is set.
 
     Args:
         ctx: the action's ports.
@@ -41,11 +41,11 @@ def store_folder(ctx: ActionContext) -> str:
     Returns:
         The folder id, or "".
     """
-    return str(ctx.ports.get("store", str)() or "")
+    return str(ctx.ports["store"]() or "")
 
 
 def units(ctx: ActionContext) -> dict[str, Any]:
-    """The declared units by name, {} when the port is not there.
+    """The declared units by name, {} when none is declared.
 
     Args:
         ctx: the action's ports.
@@ -53,7 +53,7 @@ def units(ctx: ActionContext) -> dict[str, Any]:
     Returns:
         {name: {repo, path, verify, base}}.
     """
-    return ctx.ports.get("units", dict)()
+    return ctx.ports["units"]()
 
 
 class Check(McpAction):
