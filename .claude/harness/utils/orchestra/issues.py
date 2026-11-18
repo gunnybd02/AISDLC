@@ -1,8 +1,9 @@
 """Issues: one GitHub issue per child of a delegated plan, opened by the harness (docs/system.md section 6), and the
-ticket file that records them. An issue holds the child's card in words (goal, criteria, scope, locked tests, branch)
-and a machine block: one JSON object between ISSUE_OPEN and ISSUE_CLOSE, with its sha256. The ticket's ISSUES key
-keeps each issue {repo, number, url, sha}; a second call opens none again. Part 4 (the child's own check) reads the
-issue and compares its block with the ticket row by these hashes. Nothing secret goes in an issue: only the card.
+ticket file that records them. An issue is in one format, FORMAT: its title "[p<plan>] <name>: <goal>", the SECTIONS
+in order (the card in words, the branch and the commit format), and a machine block: one JSON object between
+ISSUE_OPEN and ISSUE_CLOSE, with its sha256. The ticket's ISSUES key keeps each issue {repo, number, url, sha}; a
+second call opens none again. The child's register and harness ci read an issue with read_block and format_problems.
+Nothing secret goes in an issue: only the card.
 The ticket file, <draft>__<plan sha>.csv, has one row per child (COLUMNS); harness code writes it, the model only
 uploads it by its sha256 into the store's tickets folder, and the hook records that upload (utils/ledger/store.py)."""
 from __future__ import annotations
@@ -11,6 +12,7 @@ import csv
 import hashlib
 import io
 import json
+import re
 import sqlite3
 import time
 from collections.abc import Callable
@@ -31,6 +33,10 @@ from harness.utils.shapes import ApprovedPlan, Card, PlanStore
 
 ISSUES = "issues"  # the ticket's key: {"children": {name: {repo, number, url, sha}}, "file": {title, sha256, path}}
 ISSUE_OPEN, ISSUE_CLOSE = "<!-- harness-issue", "-->"
+BLOCK = re.compile(re.escape(ISSUE_OPEN) + r"\s*\n(\{.*\})\s*\nsha256: ([0-9a-f]{64})\s*\n" + re.escape(ISSUE_CLOSE))
+FORMAT = "harness-issue/1"
+SECTIONS = ("## Goal", "## Acceptance criteria", "## Scope", "## Tests", "## Locked acceptance tests", "## Branch",
+            "## Commits")
 COLUMNS = ("key", "plan sha", "child", "repo", "issue", "issue sha", "branch", "scope", "AC tests", "approved at")
 CSV_MIME = "text/csv"
 
@@ -39,8 +45,8 @@ class IssueError(ValueError):
     """The issues cannot be opened; the message says why."""
 
 
-def block_of(plan: ApprovedPlan, draft: str, card: Card, repo: str, start: str) -> dict[str, Any]:
-    """The machine block of a child's issue: what part 4 checks against the ticket row.
+def block_of(plan: ApprovedPlan, draft: str, card: Card, repo: str, start: str, path: str = ".") -> dict[str, Any]:
+    """The machine block of a child's issue: what the child's register and harness ci check.
 
     Args:
         plan: the delegated plan in force.
@@ -48,12 +54,14 @@ def block_of(plan: ApprovedPlan, draft: str, card: Card, repo: str, start: str) 
         card: the child's card.
         repo: the URL of the unit's repository.
         start: the plan branch the child starts from ("" for the unit's base).
+        path: the unit's folder in its repository ("." for the top); the card's paths are relative to it.
 
     Returns:
-        {plan, planSha, child, repo, branch, start, scope, acTests}.
+        {format, plan, planSha, child, repo, path, branch, start, scope, tests, acTests}.
     """
-    return {"plan": draft, "planSha": plan.get("sha", ""), "child": card["name"], "repo": repo,
-            "branch": branch(plan["id"], card["name"]), "start": start, "scope": list(card.get("change", [])),
+    return {"format": FORMAT, "plan": draft, "planSha": plan.get("sha", ""), "child": card["name"], "repo": repo,
+            "path": path or ".", "branch": branch(plan["id"], card["name"]), "start": start,
+            "scope": list(card.get("change", [])), "tests": list(card.get("tests", [])),
             "acTests": list(card.get("acTests", []))}
 
 
@@ -70,25 +78,78 @@ def block_sha(block: dict[str, Any]) -> str:
                           .encode("utf-8")).hexdigest()
 
 
-def issue_text(card: Card, block: dict[str, Any]) -> tuple[str, str, str]:
-    """The title, body and block sha of a child's issue.
+def issue_text(card: Card, block: dict[str, Any], plan: int) -> tuple[str, str, str]:
+    """The title, body and block sha of a child's issue, in FORMAT.
 
     Args:
         card: the child's card.
         block: its machine block (block_of).
+        plan: the delegated plan's number.
 
     Returns:
         (title, body, sha).
     """
-    sha = block_sha(block)
-    lines = [f"Child **{card['name']}** of the delegated plan {block['plan']}, approved by the user.", "",
-             f"Goal: {card['goal']}", "", "Acceptance criteria:"]
-    lines += [f"- AC{n}: {a}" for n, a in enumerate(card.get("ac", []), 1)]
-    lines += ["", f"Files it may change: {', '.join(block['scope']) or 'none'}",
-              f"Locked acceptance tests: {', '.join(block['acTests']) or 'none'}",
-              f"Branch: {block['branch']}" + (f", from {block['start']}" if block["start"] else ""), "",
-              ISSUE_OPEN, json.dumps(block, sort_keys=True, ensure_ascii=False), f"sha256: {sha}", ISSUE_CLOSE]
-    return f"{card['name']}: {card['goal']}"[:200], "\n".join(lines), sha
+    sha, name = block_sha(block), card["name"]
+    goal, criteria, scope, tests, locks, branch_, commits = SECTIONS
+
+    def listed(paths: list[str]) -> list[str]:
+        return [f"- {p}" for p in paths] or ["- none"]
+    folder = "the top of the repository" if block["path"] == "." else f"the folder {block['path']} of the repository"
+    lines = [f"Child **{name}** of the delegated plan {block['plan']} (plan {plan}), approved by the user.", "",
+             goal, card["goal"], "", criteria, *[f"- AC{n}: {a}" for n, a in enumerate(card.get("ac", []), 1)],
+             "", scope, f"Files it may change, relative to {folder}:", *listed(block["scope"]),
+             "", tests, *listed(block["tests"]), "", locks, *listed(block["acTests"]),
+             "", branch_, block["branch"] + (f", from {block['start']}" if block["start"] else "")
+             + ". The child pushes only this branch.",
+             "", commits, f"Every commit on the branch starts with this issue's number and the child's name: "
+             f"`#<this issue> {name}: <what>`. The first one is the registration: `#<this issue> {name}: register`.",
+             "", ISSUE_OPEN, json.dumps(block, sort_keys=True, ensure_ascii=False), f"sha256: {sha}", ISSUE_CLOSE]
+    return f"[p{plan}] {name}: {card['goal']}"[:200], "\n".join(lines), sha
+
+
+def read_block(body: str) -> tuple[dict[str, Any], str]:
+    """The machine block of an issue's body and the sha256 written under it.
+
+    Args:
+        body: the issue's body.
+
+    Returns:
+        (the block, its sha as written); ({}, "") when there is no block or it is no JSON object.
+    """
+    found = BLOCK.search(str(body or "").replace("\r\n", "\n"))
+    try:
+        block = json.loads(found.group(1)) if found else None
+    except ValueError:
+        block = None
+    return (block, found.group(2)) if isinstance(block, dict) and found else ({}, "")
+
+
+def format_problems(body: str) -> list[str]:
+    """Each way an issue's body is not in FORMAT: a section missing or out of order, no machine block, a block of
+    another format, or a block that does not match its own sha256.
+
+    Args:
+        body: the issue's body.
+
+    Returns:
+        The problems in words; [] for a body in FORMAT.
+    """
+    lines, problems, last = str(body or "").replace("\r\n", "\n").split("\n"), [], -1
+    for heading in SECTIONS:
+        if heading not in lines:
+            problems.append(f"it has no section {heading[3:]}")
+        elif lines.index(heading) < last:
+            problems.append(f"its section {heading[3:]} is out of order")
+        else:
+            last = lines.index(heading)
+    block, sha = read_block(body)
+    if not block:
+        return problems + ["it holds no machine block"]
+    if block.get("format") != FORMAT:
+        problems.append(f"its machine block is of format {block.get('format')!r}, not {FORMAT}")
+    if block_sha(block) != sha:
+        problems.append("its machine block does not match its own sha256")
+    return problems
 
 
 def ticket_title(draft: str, plan_sha: str) -> str:
@@ -225,7 +286,8 @@ def open_issues(port: PlanStore, sid: str, units: dict[str, Any], github: Callab
         url = spec.get("repo") or (git(root, "config", "--get", "remote.origin.url").strip() if root else "")
         if not url:
             raise IssueError(f"{card['name']}: its unit has no repository URL to open an issue on")
-        title, body, sha = issue_text(card, block_of(plan, ticket["draft"], card, url, start))
+        title, body, sha = issue_text(card, block_of(plan, ticket["draft"], card, url, start, spec.get("path", ".")),
+                                      plan["id"])
         try:
             made = github("POST", f"repos/{repo_of(url)}/issues", {"title": title, "body": body})
         except GitHubError as e:

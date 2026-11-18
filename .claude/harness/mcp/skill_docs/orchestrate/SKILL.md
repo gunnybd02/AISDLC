@@ -47,8 +47,12 @@ Write each card's `acTests` (they fail now: the code is not there yet). Then `ru
 them on `plan/p<plan>`, made from the base, pushes it and keeps the hash of each file. Spawn refuses a card with
 acceptance tests until they are locked; once a child has started, the lock does not change.
 
-Then `run("orchestra", "tickets", {})`: the harness opens one GitHub issue per child (its card in words and a machine
-block with its hash) and writes the ticket file, a CSV row per child, into `.harness-export/`. Make the one Drive
+Then `run("orchestra", "tickets", {})`: the harness opens one GitHub issue per child, in one format, harness-issue/1:
+the title `[p<plan>] <name>: <goal>`, the sections Goal, Acceptance criteria, Scope, Tests, Locked acceptance tests,
+Branch and Commits, and a machine block with its hash. Never edit an issue by hand: the child's take and `harness ci`
+refuse it. Every commit on a child's branch starts `#N <name>: `, your send-backs and answers too (the harness writes
+it), and the first is the child's registration; `harness ci` checks all of it on the forge. It also writes the ticket
+file, a CSV row per child, into `.harness-export/`. Make the one Drive
 upload its answer gives, into the store's `tickets` folder (first find or make that folder when it says so); the harness
 reads Drive's answer and records it. For a plan with locked tests, spawn waits for the child's issue and, with a store
 folder, for the uploaded ticket file; the brief then names the issue and the ticket file.

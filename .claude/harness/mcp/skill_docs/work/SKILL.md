@@ -95,9 +95,12 @@ the plan branch into the base, which the user merges; then land again closes the
 **A child session** (its first prompt is a brief: `You are child session ...`): nobody is at its keyboard.
 `run("orchestra", "take", {})` first. When the brief names an issue and a ticket file, take registers you before any
 work: it gives two Drive calls (find the ticket file, download it once); the harness checks the file and the issue
-against the brief and keeps no copy; run take again. Registered, your card plan opens on your branch, made from the
-plan branch (the locked acceptance tests: make them pass, never change them; the doors refuse them), and every commit
-names #N by itself. "Registration failed": the reason is pushed on your branch for the orchestrator; stop at once.
+against the brief and keeps no copy; run take again. Registered, the harness commits the registration commit
+(`.harness/register/<name>.json`) as the first commit of your branch, made from the plan branch, and pushes it; your
+card plan opens on it (the locked acceptance tests: make them pass, never change them; the doors refuse them, and any
+file outside your card's change and tests). Every commit names #N by itself: it starts `#N <name>: `. On the forge,
+`harness ci` checks the same rules again from your branch alone (`python3 <core>/anchor.py cli ci --base <plan branch>
+--head <your branch>`). "Registration failed": the reason is pushed on your branch for the orchestrator; stop at once.
 Then the loop of part 3, and
 `run("orchestra", "push", {})` after every step. A question: `run("orchestra", "question", {"question"})`, then
 send it with `send_message`. Last: `run("orchestra", "handback", {"changed", "checked", "notChecked", "risks",

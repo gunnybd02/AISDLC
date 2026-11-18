@@ -114,6 +114,16 @@ class SkillsTest(unittest.TestCase):
             self.assertIn(part, work)
         self.assertIn("Registration failed", lib.get("orchestrate").text)
 
+    def test_the_skills_name_the_commit_format_the_registration_commit_and_ci(self):
+        """s5.docs.ci: a child reads its rules in the work skill; the parent reads the issue format in orchestrate."""
+        lib = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs")
+        work = " ".join(lib.get("work").text.split())
+        for part in ("it starts `#N <name>: `", "registration commit", "`harness ci`", "cli ci --base"):
+            self.assertIn(part, work)
+        orchestrate = " ".join(lib.get("orchestrate").text.split())
+        for part in ("harness-issue/1", "`[p<plan>] <name>: <goal>`", "`harness ci`"):
+            self.assertIn(part, orchestrate)
+
     def test_the_store_skill_says_copies_are_gzipped(self):
         """s2.docs.gzip: a person can open a copy."""
         text = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs").get("store").text

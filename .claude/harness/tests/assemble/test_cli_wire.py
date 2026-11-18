@@ -4,6 +4,7 @@ rows, each refused with why; step_done then reads them."""
 import json
 import os
 import unittest
+import unittest.mock
 
 from harness.assemble.engine.cli_wire import run_cli
 from harness.assemble.engine.ports import LedgerPort
@@ -123,6 +124,23 @@ class CliTest(unittest.TestCase):
             return then()
         finally:
             (self.repo / name).write_text("X = 1\n", encoding="utf-8")
+
+    def test_ci_needs_no_session_and_opens_no_ledger(self):
+        """s4.ci.door: cli ci prints one line per rule and exits 1 on a failure; it needs a base and a head."""
+        from harness.tests import tree
+        from harness.utils.orchestra import ci
+        home = tree(self, {})  # a home with no state: ci must not make one
+        code, out = run_cli(["ci", "--base", "work", "--head", "feature", "--in", str(self.repo)], home)
+        self.assertEqual(code, 1)
+        lines = out.splitlines()
+        self.assertEqual(lines[0], "harness ci: feature into work")
+        self.assertEqual([line.split(":")[0] for line in lines[1:-1]], [f"FAIL {rule}" for rule in ci.RULES])
+        self.assertTrue(lines[-1].startswith("Result: RED, 9 rule(s) failed"))
+        self.assertEqual(list(home.iterdir()), [])
+        with unittest.mock.patch.dict(os.environ, {"GITHUB_BASE_REF": "", "GITHUB_HEAD_REF": ""}):
+            code, out = run_cli(["ci", "--in", str(self.repo)], home)
+        self.assertEqual((code, out), (1, "refused: ci needs --base and --head (in GitHub Actions: GITHUB_BASE_REF and "
+                                          "GITHUB_HEAD_REF)"))
 
     def test_the_entry_runs_from_a_terminal(self):
         code, out, _ = run(entry_of(self.claude_dir, "cli"), args=("--session", "s1", "behaviors", "list"))

@@ -1,7 +1,8 @@
 """The CLI doors (harness/entry/cli.py): verify, tool (the MCP tools from a terminal, cli_tool.py) and the doors that widen or
 shrink the approved plan of a session (docs 04, sections 4 and 5). The session is --session, else HARNESS_SESSION, else
 the last one the hook saw (tool: always that one, as for the MCP server). Each door answers
-(exit code, text): 0 done, 1 refused."""
+(exit code, text): 0 done, 1 refused. ci (utils/orchestra/ci.py) runs on the forge: it needs no session and opens no
+ledger, and answers 1 when a rule fails."""
 from __future__ import annotations
 
 import argparse
@@ -11,6 +12,9 @@ from pathlib import Path
 
 from harness.assemble.engine import cli_live, cli_tool
 from harness.assemble.engine.ports import LedgerPort
+from harness.utils.git.github import call as github_call
+from harness.utils.git.run import GitError
+from harness.utils.orchestra import ci
 from harness.utils.plan import grants
 from harness.utils.plan.verify import command_of as plan_command, MAX_TIMEOUT, VERIFY_TIMEOUT, run
 from harness.utils.shapes import ApprovedPlan
@@ -68,8 +72,36 @@ def parser() -> argparse.ArgumentParser:
             sub.add_argument("--log", action="store_true")
     for sub in (b_add,):
         sub.add_argument("--session")
+    check = doors.add_parser("ci", exit_on_error=False)
+    check.add_argument("--base", default="")
+    check.add_argument("--head", default="")
+    check.add_argument("--in", dest="folder")
     cli_tool.add_parser(doors)
     return top
+
+
+def ci_door(args: argparse.Namespace) -> tuple[int, str]:
+    """harness ci: the rules on a child's branch, from the repository and its issue alone (utils/orchestra/ci.py).
+
+    Args:
+        args: the parsed command line of the door ci: --base and --head (else GitHub Actions' GITHUB_BASE_REF and
+            GITHUB_HEAD_REF), --in the clone (else the current folder).
+
+    Returns:
+        (exit code, text): 0 when every rule passed, 1 when one failed.
+
+    Raises:
+        Refused: no base or head, or git cannot read the clone.
+    """
+    base = args.base or os.environ.get("GITHUB_BASE_REF", "")
+    head = args.head or os.environ.get("GITHUB_HEAD_REF", "")
+    if not base or not head:
+        raise Refused("ci needs --base and --head (in GitHub Actions: GITHUB_BASE_REF and GITHUB_HEAD_REF)")
+    try:
+        ok, text = ci.report(os.path.abspath(args.folder or "."), base, head, github_call)
+    except GitError as e:
+        raise Refused(f"git cannot read the clone: {str(e)[-300:]}") from e
+    return (0 if ok else 1), text
 
 
 def plan_of(port: LedgerPort, sid: str) -> ApprovedPlan:
@@ -149,11 +181,16 @@ def run_cli(argv: list[str], claude_dir: str | Path) -> tuple[int, str]:
     Returns:
         (exit code, text): 0 done, 1 refused (a refusal's text starts with "refused: ").
     """
-    port = LedgerPort(claude_dir)
     try:
         args = parser().parse_args(argv)
     except (argparse.ArgumentError, SystemExit) as e:
         return 1, f"refused: {e}"
+    if args.door == "ci":  # on the forge: no session, no ledger
+        try:
+            return ci_door(args)
+        except Refused as e:
+            return 1, f"refused: {e}"
+    port = LedgerPort(claude_dir)
     sid = getattr(args, "session", None) or args.top_session or os.environ.get(SESSION_ENV) or port.session()
     try:
         if args.door == "verify":

@@ -19,9 +19,10 @@ from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError, repo_of
 from harness.utils.git.run import GitError, git
 from harness.utils.orchestra import crew, locked
-from harness.utils.orchestra.brief import NOTES, branch
+from harness.utils.orchestra.brief import NOTES, branch, subject
 from harness.utils.orchestra.card import card_of, unit_spec
 from harness.utils.orchestra.fetch import TAIL, FetchError, checkout, drop_receipt, put_note, rerun
+from harness.utils.orchestra.issues import ISSUES
 from harness.utils.orchestra.work import RECEIPTS, find_receipt
 from harness.utils.plan import tickets
 from harness.utils.shapes import Card, CrewEntry, PlanStore, Ticket
@@ -303,11 +304,16 @@ def reject(port: PlanStore, sid: str, name: str, why: str, units: dict[str, Any]
     note = (f"# Send-back {n} of {rounds} from the orchestrator\n\n{text}\n\nFix it on this branch, verify, push, "
             "and hand back again.\n")
     sha = put_note(unit_spec(card, units), top(ticket["plan"]["root"]) or "", ref, rel, note,
-                   f"Send-back {n} of {name}")
+                   subject(issue_number(ticket, name), name, f"Send-back {n} of {name}"))
     sent = list(entry.get("sent", [])) + [{"at": now(), "how": "send-back", "text": text[:1000], "note": rel}]
     told = fresh_session(port, sid, name, card, {"state": crew.RUNNING, "backs": n, "sentBackAt": now(),
                                                  "checkedAt": None, "sent": sent}, "rejected", rel, sha, ref)
     return f"{name} sent back (round {n} of {rounds}). {told} Check it again after its next handback."
+
+
+def issue_number(ticket: Ticket, name: str) -> Any:
+    """The number of the issue of the child name, as the parent's ticket keeps it (issues.py); None for none."""
+    return (((ticket.get(ISSUES) or {}).get("children") or {}).get(name) or {}).get("number")
 
 
 def answer(port: PlanStore, sid: str, name: str, text: str, units: dict[str, Any]) -> str:
@@ -333,7 +339,8 @@ def answer(port: PlanStore, sid: str, name: str, text: str, units: dict[str, Any
     k = sum(1 for s in entry.get("sent", []) if s.get("how") == "answer") + 1
     ref, rel = branch(ticket["plan"]["id"], name), f"{NOTES}/{name}/answer-{k}.md"
     sha = put_note(unit_spec(card, units), top(ticket["plan"]["root"]) or "", ref, rel,
-                   f"# Answer {k} from the orchestrator\n\n{reply}\n", f"Answer {k} to {name}")
+                   f"# Answer {k} from the orchestrator\n\n{reply}\n",
+                   subject(issue_number(ticket, name), name, f"Answer {k} to {name}"))
     sent = list(entry.get("sent", [])) + [{"at": now(), "how": "answer", "text": reply[:1000], "note": rel}]
     return f"Answer {k} to {name}. " + fresh_session(port, sid, name, card, {"sent": sent}, "answered", rel, sha, ref)
 

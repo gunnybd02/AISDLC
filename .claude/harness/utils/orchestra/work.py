@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from pathlib import Path
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional
 
 from harness.utils.contracts import asked, now, refused
@@ -21,7 +22,7 @@ from harness.utils.git.commit import commit
 from harness.utils.git.facts import head, top
 from harness.utils.git.run import GitError, git, run_git
 from harness.utils.orchestra import child
-from harness.utils.orchestra.brief import NOTES
+from harness.utils.orchestra.brief import NOTES, child_subject
 from harness.utils.plan import tickets
 from harness.utils.plan.ship import audit
 from harness.utils.shapes import ChildRole, CommitJudge, GitJudge, PlanStore, Ticket
@@ -111,13 +112,15 @@ def stopped(verdict: Any) -> bool:
     return refused(verdict) or asked(verdict)
 
 
-def take(port: PlanStore, sid: str, root: str) -> str:
+def take(port: PlanStore, sid: str, root: str, first: Optional[Callable[[str], Any]] = None) -> str:
     """Open the child's card plan, approved by the grant of its parent plan, on its own branch.
 
     Args:
         port: the ledger port.
         sid: the child's session.
         root: the folder the session works in (the repository is the one holding it).
+        first: first(repo) commits the registration on the branch before the plan opens (register.on_branch) and
+            gives its record {issue, sha}, which the approval names; None, or a None record, names none.
 
     Returns:
         The text for the model: the plan, the branch, the behaviour ids and the loop.
@@ -144,8 +147,11 @@ def take(port: PlanStore, sid: str, root: str) -> str:
     if not Path(folder).is_dir():
         raise WorkError(f"the unit's folder {role['unit']['path']} is not in this clone ({repo})")
     notes = sorted(p.relative_to(repo).as_posix() for p in (Path(repo) / NOTES / role["name"]).glob("*.md"))
+    record = first(repo) if first else None  # the registration, committed before the plan's base is taken
     plan_id, _, _ = port.present(child.card_plan(role, folder), sid=sid)
-    number = port.approve(sid, port.revision(plan_id), by=f"grant of plan {role['plan']} ({role['parent']})")
+    by = f"grant of plan {role['plan']} ({role['parent']})" + (
+        f", registration #{record['issue']} in {record['sha'][:12]}" if record else "")
+    number = port.approve(sid, port.revision(plan_id), by=by)
     return (f"Card plan {plan_id} (plan {number}) is open, approved by the grant of plan {role['plan']}; you are on "
             f"{role['branch']} ({how}). Files: {', '.join(role['card']['change'])}. Behaviours: "
             f"{', '.join(role['behaviours'])}. Loop: write the tests, make them pass, verify bare, "
@@ -212,7 +218,7 @@ def ask(port: PlanStore, sid: str, question: str, commit_judge: CommitJudge, git
     path = Path(repo) / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"# Question {n} from {role['name']} (plan {role['plan']})\n\n{text}\n", encoding="utf-8")
-    message = f"Question {n} of {role['name']} (plan {role['plan']})"
+    message = child_subject(role, f"Question {n} of {role['name']} (plan {role['plan']})")
     verdict = commit_judge(repo, [rel], message)
     if stopped(verdict):
         raise WorkError(f"the question's commit is stopped: {verdict.reason}")
@@ -350,7 +356,7 @@ def handback(port: PlanStore, sid: str, report: dict[str, Any], commit_judge: Co
     path = Path(repo) / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(body, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-    message = f"Handback of {role['name']} (plan {role['plan']})"
+    message = child_subject(role, f"Handback of {role['name']} (plan {role['plan']})")
     verdict = commit_judge(repo, [rel], message)
     if stopped(verdict):
         raise WorkError(f"the receipt's commit is stopped: {verdict.reason}")

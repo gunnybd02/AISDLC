@@ -26,7 +26,7 @@ URL = "https://github.com/o/r"
 def records(card=CARD):
     """The issue (its body and entry) and the ticket file (text, entry) the parent's harness writes for a card."""
     block = issues.block_of(PLAN, "pd-x", card, URL, "plan/p7")
-    _, body, sha = issues.issue_text(card, block)
+    _, body, sha = issues.issue_text(card, block, 7)
     issue = {"repo": "o/r", "number": 41, "url": f"{URL}/issues/41", "sha": sha}
     text = issues.ticket_csv({**PLAN, "children": [card]}, {card["name"]: issue}, "2026-11-18T00:00:00Z")
     made = {"title": "pd-x__ffffffffffff.csv", "sha256": hashlib.sha256(text.encode()).hexdigest()}
@@ -65,9 +65,25 @@ class RegisterTest(unittest.TestCase):
         self.assertIn("the sha256 of issue #41 is not the one the brief names", problems)
         self.assertIn("issue #41 says scope ['app/'], the brief says ['app/orders.py']", problems)
         forged = self.body.replace('"app/orders.py"', '"app/"')  # the block edited, its sha left
-        self.assertIn("the machine block of issue #41 does not match its own sha256",
+        self.assertIn("issue #41 is not in the issue format: its machine block does not match its own sha256",
                       register.issue_problems(self.role, github_of(forged))[1])
-        self.assertEqual(register.issue_problems(self.role, github_of("no block"))[1], ["issue #41 holds no machine block"])
+        self.assertIn("issue #41 is not in the issue format: it holds no machine block",
+                      register.issue_problems(self.role, github_of("no block"))[1])
+
+    def test_an_issue_out_of_format_or_of_other_paths_is_refused(self):
+        """s1.register.format: sections in order and a block of harness-issue/1; path and tests as the brief says."""
+        moved = self.body.replace("## Commits\n", "").replace("## Goal\n", "## Commits\n## Goal\n")
+        problems = register.issue_problems(self.role, github_of(moved))[1]
+        self.assertIn("issue #41 is not in the issue format: its section Commits is out of order", problems)
+        old = self.body.replace('"format": "harness-issue/1", ', "")
+        self.assertIn("issue #41 is not in the issue format: its machine block is of format None, not harness-issue/1",
+                      register.issue_problems(self.role, github_of(old))[1])
+        tested, _, _, _ = records({**CARD, "tests": ["tests/test_more.py"]})
+        problems = register.issue_problems(self.role, github_of(tested))[1]
+        self.assertIn("issue #41 says tests ['tests/test_more.py'], the brief says []", problems)
+        other = self.body.replace('"path": "."', '"path": "api"')
+        self.assertIn("issue #41 says path 'api', the brief says '.'", register.issue_problems(self.role,
+                                                                                             github_of(other))[1])
 
     def test_the_ticket_is_checked_at_the_drive_answer_and_not_kept(self):
         """s1.register.ticket: the content whose sha256 is the brief's is checked at once; only the result stays."""
@@ -124,7 +140,8 @@ class TakeTest(unittest.TestCase):
         self.addCleanup(os.chdir, here)
 
     def take(self, body=None):
-        ctx = ActionContext({"plans": self.port, "session": lambda: "c1", "github": github_of(body or self.body)})
+        ctx = ActionContext({"plans": self.port, "session": lambda: "c1", "github": github_of(body or self.body),
+                             "commit_judge": lambda *a: ALLOW, "git_judge": lambda *a: ALLOW})
         return Take().run(ctx, {})
 
     def ticket(self):
@@ -144,6 +161,21 @@ class TakeTest(unittest.TestCase):
         self.assertEqual(git(self.repo, "branch", "--show-current").strip(), "orch/p7/api")
         self.assertTrue((self.repo / "tests" / "test_orders_ac.py").is_file())
         self.assertEqual(len(self.port.rows("SELECT 1 AS x FROM pl_notes WHERE kind = 'child.registered'")), 1)
+
+    def test_the_approval_names_the_registration_and_take_pushes_it(self):
+        """s3.register.approval: the ledger's grant of the card plan names issue #41 and the record's commit, which
+        is the first commit of the branch on origin, over the plan branch."""
+        self.ticket()
+        text = self.take()
+        sha = git(self.origin, "rev-parse", "orch/p7/api").strip()
+        self.assertIn("Pushed orch/p7/api", text)
+        self.assertEqual(git(self.origin, "log", "--format=%s", "plan/p7..orch/p7/api").splitlines(),
+                         [git(self.origin, "log", "-1", "--format=%s", sha).strip()])
+        self.assertTrue(git(self.origin, "log", "-1", "--format=%s", sha).startswith("#41 api: register (issue "))
+        grants = [json.loads(r["body"]) for r in self.port.rows("SELECT body FROM pl_logs")]
+        grant = [g for g in grants if g.get("what") == "grant"][-1]
+        self.assertTrue(grant["by"].endswith(f", registration #41 in {sha[:12]}"), grant["by"])
+        self.assertEqual(self.port.approved("c1")["base"], sha)
 
     def test_a_mismatch_pushes_its_reason_and_opens_no_plan(self):
         """s2.take.refused: the issue on GitHub is for another scope; the reason is question 1 on the branch."""

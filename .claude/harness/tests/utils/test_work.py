@@ -108,6 +108,46 @@ class WorkTest(unittest.TestCase):
         with self.assertRaisesRegex(work.WorkError, "a secret"):
             work.ask(self.port, "c1", "Why?", lambda *a: Verdict("refuse", "a secret"), lambda *a: ALLOW)
 
+    def test_the_question_and_handback_of_a_child_with_an_issue_start_with_its_prefix(self):
+        """s2.commit.notes: "#N <name>: " starts the commits harness code writes for a child with an issue."""
+        issue = {"repo": "o/r", "number": 41, "url": "https://github.com/o/r/issues/41", "sha": "a" * 64}
+        prompt = brief.brief(7, "pd-x", CARD, "session_p1", rounds=3, issue=issue,
+                             ticket_file={"title": "t.csv", "sha256": "b" * 64})
+        self.assertIn('Every commit names #41: it starts "#41 api: ", and the harness writes that.', prompt)
+        Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": prompt}, "c3", str(self.repo)), {}, ALLOW)
+        work.take(self.port, "c3", str(self.repo))
+        work.ask(self.port, "c3", "Which status code?", lambda *a: ALLOW, lambda *a: ALLOW)
+        work.handback(self.port, "c3", REPORT, lambda *a: ALLOW, lambda *a: ALLOW)
+        self.assertEqual(git(self.origin, "log", "-2", "--format=%s", "orch/p7/api").splitlines(),
+                         ["#41 api: Handback of api (plan 7)", "#41 api: Question 1 of api (plan 7)"])
+
+    def test_take_commits_the_registration_first_and_never_twice(self):
+        """s3.register.branch: the record is the first commit of the branch, before the card plan takes its base."""
+        from harness.utils.ledger.store import note
+        from harness.utils.orchestra import register
+        issue = {"repo": "o/r", "number": 41, "url": "https://github.com/o/r/issues/41", "sha": "a" * 64}
+        prompt = brief.brief(7, "pd-x", CARD, "session_p1", rounds=3, issue=issue,
+                             ticket_file={"title": "t.csv", "sha256": "b" * 64})
+        Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": prompt}, "c3", str(self.repo)), {}, ALLOW)
+        kept = json.dumps({"issue": "a" * 64, "ticket": "b" * 64, "plan": "f" * 64})
+        self.port.write(lambda con, rec: note(con, register.REGISTERED, "orch/p7/api", 41, kept, "c3", 1))
+        start = git(self.repo, "rev-parse", "HEAD").strip()
+        text = work.take(self.port, "c3", str(self.repo),
+                         lambda repo: register.on_branch(self.port, "c3", repo, lambda *a: ALLOW))
+        self.assertIn("Card plan", text)
+        self.assertEqual(git(self.repo, "log", "--format=%s", f"{start}..HEAD").splitlines(),
+                         ["#41 api: register (issue aaaaaaaaaaaa, ticket bbbbbbbbbbbb)"])
+        self.assertEqual(git(self.repo, "show", "--name-only", "--format=", "HEAD").split(), [".harness/register/api.json"])
+        record = json.loads((self.repo / ".harness" / "register" / "api.json").read_text(encoding="utf-8"))
+        self.assertEqual(record, {"format": "harness-register/1", "plan": "pd-x", "child": "api", "branch": "orch/p7/api",
+                                  "repo": "o/r", "issue": 41, "issueSha": "a" * 64, "ticketSha256": "b" * 64,
+                                  "planSha": "f" * 64})
+        head = git(self.repo, "rev-parse", "HEAD").strip()
+        self.assertEqual(self.port.approved("c3")["base"], head)  # the plan stands on the record
+        again = register.on_branch(self.port, "c3", str(self.repo), lambda *a: ALLOW)
+        self.assertEqual((again["sha"], git(self.repo, "rev-parse", "HEAD").strip()), (head, head))  # no second commit
+        self.assertIsNone(register.on_branch(self.port, "c1", str(self.repo), lambda *a: ALLOW))  # no issue: no record
+
     def test_a_fresh_session_takes_the_pushed_branch_and_reads_its_notes(self):
         self.take()
         notes = self.repo / ".harness" / "notes" / "api"

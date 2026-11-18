@@ -5,8 +5,10 @@ sha256, utils/orchestra/issues.py) and its row of the ticket file on Drive (the 
 The ticket is checked by harness code at the moment Drive answers its download (ticket_seen, run by the hook): the
 content whose sha256 is the brief's is read, this child's row is compared with the brief, and only the result and
 the hashes are kept (pl_notes of kind child.ticket), never the file. The model only makes the Drive calls; the answer
-of the download stays in its conversation, which no harness can take back. take then reads the issue itself and opens
-the card plan only when both agree (register)."""
+of the download stays in its conversation, which no harness can take back. take then reads the issue itself and, when
+both agree, keeps the registration in the ledger (pl_notes of kind child.registered) and commits it as the record
+RECORD, the first commit of the child's branch (on_branch), before the card plan opens: its approval names that
+commit, and harness ci (utils/orchestra/ci.py) sees on the branch that registration came before any code."""
 from __future__ import annotations
 
 import base64
@@ -15,23 +17,25 @@ import csv
 import hashlib
 import io
 import json
-import re
 import time
 from collections.abc import Callable, Iterator
+from pathlib import Path
 from typing import Any, Optional
 
-from harness.utils.contracts import Event
+from harness.utils.contracts import Event, asked, refused
+from harness.utils.git.commit import commit
 from harness.utils.git.facts import top
+from harness.utils.git.run import git
 from harness.utils.git.github import GitHubError
 from harness.utils.ledger.store import note
-from harness.utils.orchestra.brief import NOTES
+from harness.utils.orchestra.brief import NOTES, child_subject
 from harness.utils.orchestra.fetch import FetchError, put_files
-from harness.utils.orchestra.issues import COLUMNS, ISSUE_CLOSE, ISSUE_OPEN, block_sha
+from harness.utils.orchestra.issues import COLUMNS, format_problems, read_block
 from harness.utils.orchestra.locked import on_origin
-from harness.utils.shapes import ChildRole, PlanStore
+from harness.utils.shapes import ChildRole, CommitJudge, PlanStore
 
 RESULT = "child.ticket"  # pl_notes: target = the ticket file, key = ok or refused, text = {sha256, planSha, problems}
-BLOCK = re.compile(re.escape(ISSUE_OPEN) + r"\s*\n(\{.*\})\s*\nsha256: ([0-9a-f]{64})\s*\n" + re.escape(ISSUE_CLOSE))
+RECORD, RECORD_FORMAT = ".harness/register/{name}.json", "harness-register/1"
 
 
 def expected(role: ChildRole) -> dict[str, Any]:
@@ -41,15 +45,17 @@ def expected(role: ChildRole) -> dict[str, Any]:
         role: the child's role.
 
     Returns:
-        {plan, child, branch, start, scope, acTests}.
+        {plan, child, path, branch, start, scope, tests, acTests}.
     """
     card = role["card"]
-    return {"plan": role["draft"], "child": role["name"], "branch": role["branch"], "start": role.get("start", ""),
-            "scope": list(card.get("change", [])), "acTests": list(card.get("acTests", []))}
+    return {"plan": role["draft"], "child": role["name"], "path": (role.get("unit") or {}).get("path") or ".",
+            "branch": role["branch"], "start": role.get("start", ""), "scope": list(card.get("change", [])),
+            "tests": list(card.get("tests", [])), "acTests": list(card.get("acTests", []))}
 
 
 def issue_problems(role: ChildRole, github: Callable[..., Any]) -> tuple[dict[str, Any], list[str]]:
-    """Read the child's issue on GitHub and compare its machine block with its own sha256, the brief's sha and card.
+    """Read the child's issue on GitHub: it is in the issues' format (issues.format_problems), its block's sha256 is
+    the brief's, and the block says what the brief says.
 
     Args:
         role: the child's role (its record names the issue).
@@ -64,17 +70,12 @@ def issue_problems(role: ChildRole, github: Callable[..., Any]) -> tuple[dict[st
         got = github("GET", f"repos/{issue.get('repo')}/issues/{issue.get('number')}")
     except GitHubError as e:
         return {}, [f"{name} cannot be read: {str(e)[-160:]}"]
-    found = BLOCK.search(str((got or {}).get("body") or "").replace("\r\n", "\n"))
-    if not found:
-        return {}, [f"{name} holds no machine block"]
-    try:
-        block = json.loads(found.group(1))
-    except ValueError:
-        return {}, [f"the machine block of {name} is not JSON"]
-    problems = []
-    if block_sha(block) != found.group(2):
-        problems.append(f"the machine block of {name} does not match its own sha256")
-    if found.group(2) != issue.get("sha"):
+    body = str((got or {}).get("body") or "")
+    block, sha = read_block(body)
+    problems = [f"{name} is not in the issue format: {p}" for p in format_problems(body)]
+    if not block:
+        return {}, problems
+    if sha != issue.get("sha"):
         problems.append(f"the sha256 of {name} is not the one the brief names")
     for key, want in expected(role).items():
         if block.get(key) != want:
@@ -193,7 +194,8 @@ def refuse(role: ChildRole, repo: str, problems: list[str]) -> str:
     unit = dict(role.get("unit") or {})
     start = role["branch"] if on_origin(unit, repo, role["branch"]) else role.get("start") or unit.get("base", "main")
     try:
-        sha = put_files(unit, repo, start, {rel: text}, f"Registration of {role['name']} failed (plan {role['plan']})",
+        sha = put_files(unit, repo, start, {rel: text},
+                        child_subject(role, f"Registration of {role['name']} failed (plan {role['plan']})"),
                         target=role["branch"])
     except FetchError as e:
         return f"The note could not be pushed ({str(e)[-200:]}): name it to the user."
@@ -245,6 +247,48 @@ def check(port: PlanStore, sid: str, root: str, github: Callable[..., Any]) -> s
                                      sid, int(time.time() * 1000)))
     return (f"Registered: issue #{record['issue'].get('number')} and your row of {made.get('title')} match your brief. "
             f"Every commit of yours names #{record['issue'].get('number')}.")
+
+
+def on_branch(port: PlanStore, sid: str, repo: str, judge: CommitJudge) -> Optional[dict[str, Any]]:
+    """Commit the child's registration as RECORD on the branch it stands on, through the commit gate: the next commit,
+    so the first of its branch when take calls it. A branch that holds the same record already gets no commit.
+
+    Args:
+        port: the ledger port.
+        sid: the child's session.
+        repo: the child's clone, on its branch.
+        judge: the rules' verdict on a commit.
+
+    Returns:
+        The record {format, plan, child, branch, repo, issue, issueSha, ticketSha256, planSha} with the sha of the
+        commit that holds it; None for a child without an issue or not registered in this session.
+
+    Raises:
+        RegisterError: the rules stop the commit.
+    """
+    role = (port.ticket(sid) or {}).get("child") or {}
+    issue = (role.get("record") or {}).get("issue") or {}
+    rows = port.rows("SELECT text FROM pl_notes WHERE kind = ? AND sid = ? ORDER BY at DESC, rowid DESC LIMIT 1",
+                     (REGISTERED, sid))
+    if not issue or not rows:
+        return None
+    kept = json.loads(rows[0]["text"])
+    body = {"format": RECORD_FORMAT, "plan": role["draft"], "child": role["name"], "branch": role["branch"],
+            "repo": issue.get("repo"), "issue": issue.get("number"), "issueSha": kept.get("issue"),
+            "ticketSha256": kept.get("ticket"), "planSha": kept.get("plan")}
+    rel, text = RECORD.format(name=role["name"]), json.dumps(body, indent=1, sort_keys=True) + "\n"
+    path = Path(repo) / rel
+    if path.is_file() and path.read_text(encoding="utf-8") == text:
+        return {**body, "sha": git(repo, "log", "-1", "--format=%H", "--", rel).strip()}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    message = child_subject(role, f"register (issue {str(body['issueSha'])[:12]}, ticket "
+                                  f"{str(body['ticketSha256'])[:12]})")
+    verdict = judge(repo, [rel], message)
+    if refused(verdict) or asked(verdict):
+        path.unlink()
+        raise RegisterError(f"the registration's commit is stopped: {verdict.reason}")
+    return {**body, "sha": commit(repo, [rel], message)}
 
 
 def ticket_result(port: PlanStore, sid: str, title: str) -> Optional[dict[str, Any]]:

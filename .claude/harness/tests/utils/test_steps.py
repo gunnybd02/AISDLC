@@ -61,7 +61,7 @@ class StepsTest(unittest.TestCase):
         self.refused("no plan in force")
 
     def test_a_childs_commit_names_its_issue(self):
-        """s3.steps.issue: (#N) is added once; a message that names #N already is kept as it is."""
+        """s2.commit.step: "#N <name>: " starts the message once; one that starts with it already is kept."""
         from harness.utils.plan import tickets
 
         def as_child(con, rec):
@@ -74,8 +74,8 @@ class StepsTest(unittest.TestCase):
         step_done(self.port, "s1", "Set A")
         self.write("lib/b.py", "B = 2\n")
         self.verify()
-        step_done(self.port, "s1", "Set B, as #41 asks")
-        self.assertEqual(self.subjects()[:2], ["Set B, as #41 asks", "Set A (#41)"])
+        step_done(self.port, "s1", "#41 api: Set B")
+        self.assertEqual(self.subjects()[:2], ["#41 api: Set B", "#41 api: Set A"])
 
     def test_steps_commit_one_by_one_and_the_last_delivers(self):
         self.approve(STEPS)
