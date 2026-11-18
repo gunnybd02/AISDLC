@@ -15,7 +15,7 @@ import sqlite3
 from pathlib import Path
 
 from harness.utils.ledger.db import LedgerError, fingerprint, pinned
-from harness.utils.ledger.store import session_part
+from harness.utils.ledger.store import find_or_make, session_part
 from harness.utils.shapes import ExportCopy, StoreRecord
 
 FOLDER_ID = re.compile(r"^[A-Za-z0-9_-]{10,}$")
@@ -71,19 +71,23 @@ def snapshot(db_path: str | Path, out_dir: str | Path, record: StoreRecord) -> E
             "size": len(data)}
 
 
-def upload_call(copy: ExportCopy, folder: str) -> str:
-    """The words of the one Drive call that uploads a copy to the folder (a file reference: the app reads the file).
+def upload_call(copy: ExportCopy, folder: str, db: str = "") -> str:
+    """The words of the one Drive call that uploads a copy into the store's db folder (a file reference: the app reads
+    the file); when the db folder is not known yet, first the calls that find or make it.
 
     Args:
         copy: the copy snapshot() made.
-        folder: the Drive folder's id.
+        folder: the store folder's Drive id.
+        db: the store's db folder's Drive id (store.place); "" when no Drive answer showed it yet.
 
     Returns:
         The text for the model: the create_file arguments to send, and what to do when it cannot.
     """
-    return (f"Exported the ledger: {copy['title']} ({copy['size']} bytes).\n"
+    first = "" if db else find_or_make("db", folder) + "\n"
+    return (f"Exported the ledger: {copy['title']} ({copy['size']} bytes).\n" + first +
             "Upload it now, once, with the Google Drive tool create_file, exactly:\n"
-            f"  title: {copy['title']}\n  parentId: {folder}\n  contentMimeType: {MIME}\n"
+            f"  title: {copy['title']}\n  parentId: {db or '<the id of the db folder Drive gave>'}\n"
+            f"  contentMimeType: {MIME}\n"
             f"  disableConversionToGoogleType: true\n"
             f"  base64Content: sha256:{copy['sha256']}:{copy['path']}\n"
             "The store only grows: never change, move or trash a file in it. With no Google Drive tool in this "

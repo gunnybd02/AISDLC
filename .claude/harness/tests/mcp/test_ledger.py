@@ -83,7 +83,8 @@ class ExportActionTest(unittest.TestCase):
                                (self.export("folder-from-env-1", folder="folder-given-22", reason="push"),
                                 "folder-given-22")):
             self.assertFalse(result.is_error, result.text)
-            self.assertIn(f"  parentId: {folder}", result.text.splitlines())
+            self.assertIn(f"parentId = '{folder}'", result.text)  # db is found (or made) in that folder first
+            self.assertIn("  parentId: <the id of the db folder Drive gave>", result.text.splitlines())
             self.assertIn("create_file", result.text)
         (copy,) = (self.work / ".harness-export").glob("s-export-test__*.db")  # one copy a session
         self.assertRegex(copy.name, r"^s-export-test__[0-9a-f]{6}-002__\d{8}T\d{6}Z__push__nocommit__s[0-9a-f]{8}\.db$")

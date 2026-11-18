@@ -201,23 +201,28 @@ def missing(port: PlanStore, ticket: Ticket) -> list[tuple[str, str]]:
     return out
 
 
-def ask_text(ticket: Ticket, folder: str, gaps: list[tuple[str, str]]) -> str:
-    """What the parent does for the children not synced: search the store (the hook reads the answer), search again
-    later, or ask the user's waiver for a child that did not upload (no message reaches a child).
+def ask_text(ticket: Ticket, folder: str, gaps: list[tuple[str, str]], db: str = "") -> str:
+    """What the parent does for the children not synced: search the store's db folder and the store folder (older
+    copies stay there; the hook reads the answers), search again later, or ask the user's waiver for a child that did
+    not upload (no message reaches a child).
 
     Args:
         ticket: the parent's ticket.
         folder: the store's Drive folder id.
         gaps: (name, why) of each child not synced.
+        db: the store's db folder's id (store.place); "" when not known yet.
 
     Returns:
         The text for the model.
     """
     draft, crew = ticket["draft"], ticket.get("crew") or {}
+    where = ([f"search_files with the query: title contains 'orch.{draft}.' and parentId = '{db}' (the db folder), "
+              "and then "] if db else ["search_files with the query: title = 'db' and parentId = "
+                                       f"'{folder}' (the db folder: the harness keeps its id), and then "])
     lines = [f"Not synced yet: {', '.join(f'{n} ({w})' for n, w in gaps)}. The plan is done only when each child's "
              "database is in the store.",
-             f"1. Search the store with your Google Drive tool, search_files with the query: title contains "
-             f"'orch.{draft}.' and parentId = '{folder}'. The harness reads Drive's answer itself; then run the "
+             f"1. Search the store with your Google Drive tool: {where[0]}search_files with the query: title contains "
+             f"'orch.{draft}.' and parentId = '{folder}'. The harness reads Drive's answers itself; then run the "
              "same action again."]
     for name, _ in gaps:
         lines.append(f"2. A child saves its ledger at its handback, and nothing reaches it afterwards (parent and child "
