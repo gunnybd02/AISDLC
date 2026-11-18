@@ -42,7 +42,7 @@ wildcard, inline code that may write. Simple commands with plain paths pass with
 | `git.add_all`, `git.no_verify`, `git.reset_hard`, `git.force_push`, `git.protected_write`, `push.never_repo`, `push.agent_files`, `git.unread` | a protected branch is touched | `guide("work", "skills")`, part 4: `run("git", "run", ...)` and the user's word |
 | `commit.secret` | a secret in an added line | take it out of the file, revoke it, verify again |
 | `commit.ai_mark` | an AI co-author, footer, tool name, robot emoji or Mermaid diagram in the message | write the message as the author of the change |
-| `commit.banned_word` | a word `project.json` bans | say it another way |
+| `commit.banned_word` | a word the plan bans (its `banned` item) | say it another way |
 | `commit.agent_files` | agent files in a unit's commit | `add drop-file` |
 
 ## Google Drive

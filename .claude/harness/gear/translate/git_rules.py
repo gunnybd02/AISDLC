@@ -8,7 +8,8 @@ ShellCommit (below) gives the action of a shell line that commits: kind commit (
 The facts of a git command (VOCABULARY), each a bool but kind (git) and sub:
 - sub: the git subcommand;
 - protected: it touches a protected branch: the repository is on one, a push names one (or --all, --mirror), a branch
-  -d/-D/-f/-m names one (protected: project.json, default main and master). Every rule of git.json holds only there,
+  -d/-D/-f/-m names one (protected: main and master, those the forge protects, the base of the plan). Every rule of
+  git.json holds only there,
   but every fact is described on any branch, so a stricter row may hold elsewhere;
 - unread_globals: a global option the gate does not follow (-c, --git-dir, --work-tree...);
 - no_verify: --no-verify, or commit -n;

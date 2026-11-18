@@ -11,12 +11,12 @@ from typing import Any, Optional, Protocol, TextIO
 
 from harness.assemble.engine.build import CLAUDE_DIR, build_runner, code_of, items_of, skill_docs
 from harness.assemble.engine.checks import doctor, report
-from harness.assemble.engine.config import Config
 from harness.assemble.engine.loader import Item, Loader
 from harness.assemble.engine.ports import SERVER_PORTS, LedgerPort
 from harness.utils.contracts import Event
 from harness.utils.git import github
 from harness.utils.ledger import store
+from harness.utils.plan.item_checks import LIMITS
 
 SERVER = ("harness", "0.1")
 
@@ -74,22 +74,23 @@ def ports_of(items: dict[str, Item], claude_dir: str | Path) -> dict[str, Any]:
 
     Returns:
         {port name: port}, in the order of SERVER_PORTS: the LedgerPort (plans, ledger), the items, and callables
-        (verify_command, doctor, git_judge: GitJudge, session, commit_judge: CommitJudge, banned, store, units: the
-        declared units by name as {repo, path, verify, base}, github: call(method, path, fields) of GitHub REST, limits:
-        the orchestra limits {children, rounds} of the config, judge).
+        (verify_command: no command, a plan carries its own; doctor, git_judge: GitJudge, session, commit_judge:
+        CommitJudge, banned: the floor's words (none: a plan adds its own), store, units: no declared unit (a plan names
+        its repos), github: call(method, path, fields) of GitHub REST, limits: the default orchestra limits {children,
+        rounds}, which a plan may lower, judge).
     """
     ledger = LedgerPort(claude_dir)
-    ports = {"plans": ledger, "ledger": ledger, "verify_command": lambda: Config.load(claude_dir).verify,
+    ports = {"plans": ledger, "ledger": ledger, "verify_command": lambda: [],
              "items": items, "doctor": lambda: report(doctor(claude_dir)),
              "git_judge": lambda repo, words: build_runner(claude_dir, items).run(git_event(repo, words)).verdict,
              "session": ledger.session,
              "commit_judge": lambda repo, files, message: build_runner(
                  claude_dir, items, ledger.approved(ledger.session())).run(commit_event(repo, files, message)).verdict,
-             "banned": lambda: Config.load(claude_dir).banned,
+             "banned": lambda: (),
              "store": store.folder,
-             "units": lambda: {name: unit.spec() for name, unit in Config.load(claude_dir).units},
+             "units": lambda: {},
              "github": github.call,
-             "limits": lambda: dict(Config.load(claude_dir).limits),
+             "limits": lambda: dict(LIMITS),
              "judge": lambda event: build_runner(claude_dir, items).run(event).verdict}
     assert tuple(ports) == SERVER_PORTS, "ports_of builds exactly SERVER_PORTS"
     return ports

@@ -20,7 +20,6 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Optional
 
-from harness.assemble.engine.config import Config, ConfigError
 from harness.assemble.engine.desk_port import DeskPort
 from harness.assemble.engine.ledger_core import now
 from harness.assemble.engine.record_port import RecordPort
@@ -113,8 +112,8 @@ class LedgerPort(DeskPort, TicketPort, RecordPort):
         return tickets.approved_plan(self.read(lambda con: tickets.open_with_draft(con, plan_id)))
 
     def protected(self, branch: str, repo: str = "") -> bool:
-        """Whether the branch is protected: the config's protected (main and master when it cannot be read), and the
-        branches the forge protects in repo (utils/forge/protection.py).
+        """Whether the branch is protected: main and master always, and the branches the forge protects in repo
+        (utils/forge/protection.py).
 
         Args:
             branch: the branch name (refs/heads/ may lead).
@@ -123,11 +122,7 @@ class LedgerPort(DeskPort, TicketPort, RecordPort):
         Returns:
             True when a protected name or pattern matches it.
         """
-        try:
-            patterns = tuple(Config.load(self.path.parent.parent).protected)
-        except ConfigError:
-            patterns = DEFAULT_PROTECTED
-        return is_protected(branch, patterns + tuple(protected_names(repo, self) if repo else ()))
+        return is_protected(branch, DEFAULT_PROTECTED + tuple(protected_names(repo, self) if repo else ()))
 
     def registry(self, plan: ApprovedPlan) -> dict[str, Behaviour]:
         """The behaviour registry of the plan (utils/plan/grants.replay), from pl_behaviors in the order written.

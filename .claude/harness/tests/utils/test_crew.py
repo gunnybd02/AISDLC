@@ -98,7 +98,7 @@ class BriefTest(unittest.TestCase):
 
 class CrewTest(unittest.TestCase):
     def setUp(self):
-        self.claude_dir = copy_tree(self, {"project.json": json.dumps({"name": "t"})})
+        self.claude_dir = copy_tree(self)
         self.repo = git_repo(self, {"notes.md": "n\n"})
         self.port = LedgerPort(self.claude_dir)
         self.port.touch_session("s1")

@@ -6,7 +6,6 @@ import re
 import unittest
 from unittest import mock
 
-from harness.assemble.engine.config import Config
 from harness.assemble.engine.ports import LedgerPort
 from harness.assemble.engine.runner import Act
 from harness.utils.contracts import YES, Event, Verdict
@@ -90,15 +89,15 @@ class ShipActionsTest(unittest.TestCase):
     copy is due when a store folder is set, a commit's answer never does."""
 
     def setUp(self):
-        self.claude_dir = copy_tree(self, {"project.json": json.dumps(
-            {"name": "t", "verify": ["{python}", "-m", "unittest", "discover", "-s", "."]})})
+        self.claude_dir = copy_tree(self)
         self.repo = git_repo(self, {"a.py": "X = 1\n", "test_a.py": TEST})
         self.remote = tree(self, {})
         git(self.remote, "init", "-q", "--bare")
         git(self.repo, "remote", "add", "origin", str(self.remote))
         self.port = LedgerPort(self.claude_dir)
         items = {**desk.normalize(desk.clean({"title": "Set the value", "what": ["w"], "files": ["a.py"],
-                                              "tests": ["test_a.py"]})), "root": str(self.repo)}
+                                              "tests": ["test_a.py"]})), "root": str(self.repo),
+                 "verify": ["{python}", "-m", "unittest", "discover", "-s", "."]}  # set by the server from its repo
         self.plan_id, _, q = self.port.present(items, sid="s1")
         approvals(self.port, "s1", {q: YES})
         self.port.touch_session("s1")
@@ -106,7 +105,7 @@ class ShipActionsTest(unittest.TestCase):
 
     def test_a_commit_and_a_push_run_and_only_the_push_says_the_copy_is_due(self):
         (self.repo / "a.py").write_text("X = 2\n", encoding="utf-8")
-        verify(self.port, Config.load(self.claude_dir).verify, self.plan_id)
+        verify(self.port, [], self.plan_id)
         with mock.patch.dict(os.environ, {"HARNESS_DRIVE_FOLDER": "folder-id-123"}):
             done = self.run("git", "commit", files=["a.py"], message="Set X")
             self.assertFalse(done.is_error, done.text)

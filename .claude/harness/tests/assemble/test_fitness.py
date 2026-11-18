@@ -6,13 +6,12 @@ import unittest
 from pathlib import Path
 
 from harness.assemble.engine.loader import Loader
-from harness.nets import (bridges_net, config_net, english_net, entry_net, hints_net, imports_net, layout_net,
-                          owners_net, size_net, verdict_net)
+from harness.nets import (bridges_net, english_net, entry_net, hints_net, imports_net, layout_net, owners_net,
+                          size_net, verdict_net)
 from harness.tests import entry_of
 from harness.tests.e2e import copy_tree, run
 
-NETS = (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net, entry_net, hints_net, owners_net,
-        english_net)
+NETS = (layout_net, imports_net, bridges_net, size_net, verdict_net, entry_net, hints_net, owners_net, english_net)
 DETECTOR = '''"""Fit: a detector planted by the fitness test."""
 from __future__ import annotations
 

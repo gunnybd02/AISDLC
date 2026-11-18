@@ -20,7 +20,7 @@ NOT_KEPT = "The plan was not kept: "
 
 
 def declared(ctx: ActionContext) -> list[str]:
-    """The names of the units project.json declares, for the services and children of a plan.
+    """The names of the units the server declares (none: a plan names its own repos), for the services and children.
 
     Args:
         ctx: the action's ports, with units (units() -> {name: {repo, path, verify, base}}), declared in needs.

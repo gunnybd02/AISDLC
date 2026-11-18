@@ -10,7 +10,7 @@ import unittest
 from harness.utils.contracts import YES
 from harness.tests import CLAUDE_DIR, entry_of
 from harness.tests.e2e import WINDOWS_CONSOLE, copy_tree, git_repo, run
-from harness.tests.e2e.test_flow import CONFIG, Flow
+from harness.tests.e2e.test_flow import Flow
 
 BROKEN = {"harness/assemble/engine/build.py": "raise RuntimeError('broken')\n"}
 Q = "Turn guards off for 15 min: fix harness?"
@@ -163,7 +163,7 @@ class RecordUnderGrantTest(unittest.TestCase):
     answers while the guards are off."""
 
     def setUp(self):
-        self.root = copy_tree(self, {"project.json": json.dumps(CONFIG)})
+        self.root = copy_tree(self)
         self.repo = git_repo(self, {"a.py": "X = 1\n"})
         self.flow = Flow(self.root, self.repo)
         self.prompt("start")

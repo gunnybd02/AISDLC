@@ -23,11 +23,11 @@ PLAN = {"title": "Set the value", "what": ["X becomes 2"], "files": ["a.py"], "t
 
 class CliTest(unittest.TestCase):
     def setUp(self):
-        self.claude_dir = copy_tree(self, {"project.json": json.dumps(
-            {"name": "t", "verify": ["{python}", "-m", "unittest", "discover", "-s", "."]})})
+        self.claude_dir = copy_tree(self)
         self.repo = git_repo(self, {"a.py": "X = 1\n", "test_a.py": TEST, "notes.md": "n\n"})
         self.port = LedgerPort(self.claude_dir)
-        items = {**desk.normalize(desk.clean(PLAN)), "root": str(self.repo)}
+        items = {**desk.normalize(desk.clean(PLAN)), "root": str(self.repo),
+                 "verify": ["{python}", "-m", "unittest", "discover", "-s", "."]}  # set by the server from its repo
         _, _, q = self.port.present(items, sid="s1")
         approvals(self.port, "s1", {q: YES})
 

@@ -5,7 +5,6 @@ import subprocess
 import unittest
 
 import harness.gear as gear_block
-from harness.assemble.engine.config import Config
 from harness.utils.plan.verify import verify
 from harness.assemble.engine.build import build_runner
 from harness.assemble.engine.ports import LedgerPort

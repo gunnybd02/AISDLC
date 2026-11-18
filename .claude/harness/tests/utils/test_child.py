@@ -21,7 +21,7 @@ BRIEF = brief.brief(7, "pd-x", CARD, "session_parent01", rounds=3)
 
 class ChildTest(unittest.TestCase):
     def setUp(self):
-        self.port = LedgerPort(copy_tree(self, {"project.json": json.dumps({"name": "t"})}))
+        self.port = LedgerPort(copy_tree(self))
 
     def prompt(self, sid, text):
         return Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": text}, sid, "/w"), {}, Verdict("allow"))

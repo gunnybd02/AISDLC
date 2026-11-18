@@ -26,7 +26,7 @@ def git(repo, *args):
 
 class WorkTest(unittest.TestCase):
     def setUp(self):
-        self.port = LedgerPort(copy_tree(self, {"project.json": json.dumps({"name": "t"})}))
+        self.port = LedgerPort(copy_tree(self))
         self.repo = git_repo(self, {"a.py": "X = 1\n"})
         self.origin = tree(self, {})
         git(self.origin, "init", "-q", "--bare")
@@ -93,7 +93,7 @@ class WorkTest(unittest.TestCase):
         git(self.repo, "push", "-q", "origin", "orch/p7/api")
         fresh = tree(self, {})  # a new machine: a clone of origin and its own ledger
         git(fresh, "clone", "-q", str(self.origin), ".")
-        port = LedgerPort(copy_tree(self, {"project.json": json.dumps({"name": "t"})}))
+        port = LedgerPort(copy_tree(self))
         prompt = brief.brief(7, "pd-x", CARD, "session_p1", resume=".harness/notes/api/sendback-1.md", rounds=3)
         Act(port).run(Event("UserPromptSubmit", "", {"prompt": prompt}, "c2", str(fresh)), {}, ALLOW)
         text = work.take(port, "c2", str(fresh))

@@ -12,7 +12,6 @@ from harness.tests.e2e import copy_tree, run
 BAD = {
     "imports": {"harness/gear/leak.py": '"""x"""\nimport harness.mcp.hooks\n'},
     "loader": {"harness/gear/__init__.py": "import os\nITEMS = []\n"},
-    "config": {"project.json": "{}"},
     "ref": {"harness/gear/__init__.py": '"""x"""\nITEMS = [{"kind": "rule", "name": "decide", '
                                         '"ref": "harness.gear.decide.arbiter:Typo"}]\n'},
     "skill": {"harness/mcp/skill_docs/bad/SKILL.md": "# no frontmatter\n"},
@@ -40,46 +39,28 @@ class DoctorEntryTest(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn("ERROR", out)
 
-    def with_ledger(self, *changes):
-        """A tree whose project.json names a ledger in a temp folder, with the schema changes made to it."""
-        path = tree(self, {}) / "real.db"
+    def ledger(self, *changes):
+        """A ledger in a temp folder, with the schema changes made to it."""
+        path = tree(self, {}) / "pc.db"
         Ledger.open(path).close()
         con = sqlite3.connect(path)
         for sql in changes:
             con.execute(sql)
         con.commit()
         con.close()
-        config = json.loads((CLAUDE_DIR / "project.json").read_text(encoding="utf-8"))
-        return copy_tree(self, {"project.json": json.dumps({**config, "ledger": str(path)})})
-
-    def test_the_real_ledger_named_in_the_config_is_compared(self):
-        code, out, _ = run(entry_of(self.with_ledger(), "doctor"))
-        self.assertEqual((code, out.strip()), (0, "0 errors"))
-        code, out, _ = run(entry_of(self.with_ledger("ALTER TABLE pl_logs ADD COLUMN extra TEXT"), "doctor"))
-        self.assertEqual(code, 1)
-        self.assertIn("ERROR ledger", out)
-        self.assertIn("table pl_logs", out)
+        return str(path)
 
     def test_the_ledger_named_by_harness_ledger_is_compared(self):
-        bad = tree(self, {}) / "pc.db"
-        Ledger.open(bad).close()
-        con = sqlite3.connect(bad)
-        con.execute("ALTER TABLE pl_logs ADD COLUMN extra TEXT")
-        con.commit()
-        con.close()
-        code, out, _ = run(entry_of(copy_tree(self), "doctor"), env={"HARNESS_LEDGER": str(bad)})
+        code, out, _ = run(entry_of(copy_tree(self), "doctor"), env={"HARNESS_LEDGER": self.ledger()})
+        self.assertEqual((code, out.strip()), (0, "0 errors"))
+        bad = self.ledger("ALTER TABLE pl_logs ADD COLUMN extra TEXT")
+        code, out, _ = run(entry_of(copy_tree(self), "doctor"), env={"HARNESS_LEDGER": bad})
         self.assertEqual(code, 1)
+        self.assertIn("ERROR ledger", out)
         self.assertIn("table pl_logs", out)
         if os.name != "nt":  # a Windows path names no file on another system
             code, out, _ = run(entry_of(copy_tree(self), "doctor"), env={"HARNESS_LEDGER": "C:/AI/harness.db"})
             self.assertEqual((code, out.strip()), (0, "0 errors"))
-
-    def test_a_ledger_path_that_is_not_absolute_is_a_config_error(self):
-        config = json.loads((CLAUDE_DIR / "project.json").read_text(encoding="utf-8"))
-        root = copy_tree(self, {"project.json": json.dumps({**config, "ledger": "state/harness.db"})})
-        code, out, _ = run(entry_of(root, "doctor"))
-        self.assertEqual(code, 1)
-        self.assertIn("ledger", out)
 
     def test_the_mcp_server_serves_the_doctor_too(self):
         line = '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"run","arguments":' \

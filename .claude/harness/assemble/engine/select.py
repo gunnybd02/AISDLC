@@ -1,7 +1,7 @@
-"""select: which pipeline an event runs, by the state of its session. No approved plan, or a plan on no unit that names a
-pipeline: the floor (base). A plan on units that name pipelines in project.json (spec 13 section 11.6) runs the floor,
-then each of those pipelines in the order of the plan's services, each gear once: the engine puts the floor under them,
-so no plan makes the guards looser (spec 13 section 7), and the model never picks a pipeline."""
+"""select: which pipeline an event runs, by the state of its session. No approved plan, or a plan on no repo that names a
+pipeline: the floor (base). A plan whose repos name pipelines (its repos item, shown in form 1) runs the floor, then
+each of those pipelines in the order of the plan's services, each gear once: the engine puts the floor under them, so
+no plan makes the guards looser (spec 13 section 7)."""
 from __future__ import annotations
 
 from typing import Optional
@@ -18,7 +18,7 @@ def select(book: PipelineBook, plan: Optional[ApprovedPlan], mapped: Optional[di
     Args:
         book: the pipelines (assemble/pipelines/*.json).
         plan: the plan in force in the session, or None; its services are the units it works on.
-        mapped: {unit: pipeline} of project.json (Config.pipelines); None or {} when no unit names one.
+        mapped: {repo: pipeline} of the plan's repos; None or {} when no repo names one.
 
     Returns:
         The Pipeline, named base or base+<pipeline>...: the floor's translators and detectors first, then those each

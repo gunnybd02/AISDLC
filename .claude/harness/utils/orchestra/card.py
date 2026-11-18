@@ -92,7 +92,7 @@ def card_faults(card: Card, units: Collection[str]) -> list[str]:
     """
     name, out = card["name"], []
     if card.get("unit") not in (HOME,) + STANDALONE and card.get("unit") not in units:
-        out.append(f"{name}: unit {card.get('unit')!r} is neither the home nor a declared unit")
+        out.append(f"{name}: unit {card.get('unit')!r} is neither the home nor a repo of the plan")
     goal = card.get("goal")
     if not isinstance(goal, str) or not goal.strip() or len(goal) > MAX_GOAL:
         out.append(f"{name}: goal is one sentence of at most {MAX_GOAL} characters")
@@ -150,8 +150,8 @@ HOME_SPEC = {"repo": "", "path": ".", "verify": [], "base": "main"}
 
 def unit_spec(card: Card, units: dict[str, dict[str, Any]]) -> dict[str, Any]:
     """The unit a child works in, as its card block carries it: {repo, path, verify, base}. The home (and none,
-    agent-code) is the parent's own repository at its root, with the child's own verify; any other unit is the
-    declared one (project.json units).
+    agent-code) is the parent's own repository at its root, with the child's own verify; any other unit is a repo of
+    the plan (plan_units).
 
     Args:
         card: the child's card.

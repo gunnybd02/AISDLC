@@ -1,12 +1,13 @@
 """h1.blocks-and-nets: each net finds its break in a fake tree and nothing in the real one."""
 import unittest
 
-from harness.nets import (bridges_net, config_net, english_net, entry_net, hints_net, imports_net, layout_net,
-                          owners_net, size_net, verdict_net)
+import ast
+
+from harness.nets import (bridges_net, english_net, entry_net, hints_net, imports_net, layout_net, owners_net,
+                          size_net, verdict_net)
 from harness.tests import CLAUDE_DIR, tree
 
-NETS = (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net, entry_net, hints_net, owners_net,
-        english_net)
+NETS = (layout_net, imports_net, bridges_net, size_net, verdict_net, entry_net, hints_net, owners_net, english_net)
 
 
 def joined(net, test, files):
@@ -85,7 +86,7 @@ class ImportsNetTest(unittest.TestCase):
     def test_a_file_that_does_not_parse_is_reported_once_and_breaks_no_net(self):
         files = {"harness/gear/a.py": "def (:\n"}
         self.assertIn("does not parse", joined(imports_net, self, files))
-        for net in (bridges_net, verdict_net, config_net, entry_net):
+        for net in (bridges_net, verdict_net, entry_net):
             with self.subTest(net=net.__name__):
                 self.assertEqual(net.check(tree(self, files)), [])
 
@@ -275,15 +276,34 @@ class EnglishNetTest(unittest.TestCase):
             "english: harness/utils/b.txt: line 1 holds a letter outside ASCII (U+00FC); write English, or an escape"])
 
 
-class ConfigNetTest(unittest.TestCase):
-    def test_project_json_named_outside_the_config_door_is_reported(self):
-        found = joined(config_net, self, {"harness/gear/a.py": "PATH = 'project.json'\n"})
-        self.assertIn("harness/gear/a.py", found)
+class NoConfigTest(unittest.TestCase):
+    """config.gone: project.json is read by nothing: no harness file names it, and its reader and its net are gone."""
 
-    def test_the_config_door_and_docstrings_pass(self):
-        files = {"harness/assemble/engine/config.py": "P = 'project.json'\n",
-                 "harness/gear/a.py": '"""Never reads project.json."""\n'}
-        self.assertEqual(config_net.check(tree(self, files)), [])
+    def test_no_file_of_the_harness_names_project_json(self):
+        """No code string (docstrings aside), rule or skill text of the harness names project.json."""
+        harness, named = CLAUDE_DIR / "harness", []
+        for path in sorted(harness.rglob("*")):
+            rel = path.relative_to(harness)
+            if not path.is_file() or "tests" in rel.parts or "__pycache__" in rel.parts:
+                continue
+            if rel.as_posix() == "nets/layout.json":
+                continue  # it allows the file until the file is deleted, once a release without readers is in force
+            text = path.read_text(encoding="utf-8") if path.suffix in (".py", ".json", ".md") else ""
+            if path.suffix == ".py":
+                tree_ = ast.parse(text)
+                docs = {id(n.body[0].value) for n in ast.walk(tree_) if isinstance(
+                    n, (ast.Module, ast.ClassDef, ast.FunctionDef)) and n.body and isinstance(n.body[0], ast.Expr)}
+                text = " ".join(n.value for n in ast.walk(tree_) if isinstance(n, ast.Constant)
+                                and isinstance(n.value, str) and id(n) not in docs)
+            if "project.json" in text:
+                named.append(str(rel))
+        self.assertEqual(named, [])
+        for gone in ("assemble/engine/config.py", "nets/config_net.py"):
+            self.assertFalse((harness / gone).exists(), gone)
+
+    def test_the_tests_run_with_no_project_json(self):
+        from harness.tests.e2e import copy_tree
+        self.assertFalse((copy_tree(self) / "project.json").exists())  # every test tree runs with none
 
 
 if __name__ == "__main__":

@@ -6,7 +6,6 @@ import re
 import time
 import unittest
 
-from harness.assemble.engine.config import Config
 from harness.assemble.engine.ports import LedgerPort
 from harness.assemble.engine.runner import Act
 from harness.utils.contracts import YES, Event, Verdict
@@ -24,8 +23,7 @@ PLAN = {"title": "Set the value", "what": ["w"], "files": ["a.py", "b.py"], "tes
 
 class LifeTest(unittest.TestCase):
     def setUp(self):
-        self.claude_dir = copy_tree(self, {"project.json": json.dumps(
-            {"name": "t", "verify": ["{python}", "-m", "unittest", "discover", "-s", "."]})})
+        self.claude_dir = copy_tree(self)
         self.repo = git_repo(self, {"a.py": "X = 1\n", "b.py": "Y = 1\n", "test_a.py": TEST})
         self.port = LedgerPort(self.claude_dir)
         self.port.touch_session("s1")
@@ -70,7 +68,7 @@ class LifeTest(unittest.TestCase):
     def test_settle_ends_proven_plans_and_drops_dead_ones_only_after_a_yes(self):
         delivered = self.approve()
         (self.repo / "a.py").write_text("X = 2\n", encoding="utf-8")
-        verify(self.port, Config.load(self.claude_dir).verify, delivered)
+        verify(self.port, ["{python}", "-m", "unittest", "discover", "-s", "."], delivered)
         step_done(self.port, "s1", "Set X")
         self.assertIn("No plan is open", settle(self.port))  # step_done ended it already
         self.port.touch_session("s2")

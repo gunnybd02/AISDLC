@@ -1,6 +1,6 @@
 """MarkScan: the text of a commit holds no AI mark (commit.ai_mark: an AI co-author or footer, an AI tool's name or
-address, a robot emoji, a Mermaid diagram; utils/git/marks.py) and none of the project's banned words
-(commit.banned_word; project.json banned)."""
+address, a robot emoji, a Mermaid diagram; utils/git/marks.py) and none of the banned words of the plan in force
+(commit.banned_word; its banned item)."""
 from __future__ import annotations
 
 from harness.utils.contracts import Detector, Event, Finding

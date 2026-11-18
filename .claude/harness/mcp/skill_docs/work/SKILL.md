@@ -33,9 +33,8 @@ python3 <core>/anchor.py cli tool run <block> <action> '<args as JSON>'
 - The work is on the harness itself: `guide("harness-dev", "skills")`.
 
 ## 1. Gather context
-Reading needs no plan. Read the code the request touches, its tests, and how the project runs them (`verify` in
-`project.json`). Ask the user what is unclear. Go on when you can name every file to change and the test of each
-behaviour.
+Reading needs no plan. Read the code the request touches, its tests, and how the repository runs them (its CI, its
+README). Ask the user what is unclear. Go on when you can name every file to change and the test of each behaviour.
 
 ## 2. Plan
 1. Stand in the repository the work is in: the plan's root is the folder the call is made from, and every path of
@@ -43,8 +42,14 @@ behaviour.
 2. Pick the tier. Light, for a small change: `title`, `what`, `files`, and `tests` when there are any.
    ```json
    {"title": "Fix the date parser", "what": ["A date without a year reads as this year"],
+    "repos": {"shop": {"url": "https://github.com/acme/shop", "base": "main", "verify": ["npm", "test"]}},
     "files": ["src/dates.py"], "tests": ["tests/test_dates.py"]}
    ```
+   `repos` names the repository the plan works in, by URL, with its test command (`verify`, a list of words;
+   `{python}` is this Python), its base, and optionally `path` (a folder) and `pipeline`. Form 1 shows it. The plan's
+   folder must be a clone of one of its repos; that repo's `verify` is what verify runs. A plan with tests needs one;
+   a plan with no tests (docs) needs none. `limits` may lower the orchestra limits, `banned` adds words commit text
+   never holds.
    Full, for anything with steps: `steps`, and then `overview`, `code`, `services`, `checks`, `assumptions`,
    `notDoing` and `risks` are needed too.
    ```json
@@ -75,8 +80,8 @@ one as superseded: to change work in hand, revise.
 
 **Parts for child sessions**: the whole procedure is the skill `orchestrate` (`guide("orchestrate", "skills")`). In
 short (`docs/05b-orchestra-cloud.md`): a full plan with `children`, each card
-`{name, unit, goal, ac, read?, change, tests?, actions?}`; each AC names a visible case; a unit is `home` or one
-`project.json` declares in `units` (`{repo, path, verify, base}`: any repository, or a folder of a shared one). One
+`{name, unit, goal, ac, read?, change, tests?, actions?}`; each AC names a visible case; a unit is `home` or a repo
+the plan names in `repos` (any repository, or a folder of a shared one). One
 "Approve" approves them all; then, per child, `run("orchestra", "spawn", {"name"})` gives the brief and the `create_session` call, and
 `run("orchestra", "started", {"name", "sid"})` records it (3 run at most; `run("orchestra", "status", {})`). While it
 runs no other plan opens in the session; revise it instead. When a child says "handed back":
@@ -133,7 +138,8 @@ the plan changed since the last green verify.
   The answer is a form with the full text; ask it exactly as given, and after the user's "Allow" call `mr_open`
   again with exactly the same text. No AI mark and no banned word in it. It goes through GitLab REST.
 
-Git is free except where a protected branch is touched (`main`, `master`, or `protected` in `project.json`). There
+Git is free except where a protected branch is touched (`main`, `master`, the branches the repository protects on
+GitHub, and the base of the plan in force). There
 these ask the user first: `git add -A`/`.`, `--no-verify`, `reset --hard`, a force push, any write on the branch, a
 push from the harness's repository, agent files (`.claude/`, `CLAUDE.md`, `.mcp.json`, `AGENTS.md`) staged or
 pushed, git with `-c`/`--git-dir`/`--work-tree`. To run one:

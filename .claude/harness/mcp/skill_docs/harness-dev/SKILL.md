@@ -12,7 +12,6 @@ anchor.py           the one file Claude Code runs; never written in a session
 .mcp.json           the MCP server of this repository (calls the anchor)
 .claude/
   settings.json     the hooks of this repository (call the anchor)
-  project.json      the user's values: name, verify, protected, banned, ledger
   harness/
     entry/          the doors: hook, mcp_server, cli, doctor, install, session_start
     hooks/          hook JSON in and out, the answers of a form; decides nothing
@@ -35,7 +34,14 @@ Read `.claude/docs/architecture.md` for the part to change, and `.claude/docs/ha
 ## 2. Plan
 As in the `work` skill: present, ask the form, wait for "Approve". Work on a branch, never on `main`. Name the test
 file of each change in the plan. `anchor.py`, `.claude/settings.json` and `.mcp.json` are never written in a
-session: a change there is the user's.
+session: a change there is the user's. Work in the home clone (`~/.harness` in the cloud), and name this repository in
+the plan with its suite:
+```json
+"repos": {"harness": {"url": "https://github.com/gunnybd02/AISDLC",
+                      "verify": ["{python}", "-m", "unittest", "discover", "-s", ".claude/harness/tests", "-t", ".claude"]}}
+```
+The home's working files outside `harness/` are read by the release in force: never delete or break one before a
+release that no longer reads it is in force.
 
 ## 3. Build
 Write the test first: `harness/tests/<block>/test_<module>.py`, named after the module it tests.
@@ -103,7 +109,6 @@ From `.claude/`: `python3 -m unittest discover -s . -t .` passes and `python3 ha
 | `imports` | `hooks`, `gear`, `mcp` import only themselves and `utils`; `utils` imports no block; `assemble` connects; `entry` imports only `assemble`, inside `main()` |
 | `size` | a `.py` file has at most 400 lines, a `.md` file at most 300 |
 | `verdict` | the verdict words appear only in `gear/decide/arbiter.py` and `utils/contracts.py` |
-| `config` | `project.json` is named only in `assemble/engine/config.py` |
 | `bridges`, `entry` | no file only passes names on; an entry script imports only the standard library at load time |
 | `hints` | every parameter and return has a type hint; every function and method a docstring |
 

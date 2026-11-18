@@ -128,18 +128,22 @@ def project_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if k not in HARNESS_ENV}
 
 
+NOTHING_TO_RUN = ["{python}", "-c", "pass"]  # a plan with no tests: its files' receipt is kept, no test runs
+
+
 def command_of(plan: ApprovedPlan, default: Sequence[str]) -> list[str]:
-    """The test command of a plan: its own (a child's card plan carries its unit's verify, set by the server, never
-    by the model), else default, the config's; "{python}" is this Python.
+    """The test command of a plan: its own (from the repo its root is in, or a child's unit: set by the server, never
+    by the model), else default (a command the caller was given); a plan with no tests and no command runs nothing,
+    so its receipt is still kept; "{python}" is this Python.
 
     Args:
         plan: the plan in force.
-        default: the config's verify command.
+        default: a command given by the caller ([] for none).
 
     Returns:
-        The command's words; [] when neither names one.
+        The command's words; [] for a plan with tests that names no command.
     """
-    words = plan.get("verify") or list(default)
+    words = plan.get("verify") or list(default) or ([] if plan.get("tests") else NOTHING_TO_RUN)
     return [sys.executable if w == "{python}" else w for w in words]
 
 
@@ -148,7 +152,7 @@ def verify(port: PlanStore, command: Sequence[str], plan_id: str) -> str:
 
     Args:
         port: the harness ledger (plans, tickets, audit rows).
-        command: the config's test command (a plan that carries its own runs that one: command_of).
+        command: a test command the caller gives ([] for none: the plan's own runs, command_of).
         plan_id: the desk id (pd-...) of the plan in force.
 
     Returns:
@@ -163,7 +167,8 @@ def verify(port: PlanStore, command: Sequence[str], plan_id: str) -> str:
         raise ValueError(f"no approved plan {plan_id} waits for delivery")
     command = command_of(plan, command)
     if not command:
-        raise ValueError("no verify command: the config names none")
+        raise ValueError("no test command: the plan has tests, and the repo its folder is in names no verify; "
+                         "add the repo with its verify to the plan's repos")
     ok, code, tail, _ = run(port, {**plan, "grants": port.grants(plan)}, command)
     word = "passed" if ok else ("failed" + (f" (exit {code})" if code else ""))
     return f"verify {word} for plan {plan_id}." + ("" if ok else "\n" + "\n".join(tail[-5:]))
