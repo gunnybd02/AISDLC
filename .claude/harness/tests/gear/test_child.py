@@ -60,8 +60,9 @@ class ChildGuardTest(unittest.TestCase):
         self.assertEqual(pushed_branches(["origin", "HEAD:refs/heads/b", "x:y"], "b"), ["y"])
 
     def test_a_child_is_never_asked_it_is_told_to_go_on(self):
-        """A live child hung twice on a question nobody could answer (python3 -m unittest, git push)."""
-        for command in ("cd /w && python3 -m unittest test_hello -v", "git push -u origin orch/p7/api"):
+        """A live child hung twice on a question nobody could answer (python3 -m unittest, git push; a push is read
+        now, so a branch switch stands for the second)."""
+        for command in ("cd /w && python3 -m unittest test_hello -v", "git checkout orch/p7/api"):
             with self.subTest(command=command):
                 runner = build_runner(self.claude_dir, items_of(self.claude_dir))
                 verdict = runner.run(Event("PreToolUse", "Bash", {"command": command, "description": SAID}, "c1",
@@ -73,6 +74,8 @@ class ChildGuardTest(unittest.TestCase):
         self.assertEqual(self.judge("Bash", {"command": "python3 -m unittest x", "description": SAID}, sid="s2")[0],
                          "ask")
         self.assertEqual(self.judge("Bash", {"command": "ls -la", "description": SAID}), ("allow", []))
+        self.assertEqual(self.judge("Bash", {"command": "git push -u origin orch/p7/api", "description": SAID}),
+                         ("allow", []))  # its own branch: the reader reads a push, and no rule holds it
         kept = self.port.rows("SELECT detail FROM act_rule_decisions WHERE sid = 'c1' AND rule = 'child.no_keyboard'")
         self.assertEqual({r["detail"] for r in kept}, {"Bash cd", "Bash git"})
 

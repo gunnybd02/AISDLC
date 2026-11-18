@@ -2,6 +2,7 @@
 import unittest
 
 import ast
+import json
 
 from harness.nets import (bridges_net, english_net, entry_net, hints_net, imports_net, layout_net, owners_net,
                           size_net, verdict_net)
@@ -286,8 +287,6 @@ class NoConfigTest(unittest.TestCase):
             rel = path.relative_to(harness)
             if not path.is_file() or "tests" in rel.parts or "__pycache__" in rel.parts:
                 continue
-            if rel.as_posix() == "nets/layout.json":
-                continue  # it allows the file until the file is deleted, once a release without readers is in force
             text = path.read_text(encoding="utf-8") if path.suffix in (".py", ".json", ".md") else ""
             if path.suffix == ".py":
                 tree_ = ast.parse(text)
@@ -304,6 +303,12 @@ class NoConfigTest(unittest.TestCase):
     def test_the_tests_run_with_no_project_json(self):
         from harness.tests.e2e import copy_tree
         self.assertFalse((copy_tree(self) / "project.json").exists())  # every test tree runs with none
+
+    def test_the_home_holds_no_project_json_and_the_layout_allows_none(self):
+        """s9.config.file: the file is deleted, and the layout net would name one put back."""
+        self.assertFalse((CLAUDE_DIR / "project.json").exists())
+        layout = json.loads((CLAUDE_DIR / "harness" / "nets" / "layout.json").read_text(encoding="utf-8"))
+        self.assertNotIn("project.json", layout["allow"])
 
 
 if __name__ == "__main__":

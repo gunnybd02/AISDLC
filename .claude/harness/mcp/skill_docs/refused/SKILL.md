@@ -24,10 +24,14 @@ A refusal names its reason. Do what the reason says; never try another spelling 
 | Finding | Meaning | Move |
 |---|---|---|
 | `shell.unexplained` | the harness cannot read the command whole, and the call has no words on it | say in the tool's description what the command does and what it changes (three words at least), run it again |
-| `shell.unread` | the same, with words: the user is asked in Claude Code's own prompt | wait for the user |
+| `shell.unread` | the same, with words, in a mode other than auto: the user is asked in Claude Code's own prompt | wait for the user; next time prefer a plain command or the Edit tool |
+| `shell.after` | auto mode: the same command runs with no question; the harness keeps its repositories as they were | nothing: it is judged after it runs |
+| `plan.outside_after`, `plan.none_after` | after it ran (auto mode), it changed a file the plan does not name, or any file with no plan | undo that change, or `add file` with a behaviour (`guide("work", "skills")`, part 3) |
 
-The reader cannot see whole: an unknown program or script, `$(...)`, backticks, a path from a variable or a
-wildcard, inline code that may write. Simple commands with plain paths pass without a question.
+The reader cannot see whole: an unknown program or script, `python3 -m`, `$(...)`, backticks, a path from a variable
+or a wildcard, a loop, inline code that may write, a git that changes the work tree (`checkout <branch>`, `pull`,
+`stash`...). Simple commands with plain paths pass without a question, and so do `git push` and a new branch
+(`checkout -b`, `switch -c`): the git rules judge those. Tests run through the verify door, never by hand.
 
 ## Forms
 | Finding | Meaning | Move |
@@ -71,8 +75,16 @@ the ledger store on Drive only grows (`guide("store", "skills")`). Uploading and
 `stop.unverified`: code files of the plan changed since the last green verify. Run
 `python3 <core>/anchor.py cli verify` (or `run("verify", "run", {"plan": "<pd-id>"})`) and fix what is red.
 
+`stop.outside`: a file this session changed is outside the plan and still holds that change (a command checked after
+it ran left it). Undo it, or `add file` it with a behaviour. A second stop ends the turn.
+
 ## When the harness itself is in the way
 - A refusal that looks wrong: tell the user what was refused and why it looks wrong. Do not work around it.
-- The guards can be turned off for a while only by the user: `run("maint", "grant", {"minutes": 10, "why": "..."})`
-  gives the form question; ask it. `run("maint", "status", {})` says whether they are off.
-- A broken harness blocks every call (exit 2): `run("health", "doctor", {})` names each problem.
+- The guards are for a harness that blocks the work by its own fault (a crash, a deadlock), and only the user turns
+  them off: `run("maint", "grant", {"minutes": 10, "why": "..."})` gives the form question; ask it. While they are
+  off nothing is refused or asked (the state stays closed), and every call is still recorded: by the harness, and
+  when it is broken by the hook's trace (the agent's words, the file, the command masked).
+  `run("maint", "status", {})` says whether they are off.
+- A broken harness blocks every call (exit 2) and its message names the way out: the anchor puts the previous release
+  in force by itself after two crashes (the fallback tools `status` and `rollback`); with none left, ask the grant
+  form exactly as the message gives it (it passes a broken harness). `run("health", "doctor", {})` names each problem.

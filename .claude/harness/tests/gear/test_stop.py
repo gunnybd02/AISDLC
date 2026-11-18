@@ -9,7 +9,8 @@ from harness.hooks.io import HookIO
 from harness.utils.contracts import YES, Event, Verdict
 from harness.utils.plan import desk
 from harness.utils.plan.approval import approvals
-from harness.utils.plan.stop import unverified
+from harness.utils.ledger import writes
+from harness.utils.plan.stop import outside, unverified
 from harness.utils.plan.verify import verify
 from harness.tests import entry_of
 from harness.tests.e2e import copy_tree, git_repo, run
@@ -45,6 +46,41 @@ class StopTest(unittest.TestCase):
         self.assertEqual(self.stop(), [])
         (self.repo / "a.py").write_text("X = 3\n", encoding="utf-8")
         self.assertEqual(self.stop(), ["stop.unverified"])
+
+    def test_a_change_outside_the_plan_holds_the_turn_until_it_is_undone_or_added(self):
+        """s6.stop.outside: a file the session changed that the plan does not name holds the turn while it still holds
+        the session's change; undone, added to the plan, changed again by another writer, or a repeated Stop: it ends."""
+        other = self.repo / "other.py"
+        other.write_text("O = 1\n", encoding="utf-8")
+        written = {writes.real(str(other)): {writes.content_hash(str(other))}}
+
+        def found(active=False, plan=None):
+            facts = {"plan": plan or self.port.approved("s1"), "stop_owed": lambda p: [],
+                     "stop_outside": lambda p: outside(p, written)}
+            event = Event("Stop", "", {"stop_hook_active": active}, "s1")
+            return [(f.kind, f.detail) for f in StopGuard().detect(event, facts)]
+        self.assertEqual(found(), [("stop.outside", writes.real(str(other)))])
+        self.assertEqual(found(active=True), [])
+        plan = self.port.approved("s1")
+        self.assertEqual(found(plan={**plan, "files": list(plan["files"]) + ["other.py"]}), [])  # added
+        a = self.repo / "a.py"
+        a.write_text("X = 7\n", encoding="utf-8")
+        written[writes.real(str(a))] = {writes.content_hash(str(a))}
+        self.assertEqual([k for k, _ in found()], ["stop.outside"])  # a plan file is no change outside it
+        other.write_text("O = 2\n", encoding="utf-8")  # another writer's content
+        self.assertEqual(found(), [])
+        other.unlink()  # undone
+        self.assertEqual(found(), [])
+
+    def test_the_real_hook_holds_a_turn_with_a_change_outside_the_plan(self):
+        from harness.assemble.engine.build import build_runner
+        other = self.repo / "other.py"
+        other.write_text("O = 1\n", encoding="utf-8")
+        build_runner(self.claude_dir).run(Event("PostToolUse", "Write", {"file_path": str(other)}, "s1", str(self.repo)))
+        verdict = build_runner(self.claude_dir).run(Event("Stop", "", {}, "s1", str(self.repo))).verdict
+        self.assertEqual(verdict.decision, "refuse")
+        self.assertIn("stop.outside", [f.kind for f in verdict.findings])
+        self.assertIn("add file door", verdict.reason)
 
     def test_a_change_another_writer_made_is_named_and_does_not_hold_the_turn(self):
         from harness.assemble.engine.build import build_runner

@@ -157,6 +157,39 @@ class GrantTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("not recorded", err)
 
+    def calls(self, root):
+        return [json.loads(body).get("call") for (body,) in rows(root, "SELECT body FROM pl_logs ORDER BY rowid")]
+
+    def test_the_trace_keeps_what_each_call_does_even_when_the_harness_is_broken(self):
+        """s7.grant.trace: the agent's words, the file and the command, a secret masked."""
+        key = "ghp_" + "a1B2c3D4" * 5  # the shape of a token, not one
+        hook(self.root, form(Q, answer=YES))
+        shell = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "session_id": "s1", "cwd": "C:/x",
+                 "tool_input": {"command": "make build", "description": "Build the project"}}
+        hook(self.root, shell)
+        hook(self.root, {**shell, "tool_input": {"command": f"echo {key}", "description": "Show the token"}})
+        hook(self.root, write_call())
+        calls = self.calls(self.root)
+        self.assertEqual(calls[1], {"command": "make build", "description": "Build the project"})
+        self.assertEqual(calls[2]["description"], "Show the token")
+        self.assertNotIn(key, json.dumps(calls))
+        self.assertEqual(calls[3], {"file_path": "C:/x/a.py"})
+
+    def test_the_trace_masks_with_the_standard_library_when_the_mask_itself_is_broken(self):
+        root = copy_tree(self, {**BROKEN, "harness/utils/ledger/mask.py": "raise RuntimeError('broken')\n"})
+        hook(root, form(Q, answer=YES))
+        key = "ghp_" + "a1B2c3D4" * 5
+        hook(root, {"hook_event_name": "PreToolUse", "tool_name": "Bash", "session_id": "s1", "cwd": "C:/x",
+                    "tool_input": {"command": f"make build\necho {key}", "description": "Build the project"}})
+        self.assertEqual(self.calls(root)[-1], {"command": "make build\n[redacted]", "description": "Build the project"})
+
+    def test_a_call_a_broken_harness_blocks_names_the_way_out(self):
+        """s7.crash.way-out: the previous release, the fallback tools and the exact question of the grant."""
+        code, _, err = hook(self.root, write_call())
+        self.assertEqual(code, 2)
+        for part in ("previous release", "rollback", "Turn guards off for 15 min: <why>?", '"Approve"'):
+            self.assertIn(part, err)
+
 
 class RecordUnderGrantTest(unittest.TestCase):
     """A grant lifts the checks, never the recording: a working harness records each call and keeps the user's

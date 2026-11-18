@@ -126,7 +126,7 @@ class ShellPlacesTest(unittest.TestCase):
 
     def test_what_the_reader_cannot_see_whole_is_unread(self):
         for command in ("./build.sh", "make", "npm install", "python setup.py", "py -3.13 -m unittest",
-                        "echo $(rm x)", "rm $F", "rm *.py", "echo x > ~/f", "cp a $DEST", "git push",
+                        "echo $(rm x)", "rm $F", "rm *.py", "echo x > ~/f", "cp a $DEST", "git pull",
                         "git checkout -- a.py", "git -c core.pager=x log", "git log --output=f", "find . -delete",
                         "find . -exec rm {} ;", "ls | xargs rm", "tar -xzf a.tgz", "sed 's/a/b/w out' x",
                         "python -c 'open(\"f\", \"w\").write(\"x\")'", "node -e 'require(\"fs\").writeFileSync(a)'",
@@ -156,6 +156,17 @@ class ShellPlacesTest(unittest.TestCase):
                         "git ls-remote --heads origin main"):
             with self.subTest(command=command):
                 self.assert_writes(command, [])
+
+    def test_a_push_and_a_new_branch_write_no_file(self):
+        """s2.push.read and s2.branch.new: a push writes no local file; a branch made at HEAD changes no file."""
+        for command in ("git push", "git push -u origin harness/x", "git -C /r push origin b", "git checkout -b x",
+                        "git checkout -q -B x", "git switch -c x", "git switch --create x"):
+            with self.subTest(command=command):
+                self.assert_writes(command, [])
+        for command in ("git checkout -b x origin/main", "git checkout x", "git switch x", "git checkout -b x -- a.py",
+                        "git switch -c $B", "git checkout -b", "git push --exec=x", "git checkout -b -f"):
+            with self.subTest(command=command):
+                self.assert_unread(command)
 
     def test_only_a_shell_call_before_it_runs_is_read(self):
         self.assertEqual(shell_facts("make", kind="PostToolUse"), {})

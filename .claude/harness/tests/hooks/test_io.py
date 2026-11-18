@@ -14,6 +14,11 @@ class HookIOTest(unittest.TestCase):
     def test_a_payload_becomes_an_event(self):
         self.assertEqual(HookIO.read(json.dumps(PAYLOAD)), Event("PreToolUse", "Bash", {"command": "ls"}, "s1", "C:/x"))
 
+    def test_the_permission_mode_and_the_call_id_are_read(self):
+        event = HookIO.read(json.dumps({**PAYLOAD, "permission_mode": "auto", "tool_use_id": "toolu_1"}))
+        self.assertEqual((event.mode, event.call), ("auto", "toolu_1"))
+        self.assertEqual((HookIO.read(json.dumps(PAYLOAD)).mode, HookIO.read(json.dumps(PAYLOAD)).call), ("", ""))
+
     def test_a_payload_that_is_not_a_hook_event_is_refused(self):
         for text in ("not json", "[]", json.dumps({"tool_name": "Bash"}), json.dumps({**PAYLOAD, "tool_input": "x"})):
             with self.subTest(text=text), self.assertRaises(HookError):
@@ -29,7 +34,15 @@ class HookIOTest(unittest.TestCase):
                 self.assertEqual((out["permissionDecision"], out["permissionDecisionReason"]), (word, "why"))
 
     def test_an_event_other_than_pre_tool_use_gets_no_decision(self):
-        self.assertEqual(HookIO.write(Event("PostToolUse"), Verdict(REFUSE, "why")), "")
+        self.assertEqual(HookIO.write(Event("UserPromptSubmit"), Verdict(REFUSE, "why")), "")
+        self.assertEqual(HookIO.write(Event("PostToolUse"), Verdict(ASK, "why")), "")
+
+    def test_a_refused_post_tool_use_shows_its_reason_beside_the_result(self):
+        """s5.after.outside: the call ran; Claude Code shows the reason to the agent, and the notes still reach it."""
+        self.assertEqual(json.loads(HookIO.write(Event("PostToolUse"), Verdict(REFUSE, "why"))),
+                         {"decision": "block", "reason": "why"})
+        out = json.loads(HookIO.write(Event("PostToolUse"), Verdict(REFUSE, "why"), ["approved"]))
+        self.assertEqual((out["decision"], out["hookSpecificOutput"]["additionalContext"]), ("block", "approved"))
 
     def test_the_response_of_a_post_tool_use_is_read(self):
         payload = {**PAYLOAD, "hook_event_name": "PostToolUse", "tool_response": {"answers": {"q": "a"}}}

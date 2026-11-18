@@ -7,6 +7,7 @@ from harness.assemble.engine.build import build_runner
 from harness.assemble.engine.ports import LedgerPort
 from harness.utils.contracts import Event
 from harness.utils.ledger import writes
+from harness.utils.shell.after import top_of
 from harness.tests.e2e import copy_tree, git_repo
 
 KEY = "ghp_" + "a1B2c3D4" * 5  # the shape of a token, not one
@@ -55,6 +56,37 @@ class WritesTest(unittest.TestCase):
         self.assertNotIn(KEY, str(self.rows("SELECT command, cwd, output FROM pl_maint_runs")))
         self.assertIn(writes.real(str(self.repo / "out.txt")), self.port.written("s1"))  # the line's target, read
         self.assertEqual(len(self.rows("SELECT command FROM pl_maint_runs WHERE command = 'sleep 100'")), 1)
+
+    def test_an_unclear_line_in_auto_mode_keeps_its_repository_before_it_runs(self):
+        """s4.auto.snapshot: the snapshot is kept under the call id; in another mode none is kept."""
+        (self.repo / "a.py").write_text("X = 2\n", encoding="utf-8")
+        said = "Build the project with make"
+        auto = Event("PreToolUse", "Bash", {"command": "make", "description": said}, "s1", str(self.repo), None, "auto",
+                     "toolu_1")
+        self.assertEqual(build_runner(self.claude_dir).run(auto).verdict.decision, "allow")
+        top = top_of(str(self.repo))
+        self.assertEqual(self.port.read(lambda con: writes.before_of(con, "toolu_1")),
+                         {top: {"a.py": writes.content_hash(str(self.repo / "a.py"))}})
+        asked = Event("PreToolUse", "Bash", {"command": "make", "description": said}, "s1", str(self.repo), None,
+                      "default", "toolu_2")
+        self.assertEqual(build_runner(self.claude_dir).run(asked).verdict.decision, "ask")
+        self.assertIsNone(self.port.read(lambda con: writes.before_of(con, "toolu_2")))
+        self.assertIsNone(self.port.read(lambda con: writes.before_of(con, "")))
+
+    def test_the_files_an_unclear_line_changed_are_kept_as_its_writes(self):
+        """s5.after.recorded: after the line ran, each file it changed is a write of the session, with its content."""
+        call = {"command": "make", "description": "Build the project with make"}
+        build_runner(self.claude_dir).run(Event("PreToolUse", "Bash", call, "s1", str(self.repo), None, "auto", "t1"))
+        (self.repo / "a.py").write_text("X = 5\n", encoding="utf-8")
+        (self.repo / "made.txt").write_text("m\n", encoding="utf-8")
+        outcome = build_runner(self.claude_dir).run(Event("PostToolUse", "Bash", call, "s1", str(self.repo),
+                                                          {"exit_code": 0}, "auto", "t1"))
+        self.assertEqual(outcome.verdict.decision, "refuse")  # no plan names them: the agent is told
+        self.assertIn("made.txt", outcome.verdict.reason)
+        written = self.port.written("s1")
+        for name in ("a.py", "made.txt"):
+            real = writes.real(str(self.repo / name))
+            self.assertEqual(written[real], {writes.content_hash(real)})
 
     def test_how_a_shell_line_ended_is_read_from_the_tools_answer(self):
         self.assertEqual(writes.outcome({"exit_code": 0}), ("ok", 0))

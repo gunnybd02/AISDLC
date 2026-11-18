@@ -31,9 +31,10 @@ from harness.utils.forge.protection import ask_github, protected_names
 from harness.utils.plan import grants, stop, tickets
 from harness.utils.plan.verify import dirty
 from harness.utils.plan.files import key, relative
-from harness.utils.ledger import store
+from harness.utils.ledger import store, writes
 from harness.utils.orchestra import child
 from harness.utils.ledger.recorder import Recorder
+from harness.utils.shell.after import writes_after
 from harness.utils.shapes import ApprovedPlan, Behaviour, Facts, Grant, PlanStore, Receipt, Ticket
 
 
@@ -346,12 +347,22 @@ class PlanState(Port):
 
     def read(self, event: Event) -> Facts:
         """The facts of the event's session: plan (ApprovedPlan or None), state_dir, git_view (GitView), stop_owed
-        (plan -> code files no green verify saw, but those another writer changed), stop_foreign (plan -> those), banned, store_owed (() -> the unsaved work of the store), child_role
-        (() -> the session's ChildRole when it is a child of a delegated plan, else None)."""
+        (plan -> code files no green verify saw, but those another writer changed), stop_foreign (plan -> those),
+        stop_outside (plan -> files the session changed that the plan does not name), banned, store_owed (() -> the
+        unsaved work of the store), child_role
+        (() -> the session's ChildRole when it is a child of a delegated plan, else None); after a shell line checked
+        after it ran (auto mode), after_writes (the files it changed) and after_unseen (repositories it could not
+        read again)."""
         plan = self.port.approved(event.session)
-        return {"plan": plan, "state_dir": str(self.port.path.parent).replace("\\", "/"),
-                "git_view": self.git.plus(bases(plan)), "banned": self.banned,
-                "stop_owed": lambda plan: stop.owed(self.port, plan, self.port.written(event.session)),
-                "stop_foreign": lambda plan: stop.foreign(self.port, plan, self.port.written(event.session)),
-                "store_owed": lambda: store.owed(self.port) if store.folder() else [],
-                "child_role": lambda: child.role_of(self.port.ticket(event.session)) if event.session else None}
+        facts = {"plan": plan, "state_dir": str(self.port.path.parent).replace("\\", "/"),
+                 "git_view": self.git.plus(bases(plan)), "banned": self.banned,
+                 "stop_owed": lambda plan: stop.owed(self.port, plan, self.port.written(event.session)),
+                 "stop_foreign": lambda plan: stop.foreign(self.port, plan, self.port.written(event.session)),
+                 "stop_outside": lambda plan: stop.outside(plan, self.port.written(event.session)),
+                 "store_owed": lambda: store.owed(self.port) if store.folder() else [],
+                 "child_role": lambda: child.role_of(self.port.ticket(event.session)) if event.session else None}
+        if event.kind == "PostToolUse" and event.call and event.tool in writes.SHELLS:
+            shots = self.port.read(lambda con: writes.before_of(con, event.call))
+            if shots is not None:
+                facts["after_writes"], facts["after_unseen"] = writes_after(shots)
+        return facts
