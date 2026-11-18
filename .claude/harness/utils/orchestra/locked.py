@@ -142,6 +142,21 @@ def locked_files(ticket: Optional[Ticket]) -> dict[str, str]:
     return {p: h for unit in held.get("units", []) for p, h in unit.get("files", {}).items()}
 
 
+def changed(folder: str, ticket: Optional[Ticket], card: Card) -> list[str]:
+    """The acceptance tests of a card whose content on a checkout of the child's branch is not what was locked.
+
+    Args:
+        folder: the unit's folder in the checkout.
+        ticket: the parent's ticket (its lock).
+        card: the child's card.
+
+    Returns:
+        Its acTests that differ from their locked hash, are gone, or were never locked.
+    """
+    held = locked_files(ticket)
+    return [p for p in card.get("acTests", []) if not held.get(p) or content_hash(str(Path(folder) / p)) != held[p]]
+
+
 def unlocked(ticket: Optional[Ticket], card: Card) -> list[str]:
     """The acceptance tests of a card that are not locked yet.
 

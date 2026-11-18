@@ -10,7 +10,7 @@ from harness.assemble.engine.ports import LedgerPort
 from harness.mcp.actions.orchestra import Spawn, Started
 from harness.utils.contracts import YES, ActionContext
 from harness.utils.git.github import GitHubError, repo_of
-from harness.utils.orchestra import review
+from harness.utils.orchestra import locked, review
 from harness.utils.plan import desk
 from harness.utils.plan.approval import approvals
 from harness.tests import tree
@@ -106,6 +106,80 @@ class Scenario(unittest.TestCase):
 
     def check(self):
         return review.check(self.port, "s1", "hello", UNITS, [])
+
+
+LOCKED_UNITS = {"probe": {**UNITS["probe"], "verify": ["{python}", "{test}"]}}  # one locked test file per run
+AC_TEST = ("import unittest\nfrom hello import hello\n\nclass T(unittest.TestCase):\n    def test_ac1(self):\n"
+           "        self.assertEqual(hello('Ann'), 'Hello, Ann')\n\nif __name__ == '__main__':\n    unittest.main()\n")
+
+
+class LockedScenario(Scenario):
+    """The same parent, with a card whose acceptance test the parent wrote and locked on the plan branch."""
+
+    def setUp(self):
+        self.port = LedgerPort(copy_tree(self))
+        self.origin = tree(self, {})
+        git(self.origin, "init", "-q", "--bare")
+        self.repo = git_repo(self, {"README.md": "r\n"})
+        git(self.repo, "remote", "add", "origin", URL)
+        git(self.repo, "config", f"url.{self.origin}.insteadOf", URL)
+        git(self.repo, "push", "-q", "origin", "work")
+        self.port.touch_session("s1")
+        card = {**CARD, "tests": [], "acTests": ["orch-probe/test_hello_ac.py"]}
+        items = {**desk.normalize(desk.clean({"title": "Greet people", "what": ["w"], "files": ["notes.md"],
+                                              "children": [card]})), "root": str(self.repo)}
+        _, _, q = self.port.present(items, sid="s1")
+        approvals(self.port, "s1", {q: YES})
+        self.plan = self.port.ticket("s1")["plan"]["id"]
+        (self.repo / "orch-probe").mkdir()
+        (self.repo / "orch-probe" / "test_hello_ac.py").write_text(AC_TEST, encoding="utf-8")
+        locked.lock(self.port, "s1", LOCKED_UNITS)
+        Started().run(ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3}}),
+                      {"name": "hello", "sid": "session_child0001"})
+
+    def hand_back(self, receipt=None, code=CODE, ac=AC_TEST):
+        """Push the child's branch, made from the plan branch: its code (and the acceptance test as given), then its
+        receipt as the tip."""
+        child = tree(self, {})
+        git(child, "clone", "-q", str(self.origin), ".")
+        git(child, "config", "user.name", "c")
+        git(child, "config", "user.email", "c@c")
+        git(child, "switch", "-q", "-C", f"orch/p{self.plan}/hello", f"origin/plan/p{self.plan}")
+        (child / "orch-probe" / "hello.py").write_text(code, encoding="utf-8")
+        (child / "orch-probe" / "test_hello_ac.py").write_text(ac, encoding="utf-8")
+        git(child, "add", "-A")
+        git(child, "commit", "-q", "-m", "work")
+        body = {"name": "hello", "parent": "s1", "at": int(time.time() * 1000), "verify": "ok", "uncommitted": [],
+                "refused": [], "behaviours": {}}
+        (child / ".harness" / "handback").mkdir(parents=True, exist_ok=True)
+        (child / ".harness" / "handback" / "hello.json").write_text(json.dumps({**body, **(receipt or {})}))
+        git(child, "add", "-A")
+        git(child, "commit", "-q", "-m", "receipt")
+        git(child, "push", "-q", "-f", "origin", f"orch/p{self.plan}/hello")
+
+    def check(self):
+        return review.check(self.port, "s1", "hello", LOCKED_UNITS, [])
+
+
+class LockedCheckTest(LockedScenario):
+    def test_the_check_runs_the_locked_test_alone_and_needs_no_ac_behaviour(self):
+        """s4.check.ac-only: the receipt names no AC behaviour; the locked test alone judges the code."""
+        self.hand_back()
+        text = self.check()
+        self.assertIn("Green", text)
+        self.assertIn("The locked acceptance tests are unchanged; they run alone", text)
+        self.hand_back(code="def hello(name):\n    return 'Hi'\n")
+        text = self.check()
+        self.assertIn("Not green", text)
+        self.assertIn("test_hello_ac.py", text)
+
+    def test_a_changed_locked_test_is_red_and_named(self):
+        """s4.check.locked: the child made its test easier; the check sees it before it runs anything."""
+        self.hand_back(code="def hello(name):\n    return 'Hi'\n", ac=AC_TEST.replace("Hello, Ann", "Hi"))
+        text = self.check()
+        self.assertIn("Not green", text)
+        self.assertIn("CHANGED: orch-probe/test_hello_ac.py", text)
+        self.assertIn("a locked acceptance test was changed", text)
 
 
 class ReviewTest(Scenario):

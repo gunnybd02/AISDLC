@@ -18,7 +18,7 @@ from harness.utils.contracts import now
 from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError, repo_of
 from harness.utils.git.run import GitError, git
-from harness.utils.orchestra import crew
+from harness.utils.orchestra import crew, locked
 from harness.utils.orchestra.brief import NOTES, branch
 from harness.utils.orchestra.card import card_of, unit_spec
 from harness.utils.orchestra.fetch import TAIL, FetchError, checkout, drop_receipt, put_note, rerun
@@ -127,7 +127,9 @@ def asked_at_tip(folder: str, name: str, tip: list[str]) -> str:
 
 
 def check(port: PlanStore, sid: str, name: str, units: dict[str, Any], verify: list[str], timeout_min: int = 10) -> str:
-    """Check a handed-back child: its receipt on its branch, the coverage of its criteria, and a rerun of its tests.
+    """Check a handed-back child: its receipt on its branch, and then, for a card with locked acceptance tests
+    (acTests), that they are unchanged and green (each alone when the unit's command names {test}, else the unit's
+    suite that holds them); for any other card, the coverage of its criteria and a rerun of its registered tests.
 
     Args:
         port: the ledger port.
@@ -168,13 +170,25 @@ def check(port: PlanStore, sid: str, name: str, units: dict[str, Any], verify: l
             raise ReviewError(f"the receipt on {ref} is not of {name} of this session")
         if entry.get("sentBackAt") and int(receipt.get("at", 0)) <= int(entry["sentBackAt"]):
             raise ReviewError(f"{name} has not handed back since it was sent back")
-        missing, dirty = covered(receipt, card), list(receipt.get("uncommitted") or [])
+        dirty = list(receipt.get("uncommitted") or [])
         root = folder if unit.get("path", ".") in ("", ".") else str(Path(folder) / unit["path"])
-        tests = sorted({t for b in (receipt.get("behaviours") or {}).values() for t in b.get("tests", [])})
-        ok, tail = rerun(root, command, tests, int(timeout_min) * 60)
+        if card.get("acTests"):  # the parent's own locked tests judge it: unchanged, then run
+            missing, touched = [], locked.changed(root, ticket, card)
+            ok, tail = (False, f"a locked acceptance test was changed: {', '.join(touched)}") if touched else \
+                rerun(root, command, list(card["acTests"]), int(timeout_min) * 60)
+        else:
+            missing, touched = covered(receipt, card), []
+            tests = sorted({t for b in (receipt.get("behaviours") or {}).values() for t in b.get("tests", [])})
+            ok, tail = rerun(root, command, tests, int(timeout_min) * 60)
     green = ok and not missing and not dirty and receipt.get("verify") == "ok"
-    lines = [f"AC {len(card['ac']) - len(missing)} of {len(card['ac'])} covered by a registered behaviour; the tests "
-             f"run again in the {unit.get('path', '.')} folder of {ref}: {'green' if ok else 'RED'}."]
+    where = f"in the {unit.get('path', '.')} folder of {ref}: {'green' if ok else 'RED'}."
+    if card.get("acTests"):
+        state = "CHANGED: " + ", ".join(touched) if touched else "unchanged"
+        how = "they run alone" if any("{test}" in w for w in command) else "the unit's suite, which holds them, runs"
+        lines = [f"The locked acceptance tests are {state}; {how} {where}"]
+    else:
+        lines = [f"AC {len(card['ac']) - len(missing)} of {len(card['ac'])} covered by a registered behaviour; the "
+                 f"tests run again {where}"]
     lines += [f"missing: AC{n}" for n in missing] + [f"uncommitted at handback: {f}" for f in dirty]
     lines += [] if receipt.get("verify") == "ok" else [f"the child's own verify was {receipt.get('verify')}"]
     lines += [f"refused (nobody could answer): {r}" for r in receipt.get("refused", [])]
