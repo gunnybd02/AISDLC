@@ -322,11 +322,13 @@ class GitFacts(Protocol):
             The branch name; "" when repo is not a folder.
         """
 
-    def protected(self, branch: str) -> bool:
-        """Whether the branch is protected (project.json protected; main and master by default).
+    def protected(self, branch: str, repo: str = "") -> bool:
+        """Whether the branch is protected (main and master always; the configured ones; those the forge protects in
+        repo).
 
         Args:
             branch: a branch name.
+            repo: the repository the branch is in; "" asks no forge.
 
         Returns:
             True for a protected branch.

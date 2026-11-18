@@ -133,9 +133,10 @@ class GitRuleFacts(Translator):
             mark("reset_hard", f"git reset {' '.join(args)}")
         if sub == "push":
             self.push(args, repo, view, mark)
-        if sub in BRANCH_WRITES and view.protected(view.branch_of(repo)):
+        if sub in BRANCH_WRITES and view.protected(view.branch_of(repo), repo):
             mark("protected_write", f"git {sub} on {view.branch_of(repo)}")
-        if sub == "branch" and set(args) & BRANCH_CHANGES and [a for a in args if not a.startswith("-") and view.protected(a)]:
+        if sub == "branch" and set(args) & BRANCH_CHANGES and [a for a in args if not a.startswith("-")
+                                                               and view.protected(a, repo)]:
             mark("protected_write", f"git branch {' '.join(args)}")
         return out
 
@@ -153,14 +154,14 @@ class GitRuleFacts(Translator):
         Returns:
             True when the git rules hold for it.
         """
-        if view.protected(view.branch_of(repo)):
+        if view.protected(view.branch_of(repo), repo):
             return True
         if sub == "push":
             options, _, refspecs = push_parts(args)
             dsts = [s.lstrip("+").partition(":")[2] or s.lstrip("+") for s in refspecs]
-            return bool({"--all", "--mirror"} & set(options)) or any(view.protected(d.removeprefix("refs/heads/"))
+            return bool({"--all", "--mirror"} & set(options)) or any(view.protected(d.removeprefix("refs/heads/"), repo)
                                                                     for d in dsts)
-        return sub == "branch" and any(not a.startswith("-") and view.protected(a) for a in args)
+        return sub == "branch" and any(not a.startswith("-") and view.protected(a, repo) for a in args)
 
     @staticmethod
     def push(args: list[str], repo: str, view: GitFacts, mark: Any) -> None:
@@ -185,7 +186,7 @@ class GitRuleFacts(Translator):
             pairs = [("HEAD", view.branch_of(repo))]
         if "--all" in options or "--mirror" in options:
             mark("protected_write", f"git push {' '.join(options)} sends every branch")
-        hit = [dst for _, dst in pairs if view.protected(dst.removeprefix("refs/heads/"))]
+        hit = [dst for _, dst in pairs if view.protected(dst.removeprefix("refs/heads/"), repo)]
         if hit:
             mark("protected_write", f"git push to {', '.join(hit)}")
         agents = sorted({f for src, _ in pairs if src for f in view.unpushed(repo, remote, src) if agent_file(f)})
