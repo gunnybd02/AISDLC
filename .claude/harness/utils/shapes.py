@@ -194,9 +194,8 @@ class Revision(TypedDict, total=False):
 
 
 class ApprovedPlan(PlanItems, total=False):
-    """The plan in force under a ticket: the approved items plus type ("ApprovedPlan"), id (the plan number in
-    rec_plans), plan_id (the desk id), rev, base (the commit its repository stood on at the approval, or None), sha
-    (of the items), rootId (the first plan number across revisions) and, from LedgerPort.approved, its file grants."""
+    """The plan in force under a ticket: its items plus type, id (rec_plans), plan_id (desk id), rev, base (the commit
+    at the approval, or None), sha (of the items), rootId (the first plan number) and its file grants (approved())."""
     type: str
     id: int
     plan_id: str
@@ -213,9 +212,9 @@ class Ticket(TypedDict, total=False):
     steps; noted (commits git.commit made, waiting for step_done); stepCommits by step; closeReason (delivered,
     abandoned, superseded); what a superseded ticket carried over (priorCommits, spentPlan); backs how many times a
     write sent it back from deliver to execute, and backTold, set False each time it goes back. A delegated ticket
-    (a plan with children) also holds the grant and its crew, the started children by name, and the lock of its
-    acceptance tests (utils/orchestra/locked.py: {branch, units}); a child's ticket holds
-    its role (child), the questions it asked (asks) and its last handback ({sha, at}) (utils/orchestra)."""
+    (a plan with children) also holds the grant, its crew (the started children by name), the lock of its acceptance
+    tests (orchestra/locked.py) and its issues and ticket file (orchestra/issues.py); a child's ticket holds its role
+    (child), the questions it asked (asks) and its last handback ({sha, at}) (utils/orchestra)."""
     id: str
     sid: str
     seq: int
@@ -240,6 +239,7 @@ class Ticket(TypedDict, total=False):
     grant: ChildGrant
     crew: dict[str, CrewEntry]
     lock: dict[str, Any]
+    issues: dict[str, Any]
     child: ChildRole
     asks: list[dict[str, Any]]
     handback: dict[str, Any]

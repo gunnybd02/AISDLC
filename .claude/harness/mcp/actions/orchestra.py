@@ -3,6 +3,7 @@ says). The user approved the plan with its children once, in the form; these act
 
 - lock: the acceptance tests the cards name (acTests), written by the parent, committed and pushed on the plan branch
   plan/p<n>, their hashes kept (utils/orchestra/locked.py); spawn needs it for a card with acTests.
+- tickets: one GitHub issue per child with a machine block and its hash, and the ticket file (utils/orchestra/issues.py).
 - spawn {name, model?}: the brief of a child and the create_session call that opens it. Harness code cannot open a
   cloud session; the model does, then gives the new session id back with started.
 - started {name, sid, model?}: the child's session is open; from now on it runs (the cap is 3).
@@ -28,12 +29,13 @@ from harness.utils.contracts import ActionContext, ActionError, McpAction, READ,
 from harness.utils.git.facts import top
 from harness.utils.git.run import GitError, git
 from harness.utils.orchestra import brief as briefs
-from harness.utils.orchestra import crew, locked, work
+from harness.utils.orchestra import crew, issues, locked, work
 from harness.utils.orchestra.card import in_force, plan_units, unit_spec
 from harness.utils.plan.item_checks import run_limits
 from harness.utils.shapes import PlanStore
 
-ACTIONS = [("orchestra.lock", "Lock"), ("orchestra.spawn", "Spawn"), ("orchestra.started", "Started"),
+ACTIONS = [("orchestra.lock", "Lock"), ("orchestra.tickets", "Tickets"), ("orchestra.spawn", "Spawn"),
+           ("orchestra.started", "Started"),
            ("orchestra.status", "Status"),
            ("orchestra.take", "Take"), ("orchestra.push", "Push"), ("orchestra.question", "Question"),
            ("orchestra.handback", "Handback")]
@@ -143,6 +145,25 @@ class Lock(McpAction):
         try:
             return locked.lock(ctx.ports["plans"], sid, units)
         except locked.LockError as e:
+            raise ActionError(str(e)) from e
+
+
+class Tickets(McpAction):
+    """orchestra.tickets: one GitHub issue per child, and the ticket file of the delegated plan."""
+    block, name, effect = "orchestra", "tickets", WRITE
+    summary = ("Open one GitHub issue per child of the delegated plan (after lock, before spawn), each with its card and "
+               "a machine block with its hash; a second call opens none again")
+    args_schema = {"type": "object", "properties": {}}
+    needs = ("plans", "session", "units", "github")
+
+    def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
+        """Open the issues (utils/orchestra/issues.py). ActionError for no delegated plan, a started child, a unit with
+        no repository URL, or GitHub refusing."""
+        sid = session_of(ctx)
+        units = plan_units(in_force(ctx.ports["plans"], sid), ctx.ports["units"]())
+        try:
+            return "\n".join(issues.open_issues(ctx.ports["plans"], sid, units, ctx.ports["github"]))
+        except issues.IssueError as e:
             raise ActionError(str(e)) from e
 
 
