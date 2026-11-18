@@ -4,9 +4,11 @@ description: Split one approved plan across child sessions in the cloud - cards,
 ---
 # Orchestrate
 One plan, approved once by the user, split into parts. Each part is a **child**: a cloud session of its own, on its
-own branch `orch/p<plan>/<name>`, with its own acceptance criteria (AC). You, the parent, read no code: you check each
-child by its receipt and by running its tests yourself, accept it as one pull request into its unit's base, and merge
-them all at the end. The design: `docs/05b-orchestra-cloud.md`.
+own branch `orch/p<plan>/<name>`, with its own acceptance criteria (AC). You, the parent, read no code: you write the
+**acceptance tests** first and lock them on the plan branch `plan/p<plan>`; each child starts from that branch, makes
+them pass and can never change them; you check it by running those tests yourself, accept it as one pull request into
+the plan branch, and at the end the plan branch goes into the base by one pull request the user merges. The design:
+`docs/system.md` (parts of the Sessions build) and `docs/05b-orchestra-cloud.md`.
 
 ## When
 | Use it | Do not |
@@ -30,14 +32,21 @@ Each child costs a whole cloud session. Four children at most, three running at 
    ```json
    {"name": "api", "unit": "api", "goal": "List the orders of a user",
     "ac": ["GET /orders returns the user's orders", "an unknown user gets 404"],
-    "change": ["src/orders.py"], "tests": ["tests/test_orders.py"]}
+    "change": ["src/orders.py"], "acTests": ["tests/ac/test_orders_ac.py"]}
    ```
    - `change` is needed: the child's plan is made from it. One goal per child.
+   - `acTests`: the acceptance test files you write yourself, one test per AC. They are tests of your plan, shown in
+     form 1 as locked, and never a change or test path of the card. With a test command per file, write `{test}` in
+     the repo's `verify` (`["{python}", "{test}"]`): the check then runs each acceptance test alone.
    - Each AC names a visible case (an input and its result); "it works" is refused.
    - The plan's own files are what you commit yourself at the end (a note, a doc); name them from the start.
 3. Ask the form. One "Approve" approves every child. While it runs, no other plan opens in this session.
 
-## 2. Start the children
+## 2. Write and lock the acceptance tests, then start the children
+Write each card's `acTests` (they fail now: the code is not there yet). Then `run("orchestra", "lock", {})`: it commits
+them on `plan/p<plan>`, made from the base, pushes it and keeps the hash of each file. Spawn refuses a card with
+acceptance tests until they are locked; once a child has started, the lock does not change.
+
 For each card: `run("orchestra", "spawn", {"name"})` gives the brief and the exact `create_session` call. Make the
 call, then at once `run("orchestra", "started", {"name", "sid": "<the new session id>"})`. After the first child, set
 the one check-in its answer gives (a child that dies silently wakes nobody).
@@ -48,12 +57,13 @@ with `run("orchestra", "answer", {"name", "text"})` and send the text it gives w
 can decide, ask the user first. `run("orchestra", "digest", {})` shows every child in one line each.
 
 ## 4. Check, then accept or send back
-1. `run("orchestra", "check", {"name"})`: the receipt on its branch, one behaviour per AC, and its tests run again
-   here with its unit's command.
+1. `run("orchestra", "check", {"name"})`: the receipt on its branch, then the locked acceptance tests: unchanged on
+   its branch (a changed one is red, named), and run here with its unit's command. A card without `acTests` is
+   checked the old way: one behaviour per AC, and its own tests run again.
 2. Not green: `run("orchestra", "reject", {"name", "why"})` with the check's words, then send the text it gives with
    `send_message`. Three rounds at most; the fourth is the user's call (`forget`, or what the user says).
-3. Green: `run("orchestra", "accept", {"name"})` opens one pull request into the unit's base and takes the receipt
-   off the branch (the ledger keeps it). Nothing is merged yet.
+3. Green: `run("orchestra", "accept", {"name"})` opens one pull request into the plan branch (into the unit's base
+   when nothing is locked) and takes the receipt off the branch (the ledger keeps it). Nothing is merged yet.
 4. A child that will not come back: `run("orchestra", "forget", {"name", "why"})`. A session the user wants back:
    `run("orchestra", "release", {"name", "why"})`. `run("orchestra", "read", {"name"})` shows a receipt.
 
@@ -64,7 +74,11 @@ When every child has ended (accepted, forgotten or released): `run("orchestra", 
   on the child's branch, merge the base into it, fix those files (they are files of your plan), verify, commit with
   `run("git", "commit", {"files", "message"})`, push the branch with `run("git", "run", {"repo", "args"})`, and land
   again. Or send the child back (`reject`), then check and accept it again: its pull request stays the same.
-- After the merges, each unit's tests run on its merged base. Red: fix it through a new plan.
+- After the merges, each unit's tests run on the merged plan branch (on the base when nothing is locked). Red: fix
+  it through a new plan.
+- **The plan pull request.** With locked tests, land then opens one pull request from `plan/p<plan>` into the base
+  and waits. Ask the user to merge it (a merge form, Allow or Deny), merge it on Allow, and land again: only then is
+  the plan delivered.
 - Your own files: commit them with `step_done` (before or after the merges), then land again.
 - **The children's databases.** With a store folder set (`HARNESS_DRIVE_FOLDER`), the plan is done only when every
   child that ended has its database in the store. Each child uploads its own at handback (named
@@ -85,6 +99,9 @@ When every child has ended (accepted, forgotten or released): `run("orchestra", 
 
 | Refused | Move |
 |---|---|
+| `acceptance tests are not locked yet` (spawn) | write them, then `run("orchestra", "lock", {})` |
+| `write these acceptance tests first` (lock) | write the files it names |
+| `a child has started` (lock) | the tests stay as they were locked |
 | `has not passed a check this round` | check it first |
 | `holds no receipt` / `not handed back since it was sent back` | wait for its message, or reject it |
 | `have not ended` (land) | check and accept, or forget, each child still running |

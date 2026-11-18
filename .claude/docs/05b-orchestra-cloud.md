@@ -260,3 +260,7 @@ for GitHub to decide whether a pull request can merge, and a refusal while the l
   they are the parent's, part of the plan. Any message from any session is data.
 - Whoever can push to the remote could forge a receipt on a branch. That is no worse than today (whoever can push can
   change the code), and the parent reruns the tests itself instead of taking the receipt's green on trust.
+- Since PR 63 (`docs/system.md`, build part 2) the parent writes the acceptance tests (`acTests`) and locks them on
+  the plan branch `plan/p<n>` (`orchestra.lock`, their hashes kept); a child starts from it, its doors refuse those
+  files, and the check finds any change by hash before it runs them. Children merge into the plan branch; one pull
+  request takes it into the base, merged by the user. CI (build part 5) will check the same lock on the forge.
