@@ -106,6 +106,14 @@ class SkillsTest(unittest.TestCase):
         for part in ("`db/`", "`tickets/`", "the `db` folder's id"):
             self.assertIn(part, store_text)
 
+    def test_the_work_skill_says_a_child_registers_at_take(self):
+        """s4.docs.register: what a child does at take, and when it is refused."""
+        lib = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs")
+        work = lib.get("work").text
+        for part in ("take registers you before any", "keeps no copy", "Registration failed", "names #N"):
+            self.assertIn(part, work)
+        self.assertIn("Registration failed", lib.get("orchestrate").text)
+
     def test_the_store_skill_says_copies_are_gzipped(self):
         """s2.docs.gzip: a person can open a copy."""
         text = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs").get("store").text

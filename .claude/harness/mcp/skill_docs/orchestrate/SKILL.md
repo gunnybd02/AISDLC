@@ -111,6 +111,7 @@ When every child has ended (accepted, forgotten or released): `run("orchestra", 
 | `has no issue yet` (spawn) | `run("orchestra", "tickets", {})` |
 | `is not in the store yet` (spawn) | make the Drive upload the tickets answer gave |
 | `lock the acceptance tests first` (tickets) | `run("orchestra", "lock", {})`, then tickets |
+| check: `asked a question` whose text starts `Registration failed` | the child's issue or ticket row did not match its brief; it did no work | read the reason; fix the plan (revise), or `forget` the child |
 | `has not passed a check this round` | check it first |
 | `holds no receipt` / `not handed back since it was sent back` | wait for its message, or reject it |
 | `have not ended` (land) | check and accept, or forget, each child still running |

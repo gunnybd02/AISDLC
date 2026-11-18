@@ -96,7 +96,9 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
         The brief, as the prompt of create_session.
     """
     record = (f"Your task on record: issue #{issue['number']} ({issue['url']}), and your row in the ticket file "
-              f"{(ticket_file or {}).get('title', '(none)')} of the store's tickets folder. Every commit names "
+              f"{(ticket_file or {}).get('title', '(none)')} of the store's tickets folder. take registers you first: "
+              "it asks you to download that file once with the Google Drive tool, the harness checks it and the issue "
+              "against this brief and keeps no copy, and only then opens your card plan. Every commit names "
               f"#{issue['number']}.") if issue else ""
     name, spec = card["name"], unit or dict(HOME_SPEC)
     into, locked = start or spec["base"], list(card.get("acTests", []))

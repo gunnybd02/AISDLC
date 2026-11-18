@@ -93,8 +93,12 @@ conflict stops it with the two ways on (resolve it on the child's branch, or rej
 the plan branch into the base, which the user merges; then land again closes the plan delivered.
 
 **A child session** (its first prompt is a brief: `You are child session ...`): nobody is at its keyboard.
-`run("orchestra", "take", {})` first (its card plan opens, on its branch, made from the plan branch when the parent
-locked acceptance tests: make them pass, never change them; the doors refuse them), then the loop of part 3, and
+`run("orchestra", "take", {})` first. When the brief names an issue and a ticket file, take registers you before any
+work: it gives two Drive calls (find the ticket file, download it once); the harness checks the file and the issue
+against the brief and keeps no copy; run take again. Registered, your card plan opens on your branch, made from the
+plan branch (the locked acceptance tests: make them pass, never change them; the doors refuse them), and every commit
+names #N by itself. "Registration failed": the reason is pushed on your branch for the orchestrator; stop at once.
+Then the loop of part 3, and
 `run("orchestra", "push", {})` after every step. A question: `run("orchestra", "question", {"question"})`, then
 send it with `send_message`. Last: `run("orchestra", "handback", {"changed", "checked", "notChecked", "risks",
 "testsChanged"})`, send the one line it gives, and stop. Never AskUserQuestion, a plan of its own, a merge or a close.
