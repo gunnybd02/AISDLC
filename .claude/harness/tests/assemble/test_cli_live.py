@@ -62,6 +62,15 @@ class LiveUpdateTest(unittest.TestCase):
                       f'"{boot}" cli tool guide work --mode skills)', text)
         return text
 
+    def test_source_names_the_origin_and_its_main_for_ci_to_pin(self):
+        """s2.live.source: the URL of the clone's origin (a GitHub one as https, no credentials) and origin's main."""
+        from harness.assemble.engine.cli_live import source
+        clone = self.home.parent
+        self.assertEqual(source(self.home), {"url": str(self.origin), "sha": git(self.origin, "rev-parse", "main")})
+        git(clone, "remote", "set-url", "origin", "https://user:" + "x@github.com/Owner/Harness.git")
+        self.assertEqual(source(self.home)["url"], "https://github.com/owner/harness")
+        self.assertEqual(source(tree(self, {})), {})  # no clone: nothing to pin
+
     def test_an_update_pins_what_runs_and_puts_merged_main_in_force_with_no_form(self):
         running = stamp(self.home)
         code, text = update_door(self.port, self.home)

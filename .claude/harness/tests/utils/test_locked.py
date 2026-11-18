@@ -44,7 +44,8 @@ class LockTest(unittest.TestCase):
         approvals(self.port, "s1", {q: YES})
         self.plan = self.port.ticket("s1")["plan"]["id"]
         self.ctx = ActionContext({"plans": self.port, "session": lambda: "s1", "units": lambda: UNITS,
-                                  "limits": lambda: {"children": 3, "rounds": 3}})
+                                  "limits": lambda: {"children": 3, "rounds": 3},
+                                  "harness_source": lambda: None})  # no workflow here: test_review locks one
 
     def write_test(self, text=AC):
         (self.repo / "orch-probe").mkdir(exist_ok=True)

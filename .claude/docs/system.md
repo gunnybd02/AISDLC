@@ -158,6 +158,12 @@ child's gate run again on the forge, from the branch and its issue alone (no ses
 issue, registered (first), subjects, marks, secrets, scope, locked. One line per rule; exit 1 when one fails; a rule
 that cannot run fails as "not checked".
 
+**The CI workflow** (`.github/workflows/harness-ci.yml`, `utils/orchestra/workflow.py`): a GitHub Actions file in the
+plan's repository, written by `lock` on the plan branch with the acceptance tests and locked like them. On each push of
+a child (`orch/p<n>/<name>`) to a pull request into `plan/p<n>` it gets the harness at one pinned commit (public: no
+secret), runs `harness ci` with a read-only token, then the child's unit test command in its folder. The rules come from
+the pinned harness, never from the child's branch. The user may make the job `harness-ci` a required check.
+
 ## 7. The gates (one rule set, three runners)
 
 | Gate | Where | Checks |
@@ -236,7 +242,8 @@ Earlier (2026-11-17): a cloud child cannot message its parent (`05b-orchestra-cl
 5. CI: `harness ci` with the hard rules; the parent watches the PR (the doorbell). Piece 1 done: PR 67 (the issue
    format `harness-issue/1`; the registration as the first commit of the branch, named by the card plan's approval;
    commits start `#N <name>: `; a child adds files only inside its scope; `cli ci` checks it all from the branch).
-   Next: piece 2 (the workflow file), 3 (draft PR and watch), 4 (the doorbell).
+   Piece 2 done: PR 68 (`lock` writes the CI workflow on the plan branch, pinned to the harness's main commit, and
+   the parent's check refuses a changed one). Next: piece 3 (draft PR and watch), 4 (the doorbell).
 6. Orders: signed one-way messages, checked at the notifications door, each unlocking one action.
 7. End: every PR merged stops the children; form 2; archive; ledgers to `db/`; join.
 8. Docs and the user's specs (13, 05) brought in line.

@@ -44,7 +44,11 @@ Each child costs a whole cloud session. Four children at most, three running at 
 
 ## 2. Write and lock the acceptance tests, then start the children
 Write each card's `acTests` (they fail now: the code is not there yet). Then `run("orchestra", "lock", {})`: it commits
-them on `plan/p<plan>`, made from the base, pushes it and keeps the hash of each file. Spawn refuses a card with
+them on `plan/p<plan>`, made from the base, pushes it and keeps the hash of each file. With them it commits the CI
+workflow `.github/workflows/harness-ci.yml`: GitHub runs `harness ci` from the harness pinned at its main commit, then
+each child's unit tests, on every push of a child to a pull request into the plan branch. The workflow is locked like
+the tests (a child that changes it is refused; your check names it CHANGED). To make it a gate, the user may make the
+job `harness-ci` a required check of the plan branch in the repository's settings. Spawn refuses a card with
 acceptance tests until they are locked; once a child has started, the lock does not change.
 
 Then `run("orchestra", "tickets", {})`: the harness opens one GitHub issue per child, in one format, harness-issue/1:

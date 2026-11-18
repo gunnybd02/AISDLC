@@ -124,6 +124,13 @@ class SkillsTest(unittest.TestCase):
         for part in ("harness-issue/1", "`[p<plan>] <name>: <goal>`", "`harness ci`"):
             self.assertIn(part, orchestrate)
 
+    def test_the_orchestrate_skill_says_lock_pushes_the_ci_workflow(self):
+        """s3.docs.workflow: the file, its pin, that it is locked, and the required check the user may turn on."""
+        text = " ".join(Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs").get("orchestrate").text.split())
+        for part in ("`.github/workflows/harness-ci.yml`", "pinned at its main commit", "locked like the tests",
+                     "required check of the plan branch"):
+            self.assertIn(part, text)
+
     def test_the_store_skill_says_copies_are_gzipped(self):
         """s2.docs.gzip: a person can open a copy."""
         text = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs").get("store").text
