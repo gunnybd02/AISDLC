@@ -65,7 +65,7 @@ class CardTest(unittest.TestCase):
         bad = [{**GOOD, "acTests": ["app/orders.py"]}, {**GOOD, "name": "b", "acTests": ["tests/ac/"]},
                {**GOOD, "name": "c", "acTests": [f"t{i}.py" for i in range(9)]}]
         text = " | ".join(card.card_problems(bad))
-        for part in ("never a change path too: app/orders.py", "acTests are files", "acTests is at most 8 paths"):
+        for part in ("never a change or test path too: app/orders.py", "acTests are files", "acTests is at most 8 paths"):
             self.assertIn(part, text)
 
 

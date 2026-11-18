@@ -113,9 +113,10 @@ def card_faults(card: Card, units: Collection[str]) -> list[str]:
     if isinstance(locked, list) and isinstance(card.get("change", []), list):
         if any(isinstance(p, str) and p.endswith("/") for p in locked):
             out.append(f"{name}: acTests are files, each one test file the parent writes (no folder)")
-        both = sorted(set(locked) & set(card.get("change", [])))
+        both = sorted(set(locked) & (set(card.get("change", [])) | set(card.get("tests", []) or [])))
         if both:
-            out.append(f"{name}: an acceptance test is locked, so it is never a change path too: {', '.join(both)}")
+            out.append(f"{name}: an acceptance test is locked, so it is never a change or test path too: "
+                       f"{', '.join(both)}")
     if "session" in card and not (isinstance(card["session"], str) and SESSION.match(card["session"])):
         out.append(f"{name}: session is a session name of at most 60 letters, digits, space, . _ or -")
     if not isinstance(card.get("actions", []), list) or set(card.get("actions", [])) - set(ACTIONS):

@@ -100,7 +100,7 @@ class ChildRole(TypedDict):
     """What makes a session a child (utils/orchestra/child.py): its brief, its first prompt, named the child and the
     parent plan's number; draft the parent plan's desk id; parent the parent's session; branch the one it works and
     pushes on (orch/p<plan>/<name>); its card; the behaviour id of each criterion (p<plan>.<name>.ac<n>); its unit
-    {repo, path, verify, base} (utils/orchestra/card.unit_spec)."""
+    {repo, path, verify, base} (utils/orchestra/card.unit_spec); start the plan branch it starts from ("": the base)."""
     name: str
     plan: int
     draft: str
@@ -109,6 +109,7 @@ class ChildRole(TypedDict):
     card: Card
     behaviours: list[str]
     unit: dict[str, Any]
+    start: str
 
 
 class CrewEntry(TypedDict, total=False):
