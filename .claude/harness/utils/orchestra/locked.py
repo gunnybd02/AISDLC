@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
 
 from harness.utils.git.facts import top
+from harness.utils.git.github import GitHubError, repo_of
 from harness.utils.git.run import GitError, git
 from harness.utils.ledger.recorder import Recorder
 from harness.utils.ledger.writes import content_hash
@@ -127,6 +129,51 @@ def lock(port: PlanStore, sid: str, units: dict[str, Any]) -> str:
     names = ", ".join(p for unit in kept for p in unit["files"])
     return (f"Locked on {ref}: {names}. A child starts from {ref}, never changes these files, and its check runs "
             "only them. Now spawn the children.")
+
+
+def plan_prs(port: PlanStore, sid: str, github: Callable[..., Any]) -> tuple[list[str], bool]:
+    """The pull request of the plan branch into the base, one per locked unit: opened the first time, then read. Only
+    the user merges it (the usual merge form; form 2 later).
+
+    Args:
+        port: the ledger port.
+        sid: the parent's session.
+        github: call(method, path, fields?) -> the JSON answer (utils/git/github.call).
+
+    Returns:
+        (a line per pull request, True when every one is merged).
+
+    Raises:
+        LockError: GitHub refuses to open or read one.
+    """
+    ticket = port.ticket(sid)
+    plan, held = crew.delegated(ticket) or {}, dict((ticket or {}).get(LOCK) or {})
+    root = top(plan.get("root") or "") if plan else None
+    units, lines, done, opened = [dict(u) for u in held.get("units", [])], [], True, False
+    for unit in units:
+        url = unit.get("repo") or (git(root, "config", "--get", "remote.origin.url").strip() if root else "")
+        slug, pr = repo_of(url), unit.get("pr") or {}
+        try:
+            if not pr:
+                made = github("POST", f"repos/{slug}/pulls", {
+                    "head": held["branch"], "base": unit["base"], "title": f"Plan {plan.get('id')}: {plan.get('title')}"[:200],
+                    "body": f"The work of the children of plan {plan.get('id')}, checked against its locked acceptance "
+                            f"tests ({', '.join(unit['files'])}). Merge it only with the user's word."})
+                pr, opened = {"number": made.get("number"), "url": made.get("html_url")}, True
+                unit["pr"] = pr
+            seen = github("GET", f"repos/{slug}/pulls/{pr['number']}")
+        except GitHubError as e:
+            raise LockError(f"the plan pull request of {slug} cannot be opened or read: {str(e)[-200:]}") from e
+        if seen.get("merged"):
+            lines.append(f"The plan pull request #{pr['number']} is merged into {unit['base']}.")
+        else:
+            done = False
+            lines.append(f"Plan pull request #{pr['number']} ({pr.get('url')}): {held['branch']} into {unit['base']}. "
+                         "Ask the user to merge it (a merge form, Allow or Deny), merge it on Allow, then run('orchestra', "
+                         "'land', {}) again.")
+    if opened:
+        port.write(lambda con, rec: tickets.save(con, {**tickets.latest(con, sid), LOCK: {**held, "units": units}}))
+    return lines, done
 
 
 def locked_files(ticket: Optional[Ticket]) -> dict[str, str]:

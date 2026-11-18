@@ -203,7 +203,8 @@ def check(port: PlanStore, sid: str, name: str, units: dict[str, Any], verify: l
 
 
 def accept(port: PlanStore, sid: str, name: str, units: dict[str, Any], github: Callable[..., Any]) -> str:
-    """Accept a child whose check is green this round: open one pull request from its branch into its unit's base.
+    """Accept a child whose check is green this round: open one pull request from its branch into the plan branch when
+    the parent locked acceptance tests (utils/orchestra/locked.py), else into its unit's base.
 
     Args:
         port: the ledger port.
@@ -223,6 +224,7 @@ def accept(port: PlanStore, sid: str, name: str, units: dict[str, Any], github: 
     if entry.get("checkedAt") is None or entry.get("checkedAt") != entry.get("backs", 0):
         raise ReviewError(f"{name} has not passed a check this round: run('orchestra', 'check', {{name}}) first")
     unit = unit_spec(card, units)
+    into = (ticket.get(locked.LOCK) or {}).get("branch") or unit.get("base", "main")  # the plan branch when locked
     repo = top(ticket["plan"]["root"])
     url = unit.get("repo") or (git(repo, "config", "--get", "remote.origin.url").strip() if repo else "")
     ref = branch(ticket["plan"]["id"], name)
@@ -233,15 +235,15 @@ def accept(port: PlanStore, sid: str, name: str, units: dict[str, Any], github: 
     held = entry.get("pr") or {}
     try:
         pr = {"number": held["number"], "html_url": held.get("url")} if held.get("number") else github(
-            "POST", f"repos/{repo_of(url)}/pulls", {"head": ref, "base": unit.get("base", "main"),
+            "POST", f"repos/{repo_of(url)}/pulls", {"head": ref, "base": into,
                                                     "title": f"{name}: {card['goal']}"[:200], "body": body})
     except GitHubError as e:
         raise ReviewError(f"the pull request was not opened: {e}") from e
     set_entry(port, sid, name, card, {"state": crew.ACCEPTED, "pr": {"number": pr.get("number"),
-              "url": pr.get("html_url"), "repo": repo_of(url), "base": unit.get("base", "main")}}, crew.ACCEPTED)
+              "url": pr.get("html_url"), "repo": repo_of(url), "base": into}}, crew.ACCEPTED)
     kept = drop_receipt(unit, repo, ref, name)
     return (f"{name} accepted: pull request #{pr.get('number')} ({pr.get('html_url')}) from {ref} into "
-            f"{unit.get('base', 'main')}. {kept} Nothing is merged yet: when every child is accepted, run('orchestra', "
+            f"{into}. {kept} Nothing is merged yet: when every child is accepted, run('orchestra', "
             "'land', {}) merges the pull requests.")
 
 
