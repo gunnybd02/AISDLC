@@ -24,11 +24,14 @@ One upload covers everything before it: at most one per checkpoint, never one pe
    whole ledger into `.harness-export/` of the folder the call is made from (git ignores it), checks that its schema
    is exactly the harness's, and answers with one Drive call.
 2. Make that call with the Google Drive tool `create_file` (its name may show the connector's id in place of
-   `Google_Drive`), with exactly the values of the answer:
+   `Google_Drive`), with exactly the values of the answer. Copies go into the store's `db` folder. When no Drive
+   answer showed `db` yet, the answer first says to find it (`search_files`, `title = 'db'` under the store folder)
+   or make it (`create_file` with `contentMimeType application/vnd.google-apps.folder`); the harness reads Drive's
+   answer and keeps its id, so the next export names it.
    | Field | Value |
    |---|---|
    | `title` | the name the answer gives |
-   | `parentId` | the store folder's id |
+   | `parentId` | the `db` folder's id |
    | `contentMimeType` | `application/x-sqlite3` |
    | `disableConversionToGoogleType` | `true` |
    | `base64Content` | `sha256:<hash>:<path>`, as given: the app reads the file itself; never type the file's bytes |
@@ -59,8 +62,16 @@ One upload covers everything before it: at most one per checkpoint, never one pe
 - Never upload the live ledger file, and never read `.claude/state/`.
 - The folder id is the user's own: never write it into a file of a repository, a commit or a pull request.
 
+## The folders of the store
+| Folder | Holds |
+|---|---|
+| `db/` | every new ledger copy |
+| `tickets/` | the ticket file of each delegated plan, `<plan id>__<plan sha>.csv`, one row per child (`run("orchestra", "tickets", {})` writes it; you only upload it by its hash, as its answer says) |
+| the store folder itself | the copies made before `db/` existed; they stay (the store only grows) |
+
 ## Copies of an orchestra run
 A session of a delegated plan adds its plan marker to every copy's name: `...__orch.<plan id>.<child name>__...db`
-for a child, `...__orch.<plan id>.parent__...db` for the parent; the record says it too (`plan`). One Drive search,
-name contains `orch.<plan id>.`, lists every database of that run. The parent's plan is delivered, and a child's
-session archived, only once that child's copy is in the store (`guide("orchestrate", "skills")`).
+for a child, `...__orch.<plan id>.parent__...db` for the parent; the record says it too (`plan`). A Drive search,
+name contains `orch.<plan id>.`, in `db/` and in the store folder, lists every database of that run. The parent's plan
+is delivered, and a child's session archived, only once that child's copy is in the store
+(`guide("orchestrate", "skills")`).

@@ -209,7 +209,9 @@ Earlier (2026-11-17): a cloud child cannot message its parent (`05b-orchestra-cl
 2. Plan: repository by URL, scope, locked acceptance tests, plan branch, the ready check. Done: PR 61 (repos, ready
    report) and PR 63 (a card's `acTests`, `orchestra.lock` on `plan/p<n>`, children start from it and cannot change
    them, the check runs them, accept into the plan branch, land ends with one pull request into the base).
-3. Drive: `db/` and `tickets/`; the harness writes the ticket CSV.
+3. Drive: `db/` and `tickets/`; the harness writes the ticket CSV. Done: PR 64 (the hook keeps the ids of `db/` and
+   `tickets/` from Drive's answers; new ledger copies go to `db/`; `orchestra.tickets` opens one issue per child with a
+   hashed machine block and writes the ticket CSV, uploaded by its hash; spawn of a locked plan waits for both).
 4. Child: `take` registers the issue and checks the match; its plan is approved by its scope.
 5. CI: `harness ci` with the hard rules; the parent watches the PR (the doorbell).
 6. Orders: signed one-way messages, checked at the notifications door, each unlocking one action.
