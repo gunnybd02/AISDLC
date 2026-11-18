@@ -212,7 +212,9 @@ Earlier (2026-11-17): a cloud child cannot message its parent (`05b-orchestra-cl
 3. Drive: `db/` and `tickets/`; the harness writes the ticket CSV. Done: PR 64 (the hook keeps the ids of `db/` and
    `tickets/` from Drive's answers; new ledger copies go to `db/`; `orchestra.tickets` opens one issue per child with a
    hashed machine block and writes the ticket CSV, uploaded by its hash; spawn of a locked plan waits for both).
-4. Child: `take` registers the issue and checks the match; its plan is approved by its scope.
+4. Child: `take` registers the issue and checks the match; its plan is approved by its scope. Done: PR 66 (the
+   child's harness reads its issue block and hash from GitHub; the hook checks the downloaded ticket row at Drive's
+   answer and keeps only the result; a mismatch pushes question 1 with the reason and stops; commits name #N).
 5. CI: `harness ci` with the hard rules; the parent watches the PR (the doorbell).
 6. Orders: signed one-way messages, checked at the notifications door, each unlocking one action.
 7. End: every PR merged stops the children; form 2; archive; ledgers to `db/`; join.
