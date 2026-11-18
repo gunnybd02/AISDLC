@@ -89,13 +89,15 @@ def card_line(card: Card) -> str:
         card: the cleaned card (utils/orchestra/card.py).
 
     Returns:
-        "- <name> (<unit>): <goal> | AC: <criterion>; ... | read: ... | change: ... | tests: ... | session: ... |
-        actions: ...", each part only when the card has it.
+        "- <name> (<unit>): <goal> | AC: <criterion>; ... | read: ... | change: ... | tests: ... | acceptance tests
+        (locked): ... | session: ... | actions: ...", each part only when the card has it.
     """
     parts = [f"- {card.get('name', '')} ({card.get('unit', '')}): {one(card.get('goal', ''))}"]
     if card.get("ac"):
         parts.append("AC: " + "; ".join(one(a) for a in card["ac"]))
     parts += [f"{key}: {', '.join(card[key])}" for key in ("read", "change", "tests") if card.get(key)]
+    if card.get("acTests"):
+        parts.append(f"acceptance tests (locked): {', '.join(card['acTests'])}")
     if card.get("session"):
         parts.append(f"session: {card['session']}")
     if card.get("actions"):

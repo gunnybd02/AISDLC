@@ -54,6 +54,12 @@ class BlockTest(unittest.TestCase):
         other = {**LIGHT, "children": [{**CARD, "ac": [CARD["ac"][0], "times below one returns ''"]}]}
         self.assertNotEqual(render.sha(render.block(plan)), render.sha(render.block(other)))  # a criterion is approved
 
+    def test_a_childs_line_shows_its_locked_acceptance_tests(self):
+        """s1.card.shown: form 1 shows the acceptance tests the parent writes and locks."""
+        line = render.card_line({**CARD, "acTests": ["play/test_echo_ac.py"]})
+        self.assertTrue(line.endswith("| tests: play/test_echo.py | acceptance tests (locked): play/test_echo_ac.py | "
+                                      "actions: push"), line)
+
     def test_the_head_line_counts_the_files_of_the_childrens_cards(self):
         plan = {**LIGHT, "files": ["notes.md"], "tests": [], "children": [CARD]}
         self.assertIn(": 3 files, 0 steps", render.head(plan, "pd-x-000000", 1))  # notes.md and the card's two

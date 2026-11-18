@@ -19,7 +19,7 @@ NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 SESSION = re.compile(r"^[A-Za-z0-9 ._-]{1,60}$")
 HOME = "home"
 MAX_GOAL, MAX_AC, MAX_ACS, MAX_PATHS = 200, 120, 6, 8
-PATHS = ("read", "change", "tests")
+PATHS = ("read", "change", "tests", "acTests")
 ACTIONS = ("push",)
 FILLER = frozenset(
     "it is are the a an all works work working done ok okay good fine correct correctly properly pass passes passed "
@@ -109,6 +109,13 @@ def card_faults(card: Card, units: Collection[str]) -> list[str]:
         value = card.get(key, [])
         if not isinstance(value, list) or len(value) > MAX_PATHS or (value and path_problems(value)):
             out.append(f"{name}: {key} is at most {MAX_PATHS} paths (a folder with / or a file with an extension)")
+    locked = card.get("acTests", [])
+    if isinstance(locked, list) and isinstance(card.get("change", []), list):
+        if any(isinstance(p, str) and p.endswith("/") for p in locked):
+            out.append(f"{name}: acTests are files, each one test file the parent writes (no folder)")
+        both = sorted(set(locked) & set(card.get("change", [])))
+        if both:
+            out.append(f"{name}: an acceptance test is locked, so it is never a change path too: {', '.join(both)}")
     if "session" in card and not (isinstance(card["session"], str) and SESSION.match(card["session"])):
         out.append(f"{name}: session is a session name of at most 60 letters, digits, space, . _ or -")
     if not isinstance(card.get("actions", []), list) or set(card.get("actions", [])) - set(ACTIONS):
@@ -117,8 +124,9 @@ def card_faults(card: Card, units: Collection[str]) -> list[str]:
 
 
 def card_problems(value: Any, units: Collection[str] = ()) -> list[str]:
-    """Every fault of a children item at once: each card {name, unit, goal, ac, read?, change?, tests?, session?,
-    actions?} by the rules of docs/05-orchestra.md section 5.1; names unique, a session named by one card only.
+    """Every fault of a children item at once: each card {name, unit, goal, ac, read?, change?, tests?, acTests?,
+    session?, actions?} by the rules of docs/05-orchestra.md section 5.1; names unique, a session named by one card
+    only; acTests are files and never change paths (the parent writes them and they are locked).
 
     Args:
         value: the children item, cleaned (clean_cards).
@@ -128,7 +136,7 @@ def card_problems(value: Any, units: Collection[str] = ()) -> list[str]:
         Every fault; [] when the item is good.
     """
     if not isinstance(value, list) or not value:
-        return ["children is a list of cards {name, unit, goal, ac, read, change, tests, session, actions}"]
+        return ["children is a list of cards {name, unit, goal, ac, read, change, tests, acTests, session, actions}"]
     out, names, sessions = [], set(), set()
     for card in value:
         if not isinstance(card, dict) or not isinstance(card.get("name"), str) or not NAME.match(card["name"]):
@@ -240,7 +248,7 @@ def grant(items: PlanItems) -> ChildGrant:
 
 def with_card_files(items: PlanItems) -> PlanItems:
     """The plan's items with the change and test paths of every card added to its files and tests, so the parent's
-    own gates allow every file a child will touch.
+    own gates allow every file a child will touch, and its acceptance tests (acTests), which the parent writes.
 
     Args:
         items: the delegated plan's items.
@@ -252,5 +260,6 @@ def with_card_files(items: PlanItems) -> PlanItems:
     if not cards:
         return items
     files = list(dict.fromkeys(items.get("files", []) + [p for c in cards for p in c.get("change", [])]))
-    tests = list(dict.fromkeys(items.get("tests", []) + [p for c in cards for p in c.get("tests", [])]))
+    tests = list(dict.fromkeys(items.get("tests", []) + [p for c in cards for key in ("tests", "acTests")
+                                                         for p in c.get(key, [])]))
     return {**items, "files": files, **({"tests": tests} if tests else {})}

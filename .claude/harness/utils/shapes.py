@@ -73,6 +73,7 @@ class Step(TypedDict, total=False):
 class Card(TypedDict, total=False):
     """One child of a delegated plan (utils/orchestra/card.py; docs/05-orchestra.md section 5.1): name (a-z, 0-9, -),
     unit (home or a declared unit), goal (one sentence), ac (1 to 6 criteria), the paths to read, change and test, the
+    acceptance tests the parent writes and locks before the child starts (acTests, utils/orchestra/locked.py), the
     name of an open session to adopt, and actions (only push)."""
     name: str
     unit: str
@@ -81,6 +82,7 @@ class Card(TypedDict, total=False):
     read: list[str]
     change: list[str]
     tests: list[str]
+    acTests: list[str]
     session: str
     actions: list[str]
 
