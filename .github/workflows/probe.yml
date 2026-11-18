@@ -1,0 +1,10 @@
+name: probe
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Say the probe ran
+        run: echo "probe ok"
