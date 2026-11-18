@@ -7,6 +7,11 @@ cloud, alone or with others.
 This map is the frame for every later plan: each plan says which part it changes. Four parts are general, the same
 everywhere; everything else is a plug-in.
 
+**The target** is `system.md` (agreed on 2026-11-18): no `project.json`; a plan names its repository by URL and the
+repository's own CI, protection and issues are the authority; children work on issues and are checked by CI and by
+the parent's acceptance tests; two forms per piece of work. Where this map and `system.md` differ, `system.md` is
+where the plans go.
+
 ```text
             THE BRAIN (one core folder, opened by every session, local or cloud)
    ┌──────────────┬──────────────┬──────────────┬──────────────┐
@@ -78,9 +83,11 @@ A plug-in plan adds its block, its rules and its tests, and names in this map wh
 
 ## 6. The order of the next plans
 
-1. **Sessions**: one session layer for the computer and the cloud; orchestra on top of it; children that can work on
-   the harness itself; the Drive copies joined into one memory.
-2. **Units**: a normal plan works in its unit; registering units; the skills table.
+1. **Sessions**: one session layer for the computer and the cloud; orchestra on top of it as `system.md` describes
+   (issues, the ticket CSV, CI as the gate and the doorbell, signed orders, two forms); children that can work on the
+   harness itself; Drive `db/` copies joined into one memory.
+2. **Repositories by URL** (was "Units"): `project.json` removed; the plan names its repository; the ready check;
+   protected branches read from the forge; the skills table.
 3. **Look-back**: trace, notes, reviews, cost by plan.
 4. **Plug-ins**: the gateway for other MCP servers, then each block the user names.
 
