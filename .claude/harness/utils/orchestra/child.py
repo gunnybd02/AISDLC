@@ -26,7 +26,8 @@ BLOCK = re.compile(re.escape(CARD_OPEN) + r"\n(?P<body>\{.*\})\n" + re.escape(CA
 
 def parse(text: str) -> Optional[ChildRole]:
     """The role a brief gives: its first words name the child and the plan, and its card block (one JSON object) says
-    the same child and plan, with the parent's session, the branch, the card and the behaviour ids.
+    the same child and plan, with the parent's session, the branch, the card, the behaviour ids, and the plan branch it
+    starts from (start, "" for the unit's base).
 
     Args:
         text: a prompt.
@@ -51,8 +52,9 @@ def parse(text: str) -> Optional[ChildRole]:
     if not isinstance(unit["path"], str) or ".." in unit["path"].replace("\\", "/").split("/") \
             or unit["path"].startswith("/") or not isinstance(unit["verify"], list):
         return None
+    start = body.get("start") if isinstance(body.get("start"), str) else ""
     return {"name": name, "plan": plan, "draft": str(body.get("draft", "")), "parent": str(body["parent"]),
-            "branch": body["branch"], "card": card, "unit": unit,
+            "branch": body["branch"], "card": card, "unit": unit, "start": start,
             "behaviours": [behaviour_id(plan, name, n) for n in range(1, len(card.get("ac", [])) + 1)]}
 
 
@@ -128,7 +130,8 @@ def unit_root(role: ChildRole, repo: str) -> str:
 def card_plan(role: ChildRole, root: str) -> PlanItems:
     """The plan a child opens with take, made from its card (spec 05 section 6): title "<name>: <goal>", the goal as
     what, need and the commit, the change paths as files and code, the test paths as tests, one step, one behaviour
-    per criterion (id p<plan>.<name>.ac<n>, what "AC<n>: <criterion>", the first test when the card has one), and the
+    per criterion (id p<plan>.<name>.ac<n>, what "AC<n>: <criterion>", the first locked acceptance test when the card
+    has one, else its first test; a locked test is never a file or test of the plan, so it cannot be edited), and the
     fixed checks, assumption, not doing and risk; verify, the unit's test command, when its unit names one (set here,
     by the server, never by the model).
 
@@ -141,7 +144,7 @@ def card_plan(role: ChildRole, root: str) -> PlanItems:
     """
     card, name = role["card"], role["name"]
     goal, change, tests = one_line(card["goal"]), list(card.get("change", [])), list(card.get("tests", []))
-    acs = list(card.get("ac", []))
+    acs, proof = list(card.get("ac", [])), (list(card.get("acTests", [])) or tests or [""])[0]  # a locked test proves
     unit = card.get("unit", HOME)
     items: dict[str, Any] = {
         "title": re.sub(r'["]', "", f"{name}: {goal}")[:80].strip(),
@@ -154,7 +157,7 @@ def card_plan(role: ChildRole, root: str) -> PlanItems:
         "steps": [{"commit": re.sub(r"[`*_|]", "", goal)[:200], "files": change, "tests": tests,
                    "points": ["change the files of the card", "prove each AC with a registered test"]}],
         "behaviors": [{"id": role["behaviours"][n - 1], "what": f"AC{n}: {a}"[:200], "how": "a registered test",
-                       "why": goal[:200], "test": tests[0] if tests else "", "step": 1}
+                       "why": goal[:200], "test": proof, "step": 1}
                       for n, a in enumerate(acs, 1)],
         "checks": ["the registered tests of each AC pass in verify"],
         "assumptions": [f"the card of the parent plan {role['plan']} is the whole scope"],

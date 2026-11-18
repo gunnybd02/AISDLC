@@ -52,6 +52,31 @@ class WorkTest(unittest.TestCase):
         with self.assertRaisesRegex(work.WorkError, "no child"):
             work.take(self.port, "s9", str(self.repo))
 
+    def test_a_child_with_locked_tests_starts_from_the_plan_branch(self):
+        """s3.child.start: the brief names the plan branch; take makes the child's branch from it, so the locked
+        acceptance test is in the clone; the card plan names it as the proof of each AC but never as a file to edit."""
+        git(self.repo, "push", "-q", "origin", "work")
+        git(self.repo, "switch", "-q", "-c", "plan/p7")
+        (self.repo / "tests").mkdir()
+        (self.repo / "tests" / "test_web_ac.py").write_text("# locked\n", encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "locked")
+        git(self.repo, "push", "-q", "origin", "plan/p7")
+        git(self.repo, "switch", "-q", "work")
+        git(self.repo, "branch", "-q", "-D", "plan/p7")
+        web = {**CARD, "name": "web", "change": ["app/web.py"], "tests": [], "acTests": ["tests/test_web_ac.py"]}
+        text = brief.brief(7, "pd-x", web, "session_p1", rounds=3, start="plan/p7")
+        self.assertIn("pull request into plan/p7", text)
+        self.assertIn("Acceptance tests (locked): tests/test_web_ac.py", text)
+        Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": text}, "c2", str(self.repo)), {}, ALLOW)
+        self.assertEqual(self.port.ticket("c2")["child"]["start"], "plan/p7")
+        self.assertIn("new from origin/plan/p7", work.take(self.port, "c2", str(self.repo)))
+        self.assertEqual(git(self.repo, "branch", "--show-current").strip(), "orch/p7/web")
+        self.assertTrue((self.repo / "tests" / "test_web_ac.py").is_file())
+        plan = self.port.approved("c2")
+        self.assertNotIn("tests/test_web_ac.py", plan["files"] + plan.get("tests", []))
+        self.assertEqual({b["test"] for b in plan["behaviors"]}, {"tests/test_web_ac.py"})
+
     def test_a_child_pushes_its_own_branch_only_as_the_rules_allow(self):
         with self.assertRaisesRegex(work.WorkError, "take your card first"):
             work.push(self.port, "c1", lambda repo, words: ALLOW)
