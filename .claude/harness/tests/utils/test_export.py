@@ -1,10 +1,13 @@
 """h23.store: a ledger's copy for the store outside the machine is whole, has the pinned schema, and takes the name of
 the store's record; a ledger whose schema drifted is never exported."""
+import gzip
 import hashlib
 import sqlite3
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from harness.utils.ledger import export
 from harness.utils.ledger.db import Ledger, LedgerError, fingerprint, pinned
 from harness.utils.ledger.export import snapshot, upload_call
 from harness.tests import tree
@@ -22,16 +25,29 @@ class ExportTest(unittest.TestCase):
         return {"title": title, "session": session}
 
     def test_a_copy_is_whole_and_has_the_pinned_schema(self):
+        """s1.export.gzip: the file is the copy gzipped; it unzips to the whole ledger of the pinned schema."""
         copy = snapshot(self.db, self.out, self.record("session-01AB__x-001__t__push__nocommit__s1.db", "session_01AB"))
         path = Path(copy["path"])
         self.assertEqual((path.parent, path.name), (self.out.resolve(), copy["title"]))
-        self.assertEqual(copy["title"], "session-01AB__x-001__t__push__nocommit__s1.db")
+        self.assertEqual(copy["title"], "session-01AB__x-001__t__push__nocommit__s1.db.gz")
         self.assertEqual(copy["sha256"], hashlib.sha256(path.read_bytes()).hexdigest())
         self.assertEqual(copy["size"], path.stat().st_size)
-        con = sqlite3.connect(path)
+        plain = self.root / "plain.db"
+        plain.write_bytes(gzip.decompress(path.read_bytes()))
+        con = sqlite3.connect(plain)
         self.assertEqual(fingerprint(con), pinned())
         self.assertEqual(con.execute("SELECT uid, body FROM pl_logs").fetchall(), [("u", "b")])
         con.close()
+        self.assertLess(copy["size"], plain.stat().st_size)
+        self.assertEqual(sorted(p.name for p in self.out.iterdir()), [".gitignore", copy["title"]])  # no plain copy left
+
+    def test_a_copy_too_big_for_one_drive_call_is_refused_with_its_size(self):
+        """s1.export.too-big"""
+        with mock.patch.object(export, "MOST", 10):
+            with self.assertRaises(LedgerError) as e:
+                snapshot(self.db, self.out, self.record("s1__x-001__a.db"))
+        self.assertIn("bytes gzipped, over the 10 one Drive call carries", str(e.exception))
+        self.assertEqual([p.name for p in self.out.iterdir()], [".gitignore"])  # nothing is left to upload
 
     def test_an_older_copy_of_the_session_goes_and_git_never_sees_the_folder(self):
         first = snapshot(self.db, self.out, self.record("s1__x-001__a.db"))
@@ -59,7 +75,7 @@ class ExportTest(unittest.TestCase):
         copy = snapshot(self.db, self.out, self.record("s1__x-001__a.db"))
         text = upload_call(copy, "folder-id-123", "db-folder-456")
         for line in (f"  title: {copy['title']}", "  parentId: db-folder-456",
-                     "  contentMimeType: application/x-sqlite3", "  disableConversionToGoogleType: true",
+                     "  contentMimeType: application/gzip", "  disableConversionToGoogleType: true",
                      f"  base64Content: sha256:{copy['sha256']}:{copy['path']}"):
             self.assertIn(line, text.splitlines())
         self.assertNotIn("First find", text)

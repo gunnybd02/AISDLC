@@ -223,7 +223,8 @@ def uploaded(port: PlanStore, event: Event) -> list[str]:
     if len(parts) < 3 or parts[0] != "mcp" or parts[-1] != "create_file":
         return []
     title = str((event.input or {}).get("title") or "")
-    made = port.rows("SELECT key FROM pl_notes WHERE kind = ? AND target = ?", (EXPORT, title)) if title else []
+    name = title[:-3] if title.endswith(".db.gz") else title  # a gzipped copy (export.py) is the copy of its name
+    made = port.rows("SELECT key FROM pl_notes WHERE kind = ? AND target = ?", (EXPORT, name)) if title else []
     answer = event.response if isinstance(event.response, str) else json.dumps(event.response, ensure_ascii=False)
     found = FILE_ID.search(answer or "")
     if not found or not re.search(r'\\*"title\\*"\s*:\s*\\*"' + re.escape(title), answer or ""):

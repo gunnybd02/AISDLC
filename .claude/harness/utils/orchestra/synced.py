@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from harness.utils.ledger.recorder import Recorder
 
 COPY = re.compile(r"^(?P<session>[A-Za-z0-9-]+)__[0-9a-f]{6}-(?P<seq>\d{3})__(?P<stamp>\d{8}T\d{6}Z)__[a-z-]+__"
-                  r"orch\.(?P<draft>pd-[a-z0-9-]+)\.(?P<name>[a-z0-9][a-z0-9-]*)__[0-9a-z]+__s[0-9a-f]{8}\.db$")
+                  r"orch\.(?P<draft>pd-[a-z0-9-]+)\.(?P<name>[a-z0-9][a-z0-9-]*)__[0-9a-z]+__s[0-9a-f]{8}\.db(?:\.gz)?$")
 WAIVER = re.compile(r"^Close plan (?P<draft>pd-[a-z0-9-]+) without the database of (?P<name>[a-z0-9-]+) "
                     r"\[(?P<code>w[0-9a-f]{12})\]\?$")
 ENDED_HERE = ("accepted", "forgotten", "released", "removed")

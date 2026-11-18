@@ -1,4 +1,5 @@
 """h11.one-store: the ledger is read only through db_query, one read-only SELECT that never reads transcripts."""
+import gzip
 import json
 import os
 import sqlite3
@@ -86,16 +87,19 @@ class ExportActionTest(unittest.TestCase):
             self.assertIn(f"parentId = '{folder}'", result.text)  # db is found (or made) in that folder first
             self.assertIn("  parentId: <the id of the db folder Drive gave>", result.text.splitlines())
             self.assertIn("create_file", result.text)
-        (copy,) = (self.work / ".harness-export").glob("s-export-test__*.db")  # one copy a session
-        self.assertRegex(copy.name, r"^s-export-test__[0-9a-f]{6}-002__\d{8}T\d{6}Z__push__nocommit__s[0-9a-f]{8}\.db$")
+        (copy,) = (self.work / ".harness-export").glob("s-export-test__*.db.gz")  # one copy a session, gzipped
+        self.assertRegex(copy.name,
+                         r"^s-export-test__[0-9a-f]{6}-002__\d{8}T\d{6}Z__push__nocommit__s[0-9a-f]{8}\.db\.gz$")
         self.assertEqual((self.work / ".harness-export" / ".gitignore").read_text(encoding="utf-8"), "*\n")
         self.assertIn(copy.resolve().as_posix(), result.text)
-        con = sqlite3.connect(copy)
+        plain = self.work / "plain.db"
+        plain.write_bytes(gzip.decompress(copy.read_bytes()))
+        con = sqlite3.connect(plain)
         self.assertEqual(con.execute("SELECT uid FROM pl_logs").fetchall(), [("u",)])
         (text,) = con.execute("SELECT text FROM pl_notes WHERE kind = 'store.export' AND key = '2'").fetchone()
         con.close()
         inside = json.loads(text)  # the copy says by itself who made it, when and why
-        self.assertEqual((inside["title"], inside["seq"], inside["session"], inside["reason"]),
+        self.assertEqual((inside["title"] + ".gz", inside["seq"], inside["session"], inside["reason"]),
                          (copy.name, 2, "s-export-test", "push"))
         self.assertTrue(self.export("folder-from-env-1", reason="later").is_error)
 
@@ -106,7 +110,7 @@ class ExportActionTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {"HARNESS_DRIVE_FOLDER": "folder-from-env-1"}):
             result = self.run_action("ledger", "export")
         self.assertFalse(result.is_error, result.text)
-        self.assertEqual(len(list((self.work / ".harness-export").glob("*.db"))), 1)
+        self.assertEqual(len(list((self.work / ".harness-export").glob("*.db.gz"))), 1)
 
     def test_the_status_reads_the_store_and_the_note_follows_a_push_only_with_a_store(self):
         from harness.mcp.actions.ledger import STORE_NOTE, store_note

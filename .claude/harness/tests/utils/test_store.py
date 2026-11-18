@@ -8,6 +8,7 @@ from unittest import mock
 from harness.assemble.engine.ports import LedgerPort
 from harness.utils.contracts import Event
 from harness.utils.ledger import store
+from harness.utils.orchestra import synced
 from harness.tests import tree
 
 DRIVE = "mcp__Google_Drive__create_file"
@@ -91,6 +92,20 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(self.upload(second, text, by_id), [f"The store holds copy 2 of this ledger: {second['title']}."])
         self.assertEqual(store.saved(self.port)["file_id"], "1o4T5wPp6eX9DAvKctWEdmzH8bD6")
         self.assertEqual(len(self.port.rows("SELECT 1 AS x FROM pl_notes WHERE kind = 'store.uploaded'")), 2)
+
+    def test_a_gzipped_copy_is_the_copy_of_its_name(self):
+        """s1.store.gz: Drive answering with <name>.db.gz records copy <name>.db as held; a child copy .db.gz is
+        found by the parent's search."""
+        record = store.begin(self.port, "s1", "manual")
+        packed = record["title"] + ".gz"
+        answer = {"id": "1GzCopyFileId0001", "title": packed}
+        notes = store.uploaded(self.port, Event("PostToolUse", DRIVE, {"title": packed}, "s1", "/w", answer))
+        self.assertEqual(notes, [f"The store holds copy 1 of this ledger: {packed}."])
+        self.assertEqual(store.saved(self.port)["seq"], 1)
+        self.assertEqual(store.unsaved(self.port), [])
+        child = "session-c1__abcdef-002__20261118T000000Z__handback__orch.pd-x1.api__1234567__s0123abcd.db"
+        self.assertEqual(synced.COPY.match(child + ".gz")["name"], "api")
+        self.assertEqual(synced.COPY.match(child)["name"], "api")  # the copies made before stay readable
 
     def test_work_is_unsaved_until_a_copy_made_after_it_is_in_the_store(self):
         self.assertEqual(store.unsaved(self.port), [])  # an empty ledger owes nothing
