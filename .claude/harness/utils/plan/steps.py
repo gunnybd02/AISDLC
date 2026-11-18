@@ -142,6 +142,9 @@ def step_done(port: PlanStore, sid: str, message: Optional[str], judge: Optional
     if len(text) > LONGEST_MESSAGE:
         raise StepError(f"the message is longer than {LONGEST_MESSAGE} characters")
     ticket, plan = in_force(port, sid)
+    issue = ((((ticket.get("child") or {}).get("record") or {}).get("issue")) or {}).get("number")
+    if issue and not re.search(rf"#{issue}\b", text):  # a child's commit names its issue: the forge links them
+        text = f"{text} (#{issue})"
     n, steps = ticket["step"], steps_of(plan)
     repo = top(plan["root"])
     if not repo:
