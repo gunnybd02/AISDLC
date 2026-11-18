@@ -283,6 +283,21 @@ def limits_problems(value: Any, units: Collection[str] = ()) -> list[str]:
             for k, v in value.items() if isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= LIMITS[k]]
 
 
+def banned_problems(value: Any, units: Collection[str] = ()) -> list[str]:
+    """The problems of banned: 1 to 20 words or short phrases that commit and merge request text may never hold.
+
+    Args:
+        value: the item as given (cleaned to a list of strings).
+        units: the declared units (not read).
+
+    Returns:
+        One problem for a bad list, else one per entry that is too long.
+    """
+    if not isinstance(value, list) or not value or len(value) > 20:
+        return ["a list of 1 to 20 words that commit and merge request text never hold"]
+    return [f"{w!r} is at most 40 characters" for w in value if len(str(w)) > 40]
+
+
 def run_limits(items: Any, base: dict[str, int]) -> dict[str, int]:
     """The limits a plan runs with: each of base, lowered by the plan's own limits item when it gives a lower one.
 

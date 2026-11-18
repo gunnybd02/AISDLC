@@ -1,6 +1,8 @@
 """The doctor door harness/entry/doctor.py calls: every problem of the tree, and the report of them."""
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -121,8 +123,9 @@ def chains(claude_dir: str | Path) -> list[str]:
 
 
 def real_ledger(claude_dir: str | Path) -> list[str]:
-    """The drift of the real ledger named in the config from schema.sql, read only; nothing when none is named, or
-    when the config does not load (built() reports that).
+    """The drift of the real ledger from schema.sql, read only: the one HARNESS_LEDGER names (the user's PC), else the
+    config's; nothing when none is named, or when the config does not load (built() reports that). A Windows path
+    names no file on another system.
 
     Args:
         claude_dir: the home, the .claude folder.
@@ -130,10 +133,14 @@ def real_ledger(claude_dir: str | Path) -> list[str]:
     Returns:
         "ledger <drift>" lines.
     """
-    try:
-        path = Config.load(claude_dir).ledger_here
-    except ConfigError:
-        return []
+    path = os.environ.get("HARNESS_LEDGER", "").strip()
+    if path and os.name != "nt" and re.match(r"^[A-Za-z]:[\\/]", path):
+        path = ""
+    if not path and "HARNESS_LEDGER" not in os.environ:
+        try:
+            path = Config.load(claude_dir).ledger_here
+        except ConfigError:
+            return []
     return [f"ledger {line}" for line in compare_real(path)] if path else []
 
 

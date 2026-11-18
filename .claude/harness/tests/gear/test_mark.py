@@ -4,7 +4,11 @@ import unittest
 from harness.gear.decide.arbiter import Decide
 from harness.gear.detect.mark import MarkScan
 from harness.utils.contracts import Event
+from harness.assemble.engine.build import build_runner
+from harness.assemble.engine.ports import LedgerPort
+from harness.assemble.engine.wire_mcp import commit_event
 from harness.tests import CLAUDE_DIR
+from harness.tests.e2e import copy_tree, git_repo
 
 
 def found(message, banned=()):
@@ -28,6 +32,18 @@ class MarkTest(unittest.TestCase):
 
     def test_a_banned_word_is_refused(self):
         self.assertEqual(found("WIP: fix the parser", ("wip",)), [("commit.banned_word", "wip")])
+
+    def test_a_word_the_plan_bans_is_refused_in_a_commit_of_that_plan(self):
+        claude_dir = copy_tree(self)
+        repo = git_repo(self, {"a.py": "X = 1\n"})
+        port = LedgerPort(claude_dir)
+        port.present({"title": "Fix the parser", "files": ["a.py"], "root": str(repo), "banned": ["hotfix"]}, sid="s1")
+        port.approve("s1", port.waiting()[0])
+        event = commit_event(repo, ["a.py"], "Hotfix the parser")
+        kinds = [f.kind for f in build_runner(claude_dir, plan=port.approved("s1")).run(event).verdict.findings]
+        self.assertIn("commit.banned_word", kinds)
+        kinds = [f.kind for f in build_runner(claude_dir).run(event).verdict.findings]  # no plan: not banned
+        self.assertNotIn("commit.banned_word", kinds)
         self.assertEqual(found("Wipe the cache", ("wip",)), [])  # a whole word only
         self.assertEqual(found("fix", ()), [])
 

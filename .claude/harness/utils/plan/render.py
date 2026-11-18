@@ -141,6 +141,7 @@ def sections(items: PlanItems) -> list[tuple[str, list[str]]]:
     out.append(("Repos", ["Repos:"] + [repo_line(n, s) for n, s in repos.items()] if repos else []))
     limits = items.get("limits") if isinstance(items.get("limits"), dict) else {}
     out.append(("Limits", line("Limits", [f"{k} {v}" for k, v in limits.items()], ", ")))
+    out.append(("Banned", line("Banned", items.get("banned"), ", ")))
     out.append(("Services", line("Services", items.get("services"), ", ")))
     out.append(("Branch", line("Branch", items.get("branch") or [])))
     out.append(("What", line("What", items.get("title", "") if code else items.get("what"))))

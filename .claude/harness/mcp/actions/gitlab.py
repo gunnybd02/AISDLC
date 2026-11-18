@@ -6,6 +6,7 @@ from typing import Any
 
 from harness.mcp.actions.ledger import store_note
 from harness.utils.contracts import WRITE, ActionContext, ActionError, McpAction
+from harness.utils.orchestra.card import in_force
 from harness.utils.plan.ship import mr_open
 
 ACTIONS = [("git.mr_open", "MrOpen")]
@@ -27,6 +28,7 @@ class MrOpen(McpAction):
         sid = ctx.ports["session"]()
         if not sid:
             raise ActionError("no session: the harness has not seen this session's prompt yet")
+        banned = list(ctx.ports["banned"]()) + list(in_force(ctx.ports["plans"], sid).get("banned") or [])
         text = mr_open(ctx.ports["plans"], sid, args["title"], args["description"], args.get("target") or "main",
-                       ctx.ports["banned"]())
+                       banned)
         return text + (store_note(ctx) if text.startswith("Merge request") else "")

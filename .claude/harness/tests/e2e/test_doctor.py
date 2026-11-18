@@ -1,6 +1,7 @@
 """h4.doctor (AC5): entry/doctor.py finds no error in the real tree; a broken net or a broken index is an ERROR line
 and a non-zero exit."""
 import json
+import os
 import sqlite3
 import unittest
 
@@ -58,6 +59,20 @@ class DoctorEntryTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("ERROR ledger", out)
         self.assertIn("table pl_logs", out)
+
+    def test_the_ledger_named_by_harness_ledger_is_compared(self):
+        bad = tree(self, {}) / "pc.db"
+        Ledger.open(bad).close()
+        con = sqlite3.connect(bad)
+        con.execute("ALTER TABLE pl_logs ADD COLUMN extra TEXT")
+        con.commit()
+        con.close()
+        code, out, _ = run(entry_of(copy_tree(self), "doctor"), env={"HARNESS_LEDGER": str(bad)})
+        self.assertEqual(code, 1)
+        self.assertIn("table pl_logs", out)
+        if os.name != "nt":  # a Windows path names no file on another system
+            code, out, _ = run(entry_of(copy_tree(self), "doctor"), env={"HARNESS_LEDGER": "C:/AI/harness.db"})
+            self.assertEqual((code, out.strip()), (0, "0 errors"))
 
     def test_a_ledger_path_that_is_not_absolute_is_a_config_error(self):
         config = json.loads((CLAUDE_DIR / "project.json").read_text(encoding="utf-8"))

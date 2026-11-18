@@ -115,14 +115,18 @@ def build_runner(claude_dir: str | Path = CLAUDE_DIR, items: Optional[dict[str, 
     items = items or items_of(claude_dir)
     config = Config.load(claude_dir)  # a config that does not load stops the hook, as before
     code = code_of(claude_dir)
-    pipeline = select(PipelineBook(code / "harness" / "assemble" / "pipelines"), plan, config.pipelines())
+    own = plan.get("repos") if plan and isinstance(plan.get("repos"), dict) else {}
+    mapped = {**config.pipelines(), **{name: spec["pipeline"] for name, spec in own.items()
+                                       if isinstance(spec, dict) and spec.get("pipeline")}}
+    pipeline = select(PipelineBook(code / "harness" / "assemble" / "pipelines"), plan, mapped)
     translators = pick(items, pipeline.translators, "translator")
     declared = pick(items, [n for n, i in items.items() if i.kind == "translator"], "translator")
     vocabulary = {fact for t in declared for fact in getattr(t, "VOCABULARY", ())}  # rules apply to every pipeline
     decide = Loader.resolve(items["decide"]).load(code, vocabulary=vocabulary)
     port = LedgerPort(claude_dir)
+    banned = tuple(config.banned) + tuple((plan or {}).get("banned") or ())  # the floor's words and the plan's
     return Runner(translators, pick(items, pipeline.detectors, "detector"), decide,
-                  ports=[PlanState(port, config.protected, config.banned)], act=Act(port))
+                  ports=[PlanState(port, config.protected, banned)], act=Act(port))
 
 
 def with_hint(reason: str, claude_dir: str | Path) -> str:

@@ -83,8 +83,8 @@ def ports_of(items: dict[str, Item], claude_dir: str | Path) -> dict[str, Any]:
              "items": items, "doctor": lambda: report(doctor(claude_dir)),
              "git_judge": lambda repo, words: build_runner(claude_dir, items).run(git_event(repo, words)).verdict,
              "session": ledger.session,
-             "commit_judge": lambda repo, files, message: build_runner(claude_dir, items).run(
-                 commit_event(repo, files, message)).verdict,
+             "commit_judge": lambda repo, files, message: build_runner(
+                 claude_dir, items, ledger.approved(ledger.session())).run(commit_event(repo, files, message)).verdict,
              "banned": lambda: Config.load(claude_dir).banned,
              "store": store.folder,
              "units": lambda: {name: unit.spec() for name, unit in Config.load(claude_dir).units},
