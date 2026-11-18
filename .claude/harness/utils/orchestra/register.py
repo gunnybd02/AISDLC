@@ -21,9 +21,13 @@ from collections.abc import Callable, Iterator
 from typing import Any, Optional
 
 from harness.utils.contracts import Event
+from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError
 from harness.utils.ledger.store import note
+from harness.utils.orchestra.brief import NOTES
+from harness.utils.orchestra.fetch import FetchError, put_files
 from harness.utils.orchestra.issues import COLUMNS, ISSUE_CLOSE, ISSUE_OPEN, block_sha
+from harness.utils.orchestra.locked import on_origin
 from harness.utils.shapes import ChildRole, PlanStore
 
 RESULT = "child.ticket"  # pl_notes: target = the ticket file, key = ok or refused, text = {sha256, planSha, problems}
@@ -162,6 +166,85 @@ def ticket_seen(port: PlanStore, event: Event) -> list[str]:
                    "it does NOT match your brief: " + "; ".join(problems) + ". run('orchestra', 'take') again; it "
                    "records why and stops you.")]
     return []
+
+
+class RegisterError(ValueError):
+    """take is refused: the ticket is not checked yet, or the records disagree with the brief (the message says why)."""
+
+
+REGISTERED = "child.registered"  # pl_notes: target = the child's branch, key = its issue number, text = the hashes
+
+
+def refuse(role: ChildRole, repo: str, problems: list[str]) -> str:
+    """Push one note on the child's branch saying why it stopped, as its first question, so the parent's check reads
+    it (review.asked_at_tip).
+
+    Args:
+        role: the child's role.
+        repo: the child's clone.
+        problems: the disagreements.
+
+    Returns:
+        Where the note is, or why it could not be pushed.
+    """
+    rel = f"{NOTES}/{role['name']}/question-1.md"
+    text = (f"# Question 1 from {role['name']} (plan {role['plan']})\n\nRegistration failed, so no work was done: "
+            + "; ".join(problems) + "\n")
+    unit = dict(role.get("unit") or {})
+    start = role["branch"] if on_origin(unit, repo, role["branch"]) else role.get("start") or unit.get("base", "main")
+    try:
+        sha = put_files(unit, repo, start, {rel: text}, f"Registration of {role['name']} failed (plan {role['plan']})",
+                        target=role["branch"])
+    except FetchError as e:
+        return f"The note could not be pushed ({str(e)[-200:]}): name it to the user."
+    return f"The reason is in {rel} on {role['branch']} ({sha[:12]}), for the orchestrator."
+
+
+def check(port: PlanStore, sid: str, root: str, github: Callable[..., Any]) -> str:
+    """Register a child of a plan with locked tests before take opens its card plan: its ticket (checked by the hook at
+    the Drive answer) and its issue (read now) agree with its brief. A child whose brief names no issue, or that
+    registered before, passes.
+
+    Args:
+        port: the ledger port.
+        sid: the child's session.
+        root: the folder the session works in.
+        github: call(method, path, fields?) -> the JSON answer (utils/git/github.call).
+
+    Returns:
+        "" when there is nothing to register; else the line that says it registered.
+
+    Raises:
+        RegisterError: the ticket is not checked yet (with the Drive calls to make), or a record disagrees (the
+            reason is pushed on the child's branch first).
+    """
+    role = (port.ticket(sid) or {}).get("child") or {}
+    record = role.get("record") or {}
+    if not record.get("issue"):
+        return ""
+    if port.rows("SELECT 1 AS x FROM pl_notes WHERE kind = ? AND sid = ? LIMIT 1", (REGISTERED, sid)):
+        return ""
+    made = record.get("ticket") or {}
+    result = ticket_result(port, sid, str(made.get("title", "")))
+    if result is None:
+        raise RegisterError(f"Register first: download your ticket file once with the Google Drive tool. 1. search_files "
+                            f"with the query: title = '{made.get('title')}'. 2. download_file_content with the id Drive "
+                            "gave. The harness checks the file itself at Drive's answer and keeps no copy of it. Then "
+                            "run('orchestra', 'take') again.")
+    block, problems = issue_problems(role, github)
+    problems = list(result.get("problems") or []) + problems
+    if block and result.get("planSha") != block.get("planSha"):
+        problems.append(f"the ticket row and issue #{record['issue'].get('number')} name different plans")
+    repo = top(root) or root
+    if problems:
+        where = refuse(role, repo, problems)
+        raise RegisterError("Registration failed, so you may not work on this card: " + "; ".join(problems) + f". {where}"
+                            " Stop now: end your turn. The orchestrator decides.")
+    kept = {"issue": record["issue"].get("sha"), "ticket": made.get("sha256"), "plan": block.get("planSha")}
+    port.write(lambda con, rec: note(con, REGISTERED, role["branch"], record["issue"].get("number"), json.dumps(kept),
+                                     sid, int(time.time() * 1000)))
+    return (f"Registered: issue #{record['issue'].get('number')} and your row of {made.get('title')} match your brief. "
+            f"Every commit of yours names #{record['issue'].get('number')}.")
 
 
 def ticket_result(port: PlanStore, sid: str, title: str) -> Optional[dict[str, Any]]:

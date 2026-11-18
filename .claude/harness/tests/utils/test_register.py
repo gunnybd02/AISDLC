@@ -4,13 +4,17 @@ Drive answer and does not keep; take registers only when both agree."""
 import base64
 import hashlib
 import json
+import os
+import subprocess
 import unittest
 
 from harness.assemble.engine.ports import LedgerPort
 from harness.assemble.engine.runner import Act
-from harness.utils.contracts import Event, Verdict
+from harness.mcp.actions.orchestra import Take
+from harness.utils.contracts import ActionContext, ActionError, Event, Verdict
 from harness.utils.orchestra import brief, child, issues, register
-from harness.tests.e2e import copy_tree
+from harness.tests import tree
+from harness.tests.e2e import copy_tree, git_repo
 
 ALLOW = Verdict("allow")
 CARD = {"name": "api", "unit": "home", "goal": "List the orders of a user", "ac": ["GET /orders returns the orders"],
@@ -86,6 +90,74 @@ class RegisterTest(unittest.TestCase):
                       problems)
         self.assertEqual(register.row_problems(self.role, "a,b\n1,2\n")[1],
                          ["the ticket file does not have the harness's columns"])
+
+
+def git(repo, *args):
+    """git in repo; its output."""
+    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout
+
+
+class TakeTest(unittest.TestCase):
+    """take with a real origin: the plan branch holds the locked test; GitHub is a fake that answers the issue."""
+
+    def setUp(self):
+        self.port = LedgerPort(copy_tree(self))
+        self.origin = tree(self, {})
+        git(self.origin, "init", "-q", "--bare")
+        self.repo = git_repo(self, {"a.py": "X = 1\n"})
+        git(self.repo, "remote", "add", "origin", str(self.origin))
+        git(self.repo, "push", "-q", "origin", "work")
+        git(self.repo, "switch", "-q", "-c", "plan/p7")
+        (self.repo / "tests").mkdir()
+        (self.repo / "tests" / "test_orders_ac.py").write_text("# locked\n", encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "locked")
+        git(self.repo, "push", "-q", "origin", "plan/p7")
+        git(self.repo, "switch", "-q", "work")
+        git(self.repo, "branch", "-q", "-D", "plan/p7")
+        self.body, self.issue, self.text, self.made = records()
+        prompt = brief.brief(7, "pd-x", CARD, "session_p1", rounds=3, start="plan/p7", issue=self.issue,
+                             ticket_file=self.made)
+        Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": prompt}, "c1", str(self.repo)), {}, ALLOW)
+        here = os.getcwd()
+        os.chdir(self.repo)  # the MCP server runs in the project's folder
+        self.addCleanup(os.chdir, here)
+
+    def take(self, body=None):
+        ctx = ActionContext({"plans": self.port, "session": lambda: "c1", "github": github_of(body or self.body)})
+        return Take().run(ctx, {})
+
+    def ticket(self):
+        Act(self.port).run(Event("PostToolUse", "mcp__Google_Drive__download_file_content", {"fileId": "1x"}, "c1",
+                                 "/w", {"content": base64.b64encode(self.text.encode()).decode()}), {}, ALLOW)
+
+    def test_take_registers_and_then_opens_the_card_plan(self):
+        """s2.take.registers: no ticket checked yet, take says how; both checks green, the card plan opens."""
+        with self.assertRaises(ActionError) as e:
+            self.take()
+        self.assertIn(f"search_files with the query: title = '{self.made['title']}'", str(e.exception))
+        self.assertIsNone(self.port.approved("c1"))
+        self.ticket()
+        text = self.take()
+        self.assertTrue(text.startswith(f"Registered: issue #41 and your row of {self.made['title']} match your brief"))
+        self.assertIn("Card plan", text)
+        self.assertEqual(git(self.repo, "branch", "--show-current").strip(), "orch/p7/api")
+        self.assertTrue((self.repo / "tests" / "test_orders_ac.py").is_file())
+        self.assertEqual(len(self.port.rows("SELECT 1 AS x FROM pl_notes WHERE kind = 'child.registered'")), 1)
+
+    def test_a_mismatch_pushes_its_reason_and_opens_no_plan(self):
+        """s2.take.refused: the issue on GitHub is for another scope; the reason is question 1 on the branch."""
+        self.ticket()
+        wider, _, _, _ = records({**CARD, "change": ["app/"]})
+        with self.assertRaises(ActionError) as e:
+            self.take(wider)
+        self.assertIn("Registration failed, so you may not work on this card", str(e.exception))
+        self.assertIn("Stop now", str(e.exception))
+        self.assertIsNone(self.port.approved("c1"))
+        note = git(self.origin, "show", "orch/p7/api:.harness/notes/api/question-1.md")
+        self.assertIn("issue #41 says scope ['app/'], the brief says ['app/orders.py']", note)
+        self.assertEqual(git(self.origin, "show", "--name-only", "--format=", "orch/p7/api").split(),
+                         [".harness/notes/api/question-1.md"])  # the tip is the question: the parent's check reads it
 
 
 if __name__ == "__main__":

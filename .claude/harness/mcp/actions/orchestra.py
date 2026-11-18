@@ -30,7 +30,7 @@ from harness.utils.git.facts import top
 from harness.utils.git.run import GitError, git
 from harness.utils.ledger import store
 from harness.utils.orchestra import brief as briefs
-from harness.utils.orchestra import crew, issues, locked, work
+from harness.utils.orchestra import crew, issues, locked, register, work
 from harness.utils.orchestra.card import in_force, plan_units, unit_spec
 from harness.utils.plan.item_checks import run_limits
 from harness.utils.shapes import PlanStore, Ticket
@@ -254,16 +254,21 @@ class Status(McpAction):
 class Take(McpAction):
     """orchestra.take: a child opens its card plan."""
     block, name, effect = "orchestra", "take", WRITE
-    summary = ("A child's first call: its card plan opens, approved by the grant of the parent plan (no form), on its "
-               "branch orch/p<plan>/<name>")
+    summary = ("A child's first call: it registers against its issue and ticket when its brief names them, then its "
+               "card plan opens, approved by the grant of the parent plan (no form), on its branch orch/p<plan>/<name>")
     args_schema = {"type": "object", "properties": {}}
-    needs = ("plans", "session")
+    needs = ("plans", "session", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Open the child's card plan in the server's folder (utils/orchestra/work.take). ActionError for a session that
-        is no child, a card without change paths, another plan in force, or git refusing the branch."""
-        sid = session_of(ctx)
-        return answered(CHILD_ERRORS, lambda: work.take(ctx.ports["plans"], sid, os.getcwd()))
+        """Register the child (utils/orchestra/register.check), then open its card plan in the server's folder
+        (utils/orchestra/work.take). ActionError for a ticket not checked yet, records that disagree with the brief, a
+        session that is no child, a card without change paths, another plan in force, or git refusing the branch."""
+        sid, port = session_of(ctx), ctx.ports["plans"]
+
+        def go() -> str:
+            line = register.check(port, sid, os.getcwd(), ctx.ports["github"])
+            return (line + "\n" if line else "") + work.take(port, sid, os.getcwd())
+        return answered(CHILD_ERRORS + (register.RegisterError,), go)
 
 
 class Push(McpAction):
