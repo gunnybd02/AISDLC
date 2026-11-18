@@ -55,6 +55,19 @@ class CardTest(unittest.TestCase):
         self.assertEqual(wide["tests"], ["tests/test_orders.py"])
         self.assertIs(card.with_card_files(PLAN), PLAN)
 
+    def test_a_card_names_its_acceptance_tests_and_the_parent_may_write_them(self):
+        """s1.card.ac-tests: acTests are files, never change paths, at most 8; s1.card.shown: they are tests of the
+        parent plan."""
+        good = {**GOOD, "acTests": ["tests/ac/test_orders_ac.py"]}
+        self.assertEqual(card.card_problems([good]), [])
+        wide = card.with_card_files({**PLAN, "children": [good]})
+        self.assertEqual(wide["tests"], ["tests/test_orders.py", "tests/ac/test_orders_ac.py"])
+        bad = [{**GOOD, "acTests": ["app/orders.py"]}, {**GOOD, "name": "b", "acTests": ["tests/ac/"]},
+               {**GOOD, "name": "c", "acTests": [f"t{i}.py" for i in range(9)]}]
+        text = " | ".join(card.card_problems(bad))
+        for part in ("never a change or test path too: app/orders.py", "acTests are files", "acTests is at most 8 paths"):
+            self.assertIn(part, text)
+
 
 class BriefTest(unittest.TestCase):
     def test_the_brief_talks_through_the_branch_never_by_message(self):

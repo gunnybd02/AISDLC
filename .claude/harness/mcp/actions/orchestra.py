@@ -1,6 +1,8 @@
 """orchestra: the parent's side of a delegated plan (docs/05-orchestra.md, for the cloud as docs/05b-orchestra-cloud.md
 says). The user approved the plan with its children once, in the form; these actions start the children.
 
+- lock: the acceptance tests the cards name (acTests), written by the parent, committed and pushed on the plan branch
+  plan/p<n>, their hashes kept (utils/orchestra/locked.py); spawn needs it for a card with acTests.
 - spawn {name, model?}: the brief of a child and the create_session call that opens it. Harness code cannot open a
   cloud session; the model does, then gives the new session id back with started.
 - started {name, sid, model?}: the child's session is open; from now on it runs (the cap is 3).
@@ -26,12 +28,13 @@ from harness.utils.contracts import ActionContext, ActionError, McpAction, READ,
 from harness.utils.git.facts import top
 from harness.utils.git.run import GitError, git
 from harness.utils.orchestra import brief as briefs
-from harness.utils.orchestra import crew, work
+from harness.utils.orchestra import crew, locked, work
 from harness.utils.orchestra.card import in_force, plan_units, unit_spec
 from harness.utils.plan.item_checks import run_limits
 from harness.utils.shapes import PlanStore
 
-ACTIONS = [("orchestra.spawn", "Spawn"), ("orchestra.started", "Started"), ("orchestra.status", "Status"),
+ACTIONS = [("orchestra.lock", "Lock"), ("orchestra.spawn", "Spawn"), ("orchestra.started", "Started"),
+           ("orchestra.status", "Status"),
            ("orchestra.take", "Take"), ("orchestra.push", "Push"), ("orchestra.question", "Question"),
            ("orchestra.handback", "Handback")]
 CHILD_ERRORS = (work.WorkError, GitError)  # the refusals of its steps, answered as the action's error
@@ -106,10 +109,15 @@ class Spawn(McpAction):
             raise ActionError(f"{card['name']}'s card names the session {card['session']!r} to adopt; adopting an open "
                               "session is not built yet: revise the card without session, or start it by hand")
         ticket = ctx.ports["plans"].ticket(sid)
+        waiting = locked.unlocked(ticket, card)
+        if waiting:
+            raise ActionError(f"{card['name']}'s acceptance tests are not locked yet ({', '.join(waiting)}): write them, "
+                              "then run('orchestra', 'lock', {}) before any child starts")
         unit = unit_spec(card, plan_units(own, ctx.ports["units"]()))
         url = unit["repo"] or source_url(ticket["plan"].get("root") or os.getcwd())
         fresh = ((ticket.get("crew") or {}).get(card["name"]) or {}).get("fresh") or {}
-        prompt = briefs.brief(plan, draft, card, sid, unit, fresh.get("note", ""), rounds=limits["rounds"])
+        start = (ticket.get(locked.LOCK) or {}).get("branch", "")  # with a lock, every child starts from the plan branch
+        prompt = briefs.brief(plan, draft, card, sid, unit, fresh.get("note", ""), rounds=limits["rounds"], start=start)
         call = briefs.create_call(plan, card, prompt, url, args.get("model", ""))
         where = "" if url else (" The unit's repository has no URL another machine can clone: add source_url to "
                                 "the call by hand.")
@@ -117,6 +125,25 @@ class Spawn(McpAction):
                 f"arguments, then record it at once: run('orchestra', 'started', {{name: '{card['name']}', sid: "
                 f"<the new session id>}}). Until then it does not count as running. Each child is a cloud session "
                 f"and costs as much as one.{where}\n" + json.dumps(call, ensure_ascii=False, indent=1))
+
+
+class Lock(McpAction):
+    """orchestra.lock: the acceptance tests of the cards, committed and pushed on the plan branch, their hashes kept."""
+    block, name, effect = "orchestra", "lock", WRITE
+    summary = ("Lock the acceptance tests the cards name (acTests, written by you first): commit them on the plan "
+               "branch plan/p<n> and push it, before any child starts; spawn needs it")
+    args_schema = {"type": "object", "properties": {}}
+    needs = ("plans", "session", "units")
+
+    def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
+        """Lock the acceptance tests of the delegated plan in force (utils/orchestra/locked.py). ActionError for no
+        delegated plan, no card with acTests, a started child, a test not written yet, or a push that fails."""
+        sid = session_of(ctx)
+        units = plan_units(in_force(ctx.ports["plans"], sid), ctx.ports["units"]())
+        try:
+            return locked.lock(ctx.ports["plans"], sid, units)
+        except locked.LockError as e:
+            raise ActionError(str(e)) from e
 
 
 class Started(McpAction):

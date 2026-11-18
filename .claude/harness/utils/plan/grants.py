@@ -127,8 +127,26 @@ def known(plan: ApprovedPlan, registry: dict[str, Behaviour], bid: str) -> None:
         raise DoorError(f"no behaviour {bid} in the plan or the registry")
 
 
+def not_locked(port: PlanStore, sid: str, rel: str) -> None:
+    """Refuse a file the orchestrator locked for this child session: an acceptance test of its card (acTests), which
+    it must make pass and never change (utils/orchestra/locked.py).
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the Claude Code session id.
+        rel: the file's path from the plan's root (the child's unit folder).
+
+    Raises:
+        DoorError: the session is a child and the file is one of its card's acceptance tests.
+    """
+    role = (port.ticket(sid) or {}).get("child") or {}
+    if rel in ((role.get("card") or {}).get("acTests") or []):
+        raise DoorError(f"{rel} is an acceptance test the orchestrator locked for this child (plan {role.get('plan')}): "
+                        "make it pass and never change it; ask the orchestrator if it is wrong")
+
+
 def add_file(port: PlanStore, sid: str, plan: ApprovedPlan, path: str, behavior: str, why: Optional[str]) -> str:
-    """The door `add file`: widen the plan with one file, for a behaviour.
+    """The door `add file`: widen the plan with one file, for a behaviour; never a file locked for a child.
 
     Args:
         port: the harness ledger (plans, tickets, audit rows).
@@ -142,9 +160,10 @@ def add_file(port: PlanStore, sid: str, plan: ApprovedPlan, path: str, behavior:
         The text for the user: "<path> is a file of plan <id> now ([<behavior>])."
 
     Raises:
-        DoorError: a bad path or reason, or an unknown behaviour.
+        DoorError: a bad path or reason, an unknown behaviour, or a locked acceptance test.
     """
     rel, text = path_of(plan, path), why_of(why)
+    not_locked(port, sid, rel)
     known(plan, port.registry(plan), behavior)
     port.door(sid, plan, grants=[("add", os.path.abspath(path), f"[{behavior}] {text}")])
     return f"{rel} is a file of plan {plan['plan_id']} now ([{behavior}])."
@@ -169,6 +188,7 @@ def add_test(port: PlanStore, sid: str, plan: ApprovedPlan, target: str, behavio
     """
     path, _, name = str(target).partition("#")
     rel = path_of(plan, path)
+    not_locked(port, sid, rel)
     if not BEHAVIOR_ID.match(str(behavior or "")):
         raise DoorError(f"--behavior {behavior!r} is not a behaviour id (a.b-c)")
     if not str(what or "").strip():

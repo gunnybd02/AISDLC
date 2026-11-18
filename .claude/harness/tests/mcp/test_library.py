@@ -89,6 +89,14 @@ class SkillsTest(unittest.TestCase):
             self.assertIn("auto mode", lib.get(name).text)
             self.assertIn("cli verify", lib.get(name).text)
 
+    def test_the_orchestrate_skill_names_the_lock_and_the_plan_branch(self):
+        """s6.docs.orchestra: the parent writes acTests, locks them, and children work on plan/p<plan>."""
+        lib = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs")
+        for name in ("orchestrate", "work"):
+            text = lib.get(name).text
+            for part in ("acTests", 'run("orchestra", "lock", {})', "plan/p<plan>"):
+                self.assertIn(part, text, name)
+
     def test_a_request_in_plain_words_finds_its_skill_first(self):
         find = Find(Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs"), ActionTable())
         for words, name in (("where do I start in this session", "work"),

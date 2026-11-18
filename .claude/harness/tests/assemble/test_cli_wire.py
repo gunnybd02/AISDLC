@@ -8,7 +8,7 @@ import unittest
 from harness.assemble.engine.cli_wire import run_cli
 from harness.assemble.engine.ports import LedgerPort
 from harness.utils.contracts import YES
-from harness.utils.plan import desk
+from harness.utils.plan import desk, tickets
 from harness.utils.plan.approval import approvals
 from harness.utils.plan.steps import StepError, step_done
 from harness.tests import entry_of
@@ -70,6 +70,21 @@ class CliTest(unittest.TestCase):
                 self.assertIn(why, out)
         self.assertEqual(run_cli(["add", "file", self.path("x.md"), "--behavior", "b", "--why", "w"],
                                  self.claude_dir)[0], 1)  # no session
+
+    def test_a_child_cannot_add_an_acceptance_test_it_is_judged_by(self):
+        """s3.child.locked: in a child session, add file and add test refuse a locked acceptance test of its card."""
+        def as_child(con, rec):
+            fresh = tickets.latest(con, "s1")
+            tickets.save(con, {**fresh, "child": {"name": "api", "plan": 7, "card": {"acTests": ["test_ac.py"]}}})
+        self.port.write(as_child)
+        (self.repo / "test_ac.py").write_text(TEST, encoding="utf-8")
+        for argv in (("add", "file", self.path("test_ac.py"), "--behavior", "s1.sets-a", "--why", "w"),
+                     ("add", "test", self.path("test_ac.py"), "--behavior", "s1.sets-a", "--what", "AC1: a is 2")):
+            with self.subTest(door=argv[1]):
+                code, out = self.cli(*argv)
+                self.assertEqual(code, 1)
+                self.assertIn("acceptance test the orchestrator locked", out)
+        self.assertEqual(self.cli("add", "file", self.path("notes.md"), "--behavior", "s1.sets-a", "--why", "docs")[0], 0)
 
     def test_add_test_gives_a_step_behaviour_its_test_and_step_done_then_commits(self):
         (self.repo / "a.py").write_text("X = 2\n", encoding="utf-8")

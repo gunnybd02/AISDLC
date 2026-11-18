@@ -2,7 +2,9 @@
 When every child has ended (accepted, forgotten or released), the parent merges the accepted children's pull
 requests one by one, in the plan's order. A conflict stops it: the answer names the pull request and its files, and
 the parent resolves it (or sends the child back) and lands again. After the last merge each unit's tests run on its
-merged base; green, with nothing of the parent's own left, closes the delegated plan as delivered."""
+merged base; green, with nothing of the parent's own left, closes the delegated plan as delivered. When the parent
+locked acceptance tests (utils/orchestra/locked.py), the children merge into the plan branch, the tests run there, and
+one pull request takes the plan branch into the base: the plan is delivered only after the user merged it."""
 from __future__ import annotations
 
 import fnmatch
@@ -16,7 +18,7 @@ from harness.utils.contracts import now
 from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError
 from harness.utils.git.run import GitError, git, run_git
-from harness.utils.orchestra import crew, synced
+from harness.utils.orchestra import crew, locked, synced
 from harness.utils.orchestra.brief import branch
 from harness.utils.orchestra.card import unit_spec
 from harness.utils.orchestra.fetch import checkout, rerun, same_repo
@@ -203,21 +205,31 @@ def land(port: PlanStore, sid: str, units: dict[str, Any], verify: list[str], gi
             return "\n".join(lines + [conflict_text(card["name"], pr, ref, files, str(e))])
         set_entry(port, sid, card["name"], card, {MERGED: {"sha": sha, "at": now()}}, MERGED)
         lines.append(f"Merged #{pr['number']} of {card['name']} into {pr.get('base', 'main')} ({sha[:12]}).")
-    red = []
+    red, held = [], (ticket.get(locked.LOCK) or {}).get("branch", "")  # with a lock, the children merged into it
     for spec in {json.dumps(unit_spec(c, units), sort_keys=True): unit_spec(c, units) for c in accepted}.values():
         command = [sys.executable if w == "{python}" else w for w in (spec.get("verify") or verify)]
         if not command:
             continue
-        with checkout(spec, repo, spec.get("base", "main")) as tree:
+        target = held or spec.get("base", "main")
+        proofs = [p for c in accepted if unit_spec(c, units) == spec for p in c.get("acTests", [])]  # for a {test} command
+        with checkout(spec, repo, target) as tree:
             root = tree if spec.get("path", ".") in ("", ".") else str(Path(tree) / spec["path"])
-            ok, tail = rerun(root, command, [], int(timeout_min) * 60)
+            ok, tail = rerun(root, command, proofs, int(timeout_min) * 60)
         lines.append(f"The tests of {spec.get('repo') or 'the home'} ({spec.get('path', '.')}) on the merged "
-                     f"{spec.get('base', 'main')}: {'green' if ok else 'RED'}.")
+                     f"{target}: {'green' if ok else 'RED'}.")
         if not ok:
             red.append(tail[-1500:])
     if red:
         return "\n".join(lines + ["Not delivered: a merged base is red. Fix it through a new plan, then land again."]
                          + red)
+    if held:  # the plan branch goes into the base only by the user's word
+        try:
+            more, merged = locked.plan_prs(port, sid, github)
+        except locked.LockError as e:
+            return "\n".join(lines + [str(e)])
+        lines += more
+        if not merged:
+            return "\n".join(lines)
     own = own_files(port.ticket(sid))
     if own and port.ticket(sid).get("phase") != "deliver":
         return "\n".join(lines + [f"Every pull request is merged. The plan waits for your own files ({', '.join(own)}): "

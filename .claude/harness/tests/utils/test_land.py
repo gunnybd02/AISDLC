@@ -4,9 +4,68 @@ the two ways on; it waits while a child runs and for the parent's own files."""
 import unittest
 
 from harness.utils.orchestra import land, review
+from harness.utils.plan import tickets
 
 land.WAIT = 0  # the tests do not wait for GitHub
-from harness.tests.utils.test_review import UNITS, FakeGitHub, Scenario, git
+from harness.tests import tree
+from harness.tests.utils.test_review import (LOCKED_UNITS, URL, UNITS, FakeGitHub, LockedScenario, Scenario, git)
+
+
+class PlanGitHub:
+    """GitHub REST for a plan with a plan branch: each pull request merges its head into its own base on the real
+    origin, through a clone of its own; the user's merge of the plan pull request is merge(n)."""
+
+    def __init__(self, origin, folder):
+        self.origin, self.folder, self.calls, self.prs = origin, folder, [], {}
+        git(folder, "clone", "-q", str(origin), ".")
+        git(folder, "config", "user.name", "u")
+        git(folder, "config", "user.email", "u@u")
+
+    def __call__(self, method, path, fields=None):
+        self.calls.append((method, path, dict(fields or {})))
+        if method == "POST":
+            n = 5 + len(self.prs)
+            self.prs[n] = {"head": fields["head"], "base": fields["base"], "merged": False}
+            return {"number": n, "html_url": f"{URL}/pull/{n}"}
+        n = int(path.split("/")[4])  # repos/o/r/pulls/<n>[/merge]
+        if method == "GET":
+            return {"merged": self.prs[n]["merged"], "mergeable": True}
+        return {"sha": self.merge(n)}
+
+    def merge(self, n):
+        pr = self.prs[n]
+        git(self.folder, "fetch", "-q", "origin")
+        git(self.folder, "switch", "-q", "-C", pr["base"], f"origin/{pr['base']}")
+        git(self.folder, "merge", "-q", "--no-ff", "-m", f"merge #{n}", f"origin/{pr['head']}")
+        git(self.folder, "push", "-q", "origin", pr["base"])
+        pr["merged"] = True
+        return git(self.folder, "rev-parse", "HEAD").strip()
+
+
+class LockedLandTest(LockedScenario):
+    def test_children_land_on_the_plan_branch_and_only_the_users_merge_delivers(self):
+        """s5.accept.plan-branch, s5.land.plan-pr, s5.land.delivered."""
+        github = PlanGitHub(self.origin, tree(self, {}))
+        self.hand_back()
+        self.assertIn("Green", review.check(self.port, "s1", "hello", LOCKED_UNITS, []))
+        self.assertIn(f"from orch/p{self.plan}/hello into plan/p{self.plan}",
+                      review.accept(self.port, "s1", "hello", LOCKED_UNITS, github))
+        self.port.write(lambda con, rec: tickets.save(con, {**self.port.ticket("s1"), "phase": "deliver"}))
+        text = land.land(self.port, "s1", LOCKED_UNITS, [], github)
+        self.assertIn(f"Merged #5 of hello into plan/p{self.plan}", text)
+        self.assertIn(f"on the merged plan/p{self.plan}: green", text)
+        self.assertIn(f"Plan pull request #6 ({URL}/pull/6): plan/p{self.plan} into work", text)
+        self.assertIn("Ask the user to merge it", text)
+        self.assertEqual(self.port.ticket("s1")["state"], "open")
+        self.assertNotIn("orch-probe/hello.py", git(self.origin, "ls-tree", "-r", "--name-only", "work"))
+        self.assertIn("Plan pull request #6", land.land(self.port, "s1", LOCKED_UNITS, [], github))  # still waits
+        github.merge(6)  # the user's merge
+        text = land.land(self.port, "s1", LOCKED_UNITS, [], github)
+        self.assertIn("The plan pull request #6 is merged into work", text)
+        self.assertIn("is delivered", text)
+        self.assertEqual(self.port.ticket("s1")["state"], "closed")
+        self.assertIn("orch-probe/hello.py", git(self.origin, "ls-tree", "-r", "--name-only", "work"))
+        self.assertEqual([c[2]["base"] for c in github.calls if c[0] == "POST"], [f"plan/p{self.plan}", "work"])
 
 
 class LandTest(Scenario):

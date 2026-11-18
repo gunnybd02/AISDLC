@@ -80,18 +80,21 @@ one as superseded: to change work in hand, revise.
 
 **Parts for child sessions**: the whole procedure is the skill `orchestrate` (`guide("orchestrate", "skills")`). In
 short (`docs/05b-orchestra-cloud.md`): a full plan with `children`, each card
-`{name, unit, goal, ac, read?, change, tests?, actions?}`; each AC names a visible case; a unit is `home` or a repo
-the plan names in `repos` (any repository, or a folder of a shared one). One
-"Approve" approves them all; then, per child, `run("orchestra", "spawn", {"name"})` gives the brief and the `create_session` call, and
+`{name, unit, goal, ac, read?, change, tests?, acTests?, actions?}`; each AC names a visible case; a unit is `home`
+or a repo the plan names in `repos` (any repository, or a folder of a shared one). One "Approve" approves them all;
+then write the acceptance tests (`acTests`) and `run("orchestra", "lock", {})` pushes them on the plan branch
+`plan/p<plan>`; per child, `run("orchestra", "spawn", {"name"})` gives the brief and the `create_session` call, and
 `run("orchestra", "started", {"name", "sid"})` records it (3 run at most; `run("orchestra", "status", {})`). While it
 runs no other plan opens in the session; revise it instead. When a child says "handed back":
-`run("orchestra", "check", {"name"})` (its receipt and its tests, rerun here), then `accept` (one pull request into
-its unit's base) or `reject` with why (3 rounds; send the text it gives with `send_message`). A question:
-`answer`. When every child has ended: `run("orchestra", "land", {})` merges the pull requests; a conflict stops it with
-the two ways on (resolve it on the child's branch, or reject); green closes the plan delivered.
+`run("orchestra", "check", {"name"})` (its receipt, the locked tests unchanged and run here), then `accept` (one pull
+request into the plan branch) or `reject` with why (3 rounds; send the text it gives with `send_message`). A question:
+`answer`. When every child has ended: `run("orchestra", "land", {})` merges the pull requests into the plan branch; a
+conflict stops it with the two ways on (resolve it on the child's branch, or reject); green opens one pull request of
+the plan branch into the base, which the user merges; then land again closes the plan delivered.
 
 **A child session** (its first prompt is a brief: `You are child session ...`): nobody is at its keyboard.
-`run("orchestra", "take", {})` first (its card plan opens, on its branch), then the loop of part 3, and
+`run("orchestra", "take", {})` first (its card plan opens, on its branch, made from the plan branch when the parent
+locked acceptance tests: make them pass, never change them; the doors refuse them), then the loop of part 3, and
 `run("orchestra", "push", {})` after every step. A question: `run("orchestra", "question", {"question"})`, then
 send it with `send_message`. Last: `run("orchestra", "handback", {"changed", "checked", "notChecked", "risks",
 "testsChanged"})`, send the one line it gives, and stop. Never AskUserQuestion, a plan of its own, a merge or a close.

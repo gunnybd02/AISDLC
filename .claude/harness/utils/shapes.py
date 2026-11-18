@@ -73,6 +73,7 @@ class Step(TypedDict, total=False):
 class Card(TypedDict, total=False):
     """One child of a delegated plan (utils/orchestra/card.py; docs/05-orchestra.md section 5.1): name (a-z, 0-9, -),
     unit (home or a declared unit), goal (one sentence), ac (1 to 6 criteria), the paths to read, change and test, the
+    acceptance tests the parent writes and locks before the child starts (acTests, utils/orchestra/locked.py), the
     name of an open session to adopt, and actions (only push)."""
     name: str
     unit: str
@@ -81,6 +82,7 @@ class Card(TypedDict, total=False):
     read: list[str]
     change: list[str]
     tests: list[str]
+    acTests: list[str]
     session: str
     actions: list[str]
 
@@ -98,7 +100,7 @@ class ChildRole(TypedDict):
     """What makes a session a child (utils/orchestra/child.py): its brief, its first prompt, named the child and the
     parent plan's number; draft the parent plan's desk id; parent the parent's session; branch the one it works and
     pushes on (orch/p<plan>/<name>); its card; the behaviour id of each criterion (p<plan>.<name>.ac<n>); its unit
-    {repo, path, verify, base} (utils/orchestra/card.unit_spec)."""
+    {repo, path, verify, base} (utils/orchestra/card.unit_spec); start the plan branch it starts from ("": the base)."""
     name: str
     plan: int
     draft: str
@@ -107,6 +109,7 @@ class ChildRole(TypedDict):
     card: Card
     behaviours: list[str]
     unit: dict[str, Any]
+    start: str
 
 
 class CrewEntry(TypedDict, total=False):
@@ -210,7 +213,8 @@ class Ticket(TypedDict, total=False):
     steps; noted (commits git.commit made, waiting for step_done); stepCommits by step; closeReason (delivered,
     abandoned, superseded); what a superseded ticket carried over (priorCommits, spentPlan); backs how many times a
     write sent it back from deliver to execute, and backTold, set False each time it goes back. A delegated ticket
-    (a plan with children) also holds the grant and its crew, the started children by name; a child's ticket holds
+    (a plan with children) also holds the grant and its crew, the started children by name, and the lock of its
+    acceptance tests (utils/orchestra/locked.py: {branch, units}); a child's ticket holds
     its role (child), the questions it asked (asks) and its last handback ({sha, at}) (utils/orchestra)."""
     id: str
     sid: str
@@ -235,6 +239,7 @@ class Ticket(TypedDict, total=False):
     backTold: bool
     grant: ChildGrant
     crew: dict[str, CrewEntry]
+    lock: dict[str, Any]
     child: ChildRole
     asks: list[dict[str, Any]]
     handback: dict[str, Any]

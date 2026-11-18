@@ -137,7 +137,7 @@ def take(port: PlanStore, sid: str, root: str) -> str:
     if not repo:
         raise WorkError(f"{root} is in no git repository: stand in the clone of the plan's repository")
     try:
-        how = switch(repo, role["branch"], role.get("unit", {}).get("base", ""))
+        how = switch(repo, role["branch"], role.get("start") or role.get("unit", {}).get("base", ""))
     except GitError as e:
         raise WorkError(f"git cannot stand on {role['branch']}: {e}") from e
     folder = child.unit_root(role, repo)

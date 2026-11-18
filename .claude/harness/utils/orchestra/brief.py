@@ -33,7 +33,8 @@ def branch(plan: int, name: str) -> str:
     return f"orch/p{plan}/{name}"
 
 
-def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[str, Any] | None = None) -> str:
+def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[str, Any] | None = None,
+               start: str = "") -> str:
     """The card as the child's harness reads it: one JSON object between CARD_OPEN and CARD_CLOSE.
 
     Args:
@@ -42,13 +43,16 @@ def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[st
         parent_sid: the parent's session id.
         draft: the parent plan's desk id (pd-...).
         unit: the unit it works in, {repo, path, verify, base} (card.unit_spec); None for the home.
+        start: the plan branch the child's branch starts from and its pull request goes into (utils/orchestra/
+            locked.py); "" for the unit's base.
 
     Returns:
         The block, three lines.
     """
     body = {"plan": plan, "draft": draft, "parent": parent_sid, "branch": branch(plan, card["name"]), "card": card,
             "unit": unit or dict(HOME_SPEC),
-            "behaviours": [behaviour_id(plan, card["name"], n) for n in range(1, len(card["ac"]) + 1)]}
+            "behaviours": [behaviour_id(plan, card["name"], n) for n in range(1, len(card["ac"]) + 1)],
+            **({"start": start} if start else {})}
     return "\n".join([CARD_OPEN, json.dumps(body, ensure_ascii=False, sort_keys=True), CARD_CLOSE])
 
 
@@ -66,7 +70,7 @@ def listed(label: str, paths: list[str]) -> str:
 
 
 def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, Any] | None = None,
-          resume: str = "", *, rounds: int) -> str:
+          resume: str = "", *, rounds: int, start: str = "") -> str:
     """The first prompt of a child: who it is, its work, how it is approved, that nobody is at its keyboard, its
     permissions, how it asks and hands back, its files and criteria, and the card block.
 
@@ -79,11 +83,20 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
         resume: the note a fresh session of the child reads first (a send-back or an answer on its branch); "" for
             its first session.
         rounds: the send-backs the child may have before the user decides (the config's limits.rounds).
+        start: the plan branch the child starts from and its pull request goes into; "" for the unit's base.
 
     Returns:
         The brief, as the prompt of create_session.
     """
     name, spec = card["name"], unit or dict(HOME_SPEC)
+    into, locked = start or spec["base"], list(card.get("acTests", []))
+    held = (f"Acceptance tests (locked): {', '.join(locked)}. The orchestrator wrote them; they are on your branch from "
+            f"the start (take makes it from {into}). Make them pass and never change them: the harness refuses it, and "
+            "the check sees any change.") if locked else ""
+    judged = ("The orchestrator reads no code: it checks that the locked acceptance tests are unchanged on your branch "
+              "and runs them, and only them, with your unit's test command." if locked else
+              "The orchestrator reads no code: it checks that each criterion has a registered behaviour whose "
+              "description starts with \"AC<n>:\" and runs its tests again.")
     where = f"the unit {card['unit']}" + (f", in the folder {spec['path']} of its repository" if spec["path"] != "."
                                           else "")
     push = ("You may also open a merge request, asking as usual." if "push" in card.get("actions", [])
@@ -94,7 +107,8 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
         (f"You are a fresh session of this child: your branch {branch(plan, name)} holds your earlier work, and take "
          f"stands on it. Read {resume} on it first: it is why you go on." if resume else ""),
         f"Your work: {card['goal'].rstrip('.')}. Work only in {where}. Once the orchestrator accepts it, your "
-        f"branch becomes a pull request into {spec['base']}.",
+        f"branch becomes a pull request into {into}.",
+        held,
         "How you are approved: the user approved your card with the parent plan. First call "
         "run('orchestra', 'take'); it opens your card plan. Never present a plan of your own.",
         "Nobody is at this keyboard: never call AskUserQuestion and never wait for an approval form.",
@@ -116,10 +130,8 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
         "testsChanged}); the harness writes your receipt on your branch and pushes it. Then stop.",
         "\n".join(x for x in (listed("Read", card.get("read", [])), listed("Change", card.get("change", [])),
                               listed("Tests", card.get("tests", []))) if x),
-        "The orchestrator reads no code: it checks that each criterion has a registered behaviour whose description "
-        f"starts with \"AC<n>:\" and runs its tests again. It may send you back at most {rounds} times; then the user "
-        "decides.\n" + "\n".join(acs),
-        card_block(plan, card, parent_sid, draft, spec),
+        f"{judged} It may send you back at most {rounds} times; then the user decides.\n" + "\n".join(acs),
+        card_block(plan, card, parent_sid, draft, spec, start),
     ]
     return "\n\n".join(p for p in parts if p)
 
