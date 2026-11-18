@@ -61,6 +61,27 @@ def line(label: str, values: Any, sep: str = "; ") -> list[str]:
     return [f"{label}: {sep.join(one(v) for v in values)}"] if values else []
 
 
+def repo_line(name: str, spec: dict[str, Any]) -> str:
+    """One repository of a plan on one line: where the plan works, so the user approves the exact repository.
+
+    Args:
+        name: the repository's name in the plan.
+        spec: {url, base?, verify?, path?, pipeline?}.
+
+    Returns:
+        "- <name>: <url> | base <base> | folder <path> | verify: <words> | pipeline <name>", each part only when given
+        (base main when none is given).
+    """
+    parts = [f"- {name}: {spec.get('url', '')}", f"base {spec.get('base', 'main')}"]
+    if spec.get("path") not in (None, "", "."):
+        parts.append(f"folder {spec['path']}")
+    if spec.get("verify"):
+        parts.append("verify: " + " ".join(str(w) for w in spec["verify"]))
+    if spec.get("pipeline"):
+        parts.append(f"pipeline {spec['pipeline']}")
+    return " | ".join(parts)
+
+
 def card_line(card: Card) -> str:
     """One child of a delegated plan on one line: its whole card, so what the user approves is what the user reads.
 
@@ -116,6 +137,10 @@ def sections(items: PlanItems) -> list[tuple[str, list[str]]]:
         out.append(("Code", ["Code:"] + [
             f"- {c['file']}" + (f": {one(c['code'])}" if one(c.get("code", "")) else "") + f" | why: {one(c['reason'])}"
             for c in code]))
+    repos = items.get("repos") if isinstance(items.get("repos"), dict) else {}
+    out.append(("Repos", ["Repos:"] + [repo_line(n, s) for n, s in repos.items()] if repos else []))
+    limits = items.get("limits") if isinstance(items.get("limits"), dict) else {}
+    out.append(("Limits", line("Limits", [f"{k} {v}" for k, v in limits.items()], ", ")))
     out.append(("Services", line("Services", items.get("services"), ", ")))
     out.append(("Branch", line("Branch", items.get("branch") or [])))
     out.append(("What", line("What", items.get("title", "") if code else items.get("what"))))

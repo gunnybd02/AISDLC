@@ -27,7 +27,8 @@ from harness.utils.git.facts import top
 from harness.utils.git.run import GitError, git
 from harness.utils.orchestra import brief as briefs
 from harness.utils.orchestra import crew, work
-from harness.utils.orchestra.card import unit_spec
+from harness.utils.orchestra.card import in_force, plan_units, unit_spec
+from harness.utils.plan.item_checks import run_limits
 from harness.utils.shapes import PlanStore
 
 ACTIONS = [("orchestra.spawn", "Spawn"), ("orchestra.started", "Started"), ("orchestra.status", "Status"),
@@ -95,7 +96,8 @@ class Spawn(McpAction):
         delegated plan is in force, the name is no child of it, it has started, limits.children run, or its card names no
         change paths or an open session to adopt."""
         sid = session_of(ctx)
-        limits = ctx.ports["limits"]()
+        own = in_force(ctx.ports["plans"], sid)
+        limits = run_limits(own, ctx.ports["limits"]())
         plan, draft, card = room(ctx.ports["plans"], sid, args["name"], limits["children"])
         if not card.get("change"):
             raise ActionError(f"{card['name']}'s card names no files to change: a cloud child's plan is made from its "
@@ -104,7 +106,7 @@ class Spawn(McpAction):
             raise ActionError(f"{card['name']}'s card names the session {card['session']!r} to adopt; adopting an open "
                               "session is not built yet: revise the card without session, or start it by hand")
         ticket = ctx.ports["plans"].ticket(sid)
-        unit = unit_spec(card, ctx.ports["units"]())
+        unit = unit_spec(card, plan_units(own, ctx.ports["units"]()))
         url = unit["repo"] or source_url(ticket["plan"].get("root") or os.getcwd())
         fresh = ((ticket.get("crew") or {}).get(card["name"]) or {}).get("fresh") or {}
         prompt = briefs.brief(plan, draft, card, sid, unit, fresh.get("note", ""), rounds=limits["rounds"])
@@ -129,7 +131,8 @@ class Started(McpAction):
         """Write the child's crew entry (running, its session) and a story row in one transaction. ActionError for a
         session id of the wrong shape, this session's own id, a session that is another child already, or any reason
         spawn refuses."""
-        sid, cap = session_of(ctx), ctx.ports["limits"]()["children"]
+        sid = session_of(ctx)
+        cap = run_limits(in_force(ctx.ports["plans"], sid), ctx.ports["limits"]())["children"]
         child_sid = str(args["sid"]).strip()
         if not SESSION_ID.match(child_sid):
             raise ActionError(f"{child_sid!r} is no session id: give the id create_session answered (session_...)")
@@ -159,7 +162,9 @@ class Status(McpAction):
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """The status of the session's delegated plan (utils/orchestra/crew.status)."""
-        return crew.status(ctx.ports["plans"].ticket(session_of(ctx)), ctx.ports["limits"]()["children"])
+        sid = session_of(ctx)
+        cap = run_limits(in_force(ctx.ports["plans"], sid), ctx.ports["limits"]())["children"]
+        return crew.status(ctx.ports["plans"].ticket(sid), cap)
 
 
 

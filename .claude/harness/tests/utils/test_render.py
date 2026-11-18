@@ -70,6 +70,16 @@ class BlockTest(unittest.TestCase):
         self.assertEqual(render.changed(FULL, FULL), "")
         self.assertEqual(render.fenced("## Plan"), "```text\n## Plan\n```")
 
+    def test_the_block_shows_each_repo_and_the_limits(self):
+        items = {**LIGHT, "repos": {"shop": {"url": "https://github.com/acme/shop", "base": "develop", "path": "api",
+                                             "verify": ["npm", "test"]},
+                                    "web": {"url": "https://github.com/acme/web"}},
+                 "limits": {"children": 2}}
+        lines = render.block(items).splitlines()
+        self.assertEqual(lines[1:5], ["Repos:", "- shop: https://github.com/acme/shop | base develop | folder api | "
+                                      "verify: npm test", "- web: https://github.com/acme/web | base main",
+                                      "Limits: children 2"])
+
 
 if __name__ == "__main__":
     unittest.main()

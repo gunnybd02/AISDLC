@@ -7,9 +7,11 @@ import os
 from typing import Any
 
 from harness.utils.contracts import ActionContext, ActionError, McpAction, READ, WRITE, session_of
+from harness.utils.git.run import GitError, git
 from harness.utils.orchestra import child, crew
 from harness.utils.plan import desk
 from harness.utils.plan import render
+from harness.utils.plan.item_checks import repo_key
 from harness.utils.shapes import PlanItems, Revision
 
 ACTIONS = [("plan.plan_present", "PlanPresent"), ("plan.plan_revise", "PlanRevise"), ("plan.plan_show", "PlanShow"),
@@ -27,6 +29,35 @@ def declared(ctx: ActionContext) -> list[str]:
         The names; [] when no unit is declared.
     """
     return list(ctx.ports["units"]())
+
+
+def bind_repo(items: PlanItems) -> None:
+    """A plan with repos works in its folder only when that folder is in one of them (its origin names the same
+    owner/name); the test command of that repository becomes the plan's verify, set here, never by the model. A plan
+    with tests needs one. A plan without repos keeps the old way (the config's test command).
+
+    Args:
+        items: the checked items, with root set; verify is set or taken out here.
+
+    Raises:
+        ActionError: the folder is in none of the repos, or the plan has tests and its repository names no verify.
+    """
+    items.pop("verify", None)
+    repos = items.get("repos")
+    if not repos:
+        return
+    try:
+        origin = git(items["root"], "remote", "get-url", "origin").strip()
+    except GitError:
+        origin = ""
+    name = next((n for n, spec in repos.items() if origin and repo_key(spec.get("url", "")) == repo_key(origin)), None)
+    if name is None:
+        raise ActionError(NOT_KEPT + f"the folder {items['root']} is in none of the plan's repos (its origin is "
+                          f"{origin or 'none'}): name its repository in repos, or present the plan from a clone of one")
+    if repos[name].get("verify"):
+        items["verify"] = list(repos[name]["verify"])
+    elif items.get("tests"):
+        raise ActionError(NOT_KEPT + f"repo {name} names no verify and the plan has tests: give its test command")
 
 
 def answer(head: str, items: PlanItems, plan_id: str, rev: int, shown: str = "", form: bool = True,
@@ -100,6 +131,7 @@ class PlanPresent(McpAction):
         if problems:
             raise ActionError(NOT_KEPT + "; ".join(problems))
         items["root"] = os.getcwd().replace("\\", "/")  # the MCP server runs in the project's folder
+        bind_repo(items)
         plan_id, rev, _ = ctx.ports["plans"].present(items, sid=sid)
         return answer(render.head(items, plan_id, rev), items, plan_id, rev)
 
@@ -138,6 +170,7 @@ class PlanRevise(McpAction):
         if problems:
             raise ActionError(NOT_KEPT + "; ".join(problems))
         items["root"] = root
+        bind_repo(items)
         if items == old["items"]:
             raise ActionError("nothing changed")
         why = {k: v for k, v in (args.get("why") or {}).items() if k in clean}

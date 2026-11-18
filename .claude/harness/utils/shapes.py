@@ -141,12 +141,16 @@ class CrewEntry(TypedDict, total=False):
 
 class PlanItems(TypedDict, total=False):
     """A plan as presented and kept (utils/plan/desk.py KEYS). A light plan holds title, what, files and tests; a full
-    plan also steps, overview, code, services, checks, assumptions, notDoing and risks. root is the folder the plan's
-    paths are relative to, set by the server, never by the model."""
+    plan also steps, overview, code, services, checks, assumptions, notDoing and risks. repos names the repositories
+    the plan works on ({name: {url, base?, verify?, path?, pipeline?}}), limits may lower the orchestra limits. root is
+    the folder the plan's paths are relative to, and verify the test command of the repository root is in (from
+    repos): both set by the server, never by the model."""
     title: str
     overview: dict[str, list[str]]
     code: list[dict[str, str]]
     test: list[dict[str, Any]]
+    repos: dict[str, dict[str, Any]]
+    limits: dict[str, int]
     services: list[str]
     branch: str
     what: list[str]
@@ -164,6 +168,7 @@ class PlanItems(TypedDict, total=False):
     notDoing: list[str]
     risks: list[str]
     root: str
+    verify: list[str]
 
 
 class Revision(TypedDict, total=False):

@@ -3,6 +3,7 @@ light or full."""
 import unittest
 
 from harness.utils.plan import desk
+from harness.utils.plan.item_checks import run_limits
 
 
 class DeskTest(unittest.TestCase):
@@ -63,6 +64,37 @@ class RevisedBehavioursTest(unittest.TestCase):
         given = desk.normalize(desk.merge(old, desk.clean({"test": [test("x")], "behaviors": [own]})))
         self.assertEqual(ids(given), ["kept-one", "s1.made", "x"])  # a behaviors item given replaces the list whole;
         # the steps are not replaced, so their behaviour comes back from them
+
+    def test_repos_name_each_repository_with_its_url_and_a_bad_one_is_refused(self):
+        good = {"title": "Fix the parser", "what": ["w"], "files": ["a.py"],
+                "repos": {"shop": {"url": "https://github.com/acme/shop", "base": "develop", "verify": ["npm", "test"],
+                                   "path": "api", "pipeline": "node"}}}
+        self.assertEqual(desk.check(desk.normalize(desk.clean(good))), [])
+        for repos, why in (({"Shop": {"url": "https://github.com/acme/shop"}}, "no repository name"),
+                           ({"home": {"url": "https://github.com/acme/shop"}}, "no repository name"),
+                           ({"shop": {"url": "git@github.com:acme/shop.git"}}, "https URL"),
+                           ({"shop": {"url": "https://github.com/acme"}}, "https URL"),
+                           ({"shop": {"url": "https://github.com/acme/shop", "verify": "npm test"}}, "list of words"),
+                           ({"shop": {"url": "https://github.com/acme/shop", "path": "../up"}}, "inside the repository"),
+                           ({"shop": {"url": "https://github.com/acme/shop", "token": "x"}}, "only"),
+                           ({}, "a map of 1 to")):
+            problems = desk.check(desk.normalize(desk.clean({**good, "repos": repos})))
+            self.assertTrue(any(why in p for p in problems), (repos, problems))
+
+    def test_services_may_name_the_repos_of_the_plan(self):
+        plan = {"title": "Fix the parser", "what": ["w"], "files": ["a.py"], "services": ["shop"]}
+        self.assertTrue(any("no declared unit" in p for p in desk.check(desk.normalize(desk.clean(plan)))))
+        plan["repos"] = {"shop": {"url": "https://github.com/acme/shop"}}
+        self.assertEqual(desk.check(desk.normalize(desk.clean(plan))), [])
+
+    def test_limits_may_only_lower_the_defaults(self):
+        plan = {"title": "Fix the parser", "what": ["w"], "files": ["a.py"]}
+        self.assertEqual(desk.check(desk.normalize(desk.clean({**plan, "limits": {"children": 2, "rounds": 1}}))), [])
+        for limits in ({"children": 4}, {"rounds": 0}, {"children": True}, {"other": 1}):
+            self.assertTrue(desk.check(desk.normalize(desk.clean({**plan, "limits": limits}))), limits)
+        self.assertEqual(run_limits({"limits": {"children": 2}}, {"children": 3, "rounds": 3}),
+                         {"children": 2, "rounds": 3})
+        self.assertEqual(run_limits({}, {"children": 3, "rounds": 3}), {"children": 3, "rounds": 3})
 
 
 if __name__ == "__main__":

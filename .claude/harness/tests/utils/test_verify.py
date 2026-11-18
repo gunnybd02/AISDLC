@@ -62,6 +62,16 @@ class VerifyBlockTest(unittest.TestCase):
             self.assertIn("passed", verify(port, Config.load(claude_dir).verify, plan_id))
         made.assert_not_called()
 
+    def test_the_test_command_of_the_plan_runs_before_the_one_of_the_config(self):
+        claude_dir = copy_tree(self, {"project.json": json.dumps({"name": "t", "verify": ["{python}", "-c",
+                                                                                            "raise SystemExit(1)"]})})
+        repo = git_repo(self, {"a.md": "one\n"})
+        port = LedgerPort(claude_dir)
+        plan_id, _, q = port.present({"title": "t", "files": ["a.md"], "root": str(repo),
+                                      "verify": ["{python}", "-c", "pass"]})  # set by the server from the plan's repo
+        port.approve("s1", port.waiting()[0])
+        self.assertIn("passed", verify(port, Config.load(claude_dir).verify, plan_id))
+
 
 if __name__ == "__main__":
     unittest.main()

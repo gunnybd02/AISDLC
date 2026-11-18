@@ -21,6 +21,8 @@ from harness.utils.contracts import ActionContext, ActionError, McpAction, READ,
 from harness.utils.git.github import GitHubError
 from harness.utils.git.run import GitError
 from harness.utils.orchestra import cleanup, land, review
+from harness.utils.orchestra.card import in_force, plan_units
+from harness.utils.plan.item_checks import run_limits
 from harness.utils.orchestra.fetch import FetchError
 
 ACTIONS = [("orchestra.check", "Check"), ("orchestra.accept", "Accept"), ("orchestra.reject", "Reject"),
@@ -45,7 +47,7 @@ def store_folder(ctx: ActionContext) -> str:
 
 
 def units(ctx: ActionContext) -> dict[str, Any]:
-    """The declared units by name, {} when none is declared.
+    """The units by name: the declared ones and the repos of the plan in force in the calling session.
 
     Args:
         ctx: the action's ports.
@@ -53,7 +55,7 @@ def units(ctx: ActionContext) -> dict[str, Any]:
     Returns:
         {name: {repo, path, verify, base}}.
     """
-    return ctx.ports["units"]()
+    return plan_units(in_force(ctx.ports["plans"], session_of(ctx)), ctx.ports["units"]())
 
 
 class Check(McpAction):
@@ -98,7 +100,7 @@ class Reject(McpAction):
         """Push the send-back note and keep the round (utils/orchestra/review.reject)."""
         sid = session_of(ctx)
         return answered(PARENT_ERRORS, lambda: review.reject(ctx.ports["plans"], sid, args["name"], args["why"], units(ctx),
-                                                                   ctx.ports["limits"]()["rounds"]))
+                                                                   run_limits(in_force(ctx.ports["plans"], session_of(ctx)), ctx.ports["limits"]())["rounds"]))
 
 
 class Answer(McpAction):
