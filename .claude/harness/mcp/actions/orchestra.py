@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Any
+from typing import Any, Optional
 
 from harness.utils.contracts import ActionContext, ActionError, McpAction, READ, WRITE, answered, session_of
 from harness.utils.git.facts import top
@@ -257,17 +257,28 @@ class Take(McpAction):
     summary = ("A child's first call: it registers against its issue and ticket when its brief names them, then its "
                "card plan opens, approved by the grant of the parent plan (no form), on its branch orch/p<plan>/<name>")
     args_schema = {"type": "object", "properties": {}}
-    needs = ("plans", "session", "github")
+    needs = ("plans", "session", "github", "commit_judge", "git_judge")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Register the child (utils/orchestra/register.check), then open its card plan in the server's folder
-        (utils/orchestra/work.take). ActionError for a ticket not checked yet, records that disagree with the brief, a
-        session that is no child, a card without change paths, another plan in force, or git refusing the branch."""
+        (utils/orchestra/work.take), its registration committed first on its branch (register.on_branch) and pushed.
+        ActionError for a ticket not checked yet, records that disagree with the brief, a session that is no child, a
+        card without change paths, another plan in force, git refusing the branch, or the rules stopping the record."""
         sid, port = session_of(ctx), ctx.ports["plans"]
 
         def go() -> str:
-            line = register.check(port, sid, os.getcwd(), ctx.ports["github"])
-            return (line + "\n" if line else "") + work.take(port, sid, os.getcwd())
+            line, made = register.check(port, sid, os.getcwd(), ctx.ports["github"]), []
+
+            def first(repo: str) -> Optional[dict[str, Any]]:
+                made.append(register.on_branch(port, sid, repo, ctx.ports["commit_judge"]))
+                return made[-1]
+            text = (line + "\n" if line else "") + work.take(port, sid, os.getcwd(), first)
+            if not any(made):
+                return text
+            try:
+                return f"{text}\n{work.push(port, sid, ctx.ports['git_judge']).splitlines()[0]}"
+            except work.WorkError as e:
+                return f"{text}\nThe registration is not pushed yet ({e}): run('orchestra', 'push')."
         return answered(CHILD_ERRORS + (register.RegisterError,), go)
 
 

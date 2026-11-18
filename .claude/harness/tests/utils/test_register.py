@@ -140,7 +140,8 @@ class TakeTest(unittest.TestCase):
         self.addCleanup(os.chdir, here)
 
     def take(self, body=None):
-        ctx = ActionContext({"plans": self.port, "session": lambda: "c1", "github": github_of(body or self.body)})
+        ctx = ActionContext({"plans": self.port, "session": lambda: "c1", "github": github_of(body or self.body),
+                             "commit_judge": lambda *a: ALLOW, "git_judge": lambda *a: ALLOW})
         return Take().run(ctx, {})
 
     def ticket(self):
@@ -160,6 +161,21 @@ class TakeTest(unittest.TestCase):
         self.assertEqual(git(self.repo, "branch", "--show-current").strip(), "orch/p7/api")
         self.assertTrue((self.repo / "tests" / "test_orders_ac.py").is_file())
         self.assertEqual(len(self.port.rows("SELECT 1 AS x FROM pl_notes WHERE kind = 'child.registered'")), 1)
+
+    def test_the_approval_names_the_registration_and_take_pushes_it(self):
+        """s3.register.approval: the ledger's grant of the card plan names issue #41 and the record's commit, which
+        is the first commit of the branch on origin, over the plan branch."""
+        self.ticket()
+        text = self.take()
+        sha = git(self.origin, "rev-parse", "orch/p7/api").strip()
+        self.assertIn("Pushed orch/p7/api", text)
+        self.assertEqual(git(self.origin, "log", "--format=%s", "plan/p7..orch/p7/api").splitlines(),
+                         [git(self.origin, "log", "-1", "--format=%s", sha).strip()])
+        self.assertTrue(git(self.origin, "log", "-1", "--format=%s", sha).startswith("#41 api: register (issue "))
+        grants = [json.loads(r["body"]) for r in self.port.rows("SELECT body FROM pl_logs")]
+        grant = [g for g in grants if g.get("what") == "grant"][-1]
+        self.assertTrue(grant["by"].endswith(f", registration #41 in {sha[:12]}"), grant["by"])
+        self.assertEqual(self.port.approved("c1")["base"], sha)
 
     def test_a_mismatch_pushes_its_reason_and_opens_no_plan(self):
         """s2.take.refused: the issue on GitHub is for another scope; the reason is question 1 on the branch."""

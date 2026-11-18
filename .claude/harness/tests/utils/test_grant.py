@@ -45,5 +45,27 @@ class GrantTest(unittest.TestCase):
         self.assertIsNotNone(grant.active(rows_of(json.dumps({"until": time.time() + 5}))))
 
 
+class ChildScopeTest(unittest.TestCase):
+    """The plan doors' grant of a file (utils/plan/grants.py) in a child session: its scope is its card's."""
+
+    def port(self, record):
+        child = {"name": "api", "plan": 7, "record": record,
+                 "card": {"change": ["app/orders.py", "app/views/"], "tests": ["tests/test_orders.py"],
+                          "acTests": ["tests/test_orders_ac.py"]}}
+        return type("Port", (), {"ticket": lambda self, sid: {"child": child}})()
+
+    def test_a_registered_child_adds_only_files_of_its_scope(self):
+        """s3.child.scope: change and tests (a folder holds its files) pass; anything else is refused with the issue."""
+        from harness.utils.plan import grants
+        port = self.port({"issue": {"number": 41}})
+        for rel in ("app/orders.py", "app/views/list.py", "tests/test_orders.py"):
+            grants.not_locked(port, "c1", rel)  # no refusal
+        with self.assertRaisesRegex(grants.DoorError, r"app/other\.py is outside the scope of issue #41"):
+            grants.not_locked(port, "c1", "app/other.py")
+        with self.assertRaisesRegex(grants.DoorError, "acceptance test the orchestrator locked"):
+            grants.not_locked(port, "c1", "tests/test_orders_ac.py")
+        grants.not_locked(self.port({}), "c1", "app/other.py")  # a child without an issue keeps the old doors
+
+
 if __name__ == "__main__":
     unittest.main()

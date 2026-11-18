@@ -13,7 +13,7 @@ from collections.abc import Iterable, Sequence
 from typing import Optional
 
 from harness.utils.plan.item_checks import BEHAVIOR_ID
-from harness.utils.plan.files import allows, relative
+from harness.utils.plan.files import allows, matches, relative
 from harness.utils.shapes import ApprovedPlan, Behaviour, PlanStore
 
 LONGEST_WHY = 200
@@ -129,7 +129,8 @@ def known(plan: ApprovedPlan, registry: dict[str, Behaviour], bid: str) -> None:
 
 def not_locked(port: PlanStore, sid: str, rel: str) -> None:
     """Refuse a file the orchestrator locked for this child session: an acceptance test of its card (acTests), which
-    it must make pass and never change (utils/orchestra/locked.py).
+    it must make pass and never change (utils/orchestra/locked.py); and, for a child with an issue, any file outside
+    its scope, its card's change and tests (the scope harness ci checks, utils/orchestra/ci.py).
 
     Args:
         port: the harness ledger (plans, tickets, audit rows).
@@ -140,9 +141,14 @@ def not_locked(port: PlanStore, sid: str, rel: str) -> None:
         DoorError: the session is a child and the file is one of its card's acceptance tests.
     """
     role = (port.ticket(sid) or {}).get("child") or {}
-    if rel in ((role.get("card") or {}).get("acTests") or []):
+    card = role.get("card") or {}
+    if rel in (card.get("acTests") or []):
         raise DoorError(f"{rel} is an acceptance test the orchestrator locked for this child (plan {role.get('plan')}): "
                         "make it pass and never change it; ask the orchestrator if it is wrong")
+    number = ((role.get("record") or {}).get("issue") or {}).get("number")
+    if number and not matches(list(card.get("change") or []) + list(card.get("tests") or []), rel):
+        raise DoorError(f"{rel} is outside the scope of issue #{number} (its change and tests): harness ci refuses "
+                        "any other file; ask the orchestrator (run('orchestra', 'question')) if the card needs it")
 
 
 def add_file(port: PlanStore, sid: str, plan: ApprovedPlan, path: str, behavior: str, why: Optional[str]) -> str:
