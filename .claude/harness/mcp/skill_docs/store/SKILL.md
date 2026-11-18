@@ -22,7 +22,8 @@ One upload covers everything before it: at most one per checkpoint, never one pe
 ## Steps
 1. `run("ledger", "export", {"reason": "<reason>"})`. The harness keeps the copy's record in the ledger, copies the
    whole ledger into `.harness-export/` of the folder the call is made from (git ignores it), checks that its schema
-   is exactly the harness's, and answers with one Drive call.
+   is exactly the harness's, gzips it (`<name>.db.gz`: one Drive call carries about 3 MB of file), and answers with
+   one Drive call.
 2. Make that call with the Google Drive tool `create_file` (its name may show the connector's id in place of
    `Google_Drive`), with exactly the values of the answer. Copies go into the store's `db` folder. When no Drive
    answer showed `db` yet, the answer first says to find it (`search_files`, `title = 'db'` under the store folder)
@@ -32,7 +33,7 @@ One upload covers everything before it: at most one per checkpoint, never one pe
    |---|---|
    | `title` | the name the answer gives |
    | `parentId` | the `db` folder's id |
-   | `contentMimeType` | `application/x-sqlite3` |
+   | `contentMimeType` | `application/gzip` |
    | `disableConversionToGoogleType` | `true` |
    | `base64Content` | `sha256:<hash>:<path>`, as given: the app reads the file itself; never type the file's bytes |
 3. The harness sees Drive's answer and keeps that the store holds the copy; it tells you so in a note. Tell the user in
@@ -40,7 +41,8 @@ One upload covers everything before it: at most one per checkpoint, never one pe
 4. `run("ledger", "store_status", {})` says the newest copy the store holds and the work that is in no copy yet.
 
 ## Which session, and when
-`<session>__<ledger>-<number>__<UTC time>__<reason>__<newest commit>__s<schema>.db`
+`<session>__<ledger>-<number>__<UTC time>__<reason>__<newest commit>__s<schema>.db.gz` (copies made before PR 65
+end in `.db`, not gzipped). To read one, unzip it first: `gunzip <name>.db.gz` gives the SQLite file `<name>.db`.
 - `<ledger>-<number>`: the ledger's id (6 characters) and the copy's number. The highest number of a ledger is its
   whole content; lower numbers are its history. A session that starts again on a new machine has a new ledger id.
 - Inside each copy, the table `pl_notes` holds its record (`kind = 'store.export'`: ledger, number, session, reason,
@@ -52,6 +54,7 @@ One upload covers everything before it: at most one per checkpoint, never one pe
 |---|---|---|
 | `no store folder` | no folder id is set on this machine | the store is off; when the user wants it, ask for the Drive folder's id and pass `{"folder": "<id>"}`; the lasting place is the environment variable `HARNESS_DRIVE_FOLDER` |
 | `the ledger's schema is not the harness's` | the ledger drifted from `schema.sql` | do not upload; tell the user, `run("health", "doctor", {})` |
+| `bytes gzipped, over the ... one Drive call carries` | even gzipped, the ledger is too big for one call | do not upload; tell the user the size |
 | Drive: `can't be sent by reference` | the Drive tool reads a file only from the session's own folders | export again with `{"into": "<a folder inside this session's working folder>"}`, then the new call |
 | no Google Drive tool, or the upload fails | the copy is not in the store | tell the user; the turn ends, and the next checkpoint tries again with a new copy |
 

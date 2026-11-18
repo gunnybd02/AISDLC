@@ -106,6 +106,12 @@ class SkillsTest(unittest.TestCase):
         for part in ("`db/`", "`tickets/`", "the `db` folder's id"):
             self.assertIn(part, store_text)
 
+    def test_the_store_skill_says_copies_are_gzipped(self):
+        """s2.docs.gzip: a person can open a copy."""
+        text = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs").get("store").text
+        for part in (".db.gz", "application/gzip", "gunzip <name>.db.gz"):
+            self.assertIn(part, text)
+
     def test_a_request_in_plain_words_finds_its_skill_first(self):
         find = Find(Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs"), ActionTable())
         for words, name in (("where do I start in this session", "work"),
