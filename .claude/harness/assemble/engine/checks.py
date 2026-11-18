@@ -1,11 +1,12 @@
 """The doctor door harness/entry/doctor.py calls: every problem of the tree, and the report of them."""
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
 from typing import Any
 
 from harness.assemble.engine.build import CLAUDE_DIR, build_runner, code_of, items_of, skill_docs
-from harness.assemble.engine.config import Config, ConfigError
 from harness.assemble.engine.loader import Loader
 from harness.assemble.engine.pipeline import PipelineBook
 from harness.assemble.engine.ports import SERVER_PORTS
@@ -14,8 +15,9 @@ from harness.utils.ledger.db import compare_real
 
 
 def doctor(claude_dir: str | Path = CLAUDE_DIR) -> list[str]:
-    """Every problem of the tree: the indexes, each item's ref, the build (config, pipeline, rules), the skills, the real
-    ledger's schema, the hash chains of the home's ledger, the nets. The nets are dev-time code, imported here only, so they never weigh on a hook call.
+    """Every problem of the tree: the indexes, each item's ref, the build (pipeline, rules), the skills, the real
+    ledger's schema, the hash chains of the home's ledger, the nets. The nets are dev-time code, imported here only, so
+    they never weigh on a hook call.
 
     Args:
         claude_dir: the home, the .claude folder; the nets read the code that runs (code_of).
@@ -23,23 +25,23 @@ def doctor(claude_dir: str | Path = CLAUDE_DIR) -> list[str]:
     Returns:
         One line per problem; [] when the tree is clean.
     """
-    from harness.nets import (bridges_net, config_net, english_net, entry_net, hints_net, imports_net, layout_net,
-                              owners_net, size_net, verdict_net)
+    from harness.nets import (bridges_net, english_net, entry_net, hints_net, imports_net, layout_net, owners_net,
+                              size_net, verdict_net)
     claude_dir = Path(claude_dir)
     problems = Loader(code_of(claude_dir)).problems()
     if not problems:
         problems += built(claude_dir) + pipelines(claude_dir)
     problems += real_ledger(claude_dir)
     problems += chains(claude_dir)
-    for net in (layout_net, imports_net, bridges_net, size_net, verdict_net, config_net, entry_net, hints_net,
-                owners_net, english_net):
+    for net in (layout_net, imports_net, bridges_net, size_net, verdict_net, entry_net, hints_net, owners_net,
+                english_net):
         problems += net.check(code_of(claude_dir))
     return problems
 
 
 def pipelines(claude_dir: Path) -> list[str]:
-    """Every pipeline file that does not read, names extends, or names a gear no block declares (spec 13 section 7), and
-    every unit of project.json that names a pipeline with no file (section 11.6).
+    """Every pipeline file that does not read, names extends, or names a gear no block declares (spec 13 section 7).
+    A plan's repo that names a pipeline with no file is refused when the hook builds its runner.
 
     Args:
         claude_dir: the home, the .claude folder.
@@ -50,13 +52,7 @@ def pipelines(claude_dir: Path) -> list[str]:
     items = items_of(claude_dir)
     known = {"translators": {n for n, i in items.items() if i.kind == "translator"},
              "detectors": {n for n, i in items.items() if i.kind == "detector"}}
-    book = PipelineBook(code_of(claude_dir) / "harness" / "assemble" / "pipelines")
-    try:
-        mapped = Config.load(claude_dir).pipelines()
-    except ConfigError:
-        mapped = {}  # the build check names a config that does not load
-    return book.problems(known) + [f"unit {unit}: its pipeline {name} has no file in assemble/pipelines"
-                                   for unit, name in sorted(mapped.items()) if name not in book.names()]
+    return PipelineBook(code_of(claude_dir) / "harness" / "assemble" / "pipelines").problems(known)
 
 
 def built(claude_dir: Path) -> list[str]:
@@ -121,19 +117,18 @@ def chains(claude_dir: str | Path) -> list[str]:
 
 
 def real_ledger(claude_dir: str | Path) -> list[str]:
-    """The drift of the real ledger named in the config from schema.sql, read only; nothing when none is named, or
-    when the config does not load (built() reports that).
+    """The drift of the real ledger from schema.sql, read only: the one HARNESS_LEDGER names (the user's PC); nothing
+    when none is named. A Windows path names no file on another system.
 
     Args:
-        claude_dir: the home, the .claude folder.
+        claude_dir: the home, the .claude folder (not read).
 
     Returns:
         "ledger <drift>" lines.
     """
-    try:
-        path = Config.load(claude_dir).ledger_here
-    except ConfigError:
-        return []
+    path = os.environ.get("HARNESS_LEDGER", "").strip()
+    if path and os.name != "nt" and re.match(r"^[A-Za-z]:[\\/]", path):
+        path = ""
     return [f"ledger {line}" for line in compare_real(path)] if path else []
 
 

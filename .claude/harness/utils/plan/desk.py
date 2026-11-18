@@ -18,13 +18,16 @@ from typing import Any, Optional
 
 from harness.utils.orchestra import card
 from harness.utils.plan.item_checks import (BEHAVIOR_ID, MAX_POINT, STANDALONE, branch_problems, code_problems,
-                                            commands_problems, one_line, overview_problems, path_problems, points,
-                                            services_problems, steps_problems, strings, test_problems, title_problems)
+                                            banned_problems, commands_problems, limits_problems, one_line,
+                                            overview_problems,
+                                            path_problems, points, repos_problems, services_problems, steps_problems,
+                                            strings, test_problems, title_problems)
 from harness.utils.plan.tickets import base36
 from harness.utils.shapes import PlanItems
 
-KEYS = ("title", "overview", "code", "test", "services", "branch", "what", "files", "tests", "checks", "commit",
-        "steps", "behaviors", "network", "commands", "children", "teamSkills", "assumptions", "notDoing", "risks")
+KEYS = ("title", "overview", "code", "test", "repos", "limits", "banned", "services", "branch", "what", "files", "tests",
+        "checks", "commit", "steps", "behaviors", "network", "commands", "children", "teamSkills", "assumptions",
+        "notDoing", "risks")
 POINTS = ("what", "checks", "assumptions", "notDoing", "risks")
 RECORD = ("title", "overview", "code", "checks", "assumptions", "notDoing", "risks")
 FULL_MARKS = ("steps", "behaviors", "code", "test", "children")
@@ -61,7 +64,7 @@ def clean(raw: dict[str, Any]) -> PlanItems:
             value = one_line(value)
         elif key == "commit" and isinstance(value, str):
             value = one_line(re.sub(r"[`*_|]", "", value))
-        elif key in POINTS or key in ("services", "files", "tests", "teamSkills", "commands"):
+        elif key in POINTS or key in ("services", "files", "tests", "teamSkills", "commands", "banned"):
             value = strings(value) if key != "commands" else [one_line(c) for c in strings(value)]
         out[key] = value
     return out
@@ -171,12 +174,13 @@ def check(items: PlanItems, need_title: bool = True, keys: Optional[Iterable[str
         items: normalized items.
         need_title: True for a new plan: the title is checked and a full plan needs overview and code.
         keys: the items whose form is checked (a revision's changed items); None for all.
-        units: the declared units, for services and children.
+        units: the declared units, for services and children; the plan's own repos join them.
 
     Returns:
         Every problem, "<key>: <problem>" for an item's form; [] when the plan may be kept.
     """
     look = set(items) if keys is None else set(keys)
+    units = set(units) | (set(items["repos"]) if isinstance(items.get("repos"), dict) else set())
     out = []
     if need_title or "title" in look:
         out += title_problems(items.get("title"))
@@ -238,7 +242,8 @@ def network_problems(value: Any, units: Collection[str] = ()) -> list[str]:
 
 
 CHECKS = {**{k: points for k in POINTS}, "overview": overview_problems, "code": code_problems,
-          "test": test_problems, "services": services_problems, "steps": steps_problems,
+          "test": test_problems, "repos": repos_problems, "limits": limits_problems, "banned": banned_problems,
+          "services": services_problems, "steps": steps_problems,
           "behaviors": behaviors_problems, "network": network_problems, "commands": commands_problems,
           "children": card.card_problems, "branch": branch_problems, "teamSkills": points,
           "files": lambda v, u: path_problems(v, required=True), "tests": path_problems,

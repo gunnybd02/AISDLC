@@ -8,7 +8,8 @@ ShellCommit (below) gives the action of a shell line that commits: kind commit (
 The facts of a git command (VOCABULARY), each a bool but kind (git) and sub:
 - sub: the git subcommand;
 - protected: it touches a protected branch: the repository is on one, a push names one (or --all, --mirror), a branch
-  -d/-D/-f/-m names one (protected: project.json, default main and master). Every rule of git.json holds only there,
+  -d/-D/-f/-m names one (protected: main and master, those the forge protects, the base of the plan). Every rule of
+  git.json holds only there,
   but every fact is described on any branch, so a stricter row may hold elsewhere;
 - unread_globals: a global option the gate does not follow (-c, --git-dir, --work-tree...);
 - no_verify: --no-verify, or commit -n;
@@ -133,9 +134,10 @@ class GitRuleFacts(Translator):
             mark("reset_hard", f"git reset {' '.join(args)}")
         if sub == "push":
             self.push(args, repo, view, mark)
-        if sub in BRANCH_WRITES and view.protected(view.branch_of(repo)):
+        if sub in BRANCH_WRITES and view.protected(view.branch_of(repo), repo):
             mark("protected_write", f"git {sub} on {view.branch_of(repo)}")
-        if sub == "branch" and set(args) & BRANCH_CHANGES and [a for a in args if not a.startswith("-") and view.protected(a)]:
+        if sub == "branch" and set(args) & BRANCH_CHANGES and [a for a in args if not a.startswith("-")
+                                                               and view.protected(a, repo)]:
             mark("protected_write", f"git branch {' '.join(args)}")
         return out
 
@@ -153,14 +155,14 @@ class GitRuleFacts(Translator):
         Returns:
             True when the git rules hold for it.
         """
-        if view.protected(view.branch_of(repo)):
+        if view.protected(view.branch_of(repo), repo):
             return True
         if sub == "push":
             options, _, refspecs = push_parts(args)
             dsts = [s.lstrip("+").partition(":")[2] or s.lstrip("+") for s in refspecs]
-            return bool({"--all", "--mirror"} & set(options)) or any(view.protected(d.removeprefix("refs/heads/"))
+            return bool({"--all", "--mirror"} & set(options)) or any(view.protected(d.removeprefix("refs/heads/"), repo)
                                                                     for d in dsts)
-        return sub == "branch" and any(not a.startswith("-") and view.protected(a) for a in args)
+        return sub == "branch" and any(not a.startswith("-") and view.protected(a, repo) for a in args)
 
     @staticmethod
     def push(args: list[str], repo: str, view: GitFacts, mark: Any) -> None:
@@ -185,7 +187,7 @@ class GitRuleFacts(Translator):
             pairs = [("HEAD", view.branch_of(repo))]
         if "--all" in options or "--mirror" in options:
             mark("protected_write", f"git push {' '.join(options)} sends every branch")
-        hit = [dst for _, dst in pairs if view.protected(dst.removeprefix("refs/heads/"))]
+        hit = [dst for _, dst in pairs if view.protected(dst.removeprefix("refs/heads/"), repo)]
         if hit:
             mark("protected_write", f"git push to {', '.join(hit)}")
         agents = sorted({f for src, _ in pairs if src for f in view.unpushed(repo, remote, src) if agent_file(f)})

@@ -11,8 +11,9 @@ import re
 from collections.abc import Collection
 from typing import Any
 
+from harness.utils.plan import tickets
 from harness.utils.plan.item_checks import STANDALONE, one_line, path_problems, strings
-from harness.utils.shapes import Card, ChildGrant, PlanItems
+from harness.utils.shapes import Card, ChildGrant, PlanItems, PlanStore
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
 SESSION = re.compile(r"^[A-Za-z0-9 ._-]{1,60}$")
@@ -91,7 +92,7 @@ def card_faults(card: Card, units: Collection[str]) -> list[str]:
     """
     name, out = card["name"], []
     if card.get("unit") not in (HOME,) + STANDALONE and card.get("unit") not in units:
-        out.append(f"{name}: unit {card.get('unit')!r} is neither the home nor a declared unit")
+        out.append(f"{name}: unit {card.get('unit')!r} is neither the home nor a repo of the plan")
     goal = card.get("goal")
     if not isinstance(goal, str) or not goal.strip() or len(goal) > MAX_GOAL:
         out.append(f"{name}: goal is one sentence of at most {MAX_GOAL} characters")
@@ -149,8 +150,8 @@ HOME_SPEC = {"repo": "", "path": ".", "verify": [], "base": "main"}
 
 def unit_spec(card: Card, units: dict[str, dict[str, Any]]) -> dict[str, Any]:
     """The unit a child works in, as its card block carries it: {repo, path, verify, base}. The home (and none,
-    agent-code) is the parent's own repository at its root, with the child's own verify; any other unit is the
-    declared one (project.json units).
+    agent-code) is the parent's own repository at its root, with the child's own verify; any other unit is a repo of
+    the plan (plan_units).
 
     Args:
         card: the child's card.
@@ -160,6 +161,37 @@ def unit_spec(card: Card, units: dict[str, dict[str, Any]]) -> dict[str, Any]:
         The spec; the home's when the card's unit is not declared.
     """
     return dict(units.get(card.get("unit", HOME), HOME_SPEC))
+
+
+def in_force(port: PlanStore, sid: str) -> dict[str, Any]:
+    """The items of the plan in force in a session: what its units and limits come from.
+
+    Args:
+        port: the ledger port.
+        sid: the session ("" for none).
+
+    Returns:
+        The approved plan's items, {} when the session has none.
+    """
+    return dict(tickets.approved_plan(port.ticket(sid)) or {}) if sid else {}
+
+
+def plan_units(items: PlanItems | dict[str, Any], declared: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """The units a plan's children may work in: the declared ones, and the plan's own repos over them (what form 1
+    showed wins), each as a card block carries it {repo, path, verify, base} and its pipeline when it names one.
+
+    Args:
+        items: the plan's items (its repos item, when it has one).
+        declared: the declared units by name.
+
+    Returns:
+        {name: unit}.
+    """
+    repos = items.get("repos") if isinstance(items, dict) and isinstance(items.get("repos"), dict) else {}
+    own = {name: {"repo": spec.get("url", ""), "path": spec.get("path", "."), "verify": list(spec.get("verify") or []),
+                  "base": spec.get("base", "main"), **({"pipeline": spec["pipeline"]} if spec.get("pipeline") else {})}
+           for name, spec in repos.items() if isinstance(spec, dict)}
+    return {**declared, **own}
 
 
 def card_of(items: PlanItems, name: str) -> Card | None:

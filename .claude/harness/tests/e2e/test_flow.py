@@ -10,8 +10,16 @@ from harness.utils.ledger.recorder import Recorder
 from harness.tests import entry_of
 from harness.tests.e2e import copy_tree, git_repo, run
 
-CONFIG = {"name": "flow", "verify": ["{python}", "-m", "unittest", "discover", "-s", "."]}
+REPOS = {"flow": {"url": "https://github.com/acme/flow", "verify": ["{python}", "-m", "unittest", "discover", "-s", "."]}}
 TEST_A = "import unittest\n\nimport a\n\n\nclass T(unittest.TestCase):\n    def test_x(self):\n        self.assertEqual(a.X, 2)\n"
+
+
+def flow_repo(test, files):
+    """A git repository whose origin is the repo REPOS names: a plan with those repos may work in it."""
+    repo = git_repo(test, files)
+    subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", REPOS["flow"]["url"] + ".git"], check=True,
+                   capture_output=True)
+    return repo
 
 
 class Flow:
@@ -43,8 +51,8 @@ class Flow:
 
 class OneFlowTest(unittest.TestCase):
     def test_plan_to_delivery(self):
-        claude_dir = copy_tree(self, {"project.json": json.dumps(CONFIG)})
-        repo = git_repo(self, {"a.py": "X = 1\n", "test_a.py": TEST_A.replace("2", "1"), "b.py": ""})
+        claude_dir = copy_tree(self)
+        repo = flow_repo(self, {"a.py": "X = 1\n", "test_a.py": TEST_A.replace("2", "1"), "b.py": ""})
         flow = Flow(claude_dir, repo)
         write_a = {"file_path": str(repo / "a.py"), "content": "X = 2\n"}
 
@@ -54,10 +62,11 @@ class OneFlowTest(unittest.TestCase):
         # the plan, and the form the user answers
         flow.hook("UserPromptSubmit", "", {})  # the session the MCP server works for
         out = flow.mcp("plan", "plan_present", {"plan": {"title": "Set X", "what": ["X becomes 2"], "files": ["a.py"],
-                                                         "tests": ["test_a.py"]}})
+                                                         "tests": ["test_a.py"], "repos": REPOS}})
         q = re.search(r'Approve plan "Set X" \((pd-[0-9a-z]+-[0-9a-f]{6}) rev 1\)\?(?= Header)', out)
         plan_id = q.group(1)
-        self.assertIn("## Plan\nServices: agent-code\nWhat: X becomes 2\nFiles: a.py\nTests: test_a.py", out)
+        self.assertIn("## Plan\nRepos:\n- flow: https://github.com/acme/flow | base main | verify: {python} -m unittest "
+                      "discover -s .\nServices: agent-code\nWhat: X becomes 2\nFiles: a.py\nTests: test_a.py", out)
         form = {"questions": [{"question": q.group(0), "options": [{"label": "Approve"}, {"label": "Change plan"}]}]}
         self.assertEqual(flow.decision("AskUserQuestion", {**form, "answers": {q.group(0): "Approve"}}), "deny")
         self.assertEqual(flow.decision("AskUserQuestion", form), "allow")
@@ -96,7 +105,7 @@ class OneFlowTest(unittest.TestCase):
 
 class RecordedFlowTest(unittest.TestCase):
     def test_the_hook_entry_records_turns_prompts_and_calls_by_itself(self):
-        claude_dir = copy_tree(self, {"project.json": json.dumps(CONFIG)})
+        claude_dir = copy_tree(self)
         repo = git_repo(self, {"a.py": "X = 1\n"})
         flow = Flow(claude_dir, repo)
         key = "ghp_" + "a1B2c3D4" * 5  # the shape of a token, not one

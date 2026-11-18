@@ -64,11 +64,12 @@ class LedgerAccess(Protocol):
             The session id, or "" when none.
         """
 
-    def protected(self, branch: str) -> bool:
-        """Whether the branch is protected.
+    def protected(self, branch: str, repo: str = "") -> bool:
+        """Whether the branch is protected, the forge's protected branches of repo among them.
 
         Args:
             branch: the branch name (refs/heads/ may lead).
+            repo: the repository the branch is in; "" asks no forge.
 
         Returns:
             True when a protected name or pattern matches it.

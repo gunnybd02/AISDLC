@@ -15,7 +15,7 @@ anchor.py       the one file Claude Code runs; it routes to an entry of the rele
     utils/      shared code with no policy: contracts, shapes (the named data), ledger/, plan/, orchestra/, shell/, git/
     nets/       the rules of the tree, checked by the doctor
     tests/      tests/<block>/test_<module>.py, plus nets/ and e2e/
-  project.json  the user's values: name, verify (the test command), ledger, units (repo, path, verify, base)
+  (no project.json: a plan names its repos with their test command; see system.md)
   docs/         map.md (the frame of every plan), this file, transfer.md, migration-map.md (not part of a release)
   state/        private, not in git: harness.db, the ledger, the one store of the harness's data
 ```
@@ -98,8 +98,8 @@ What the gates refuse, so they always see what they judge:
   A first word that is git spelled another way (`g\it`) or `git-<subcommand>` is refused; a commit in a folder that
   does not exist is outside the plan.
 - The git rules (`gear/translate/git_rules.py` describes the git commands `gear/translate/git_cli.py` reads; when
-  rows in `gear/rules/git.json`) hold only where a protected branch is touched (`protected` in `project.json`, main and master
-  by default): the repository is on one, a push names one or `--all`/`--mirror`, a `branch -d/-D/-f/-m` names one.
+  rows in `gear/rules/git.json`) hold only where a protected branch is touched (main and master, those the repository protects
+  on GitHub, the base of the plan in force): the repository is on one, a push names one or `--all`/`--mirror`, a `branch -d/-D/-f/-m` names one.
   There each one asks, never refuses: `git add -A`/`.` (P1), `--no-verify` or `commit -n` (P2), `reset --hard` (P3),
   a force push (P4), any write on the branch (P5), a push from the home (P6), agent files staged or pushed (P7), git
   with `-c`/`--git-dir`/`--work-tree` (P8). Elsewhere git is free.
@@ -111,7 +111,7 @@ What the gates refuse, so they always see what they judge:
 - The commit guards: before step_done commits, the harness judges the commit with the rules (the event
   `HarnessCommit`, `gear/translate/commit.py`): a secret in a line it adds (`gear/detect/secret.py`, commit.secret),
   an AI mark (AI co-author or footer, an AI tool's name or address, a robot emoji) or a Mermaid diagram in the message
-  (`gear/detect/mark.py`, `utils/git/marks.py`, commit.ai_mark), a word of `banned` in `project.json`
+  (`gear/detect/mark.py`, `utils/git/marks.py`, commit.ai_mark), a word of the plan's `banned`
   (commit.banned_word), agent files in a unit's commit (`gear/translate/agent.py`, commit.agent_files). A write into
   `.claude/rules/` (a skill instead), a `memory/` folder of `.claude` (a note instead) or the behaviour registry file
   (`add test` instead) is refused (agent.rules, agent.memory, agent.registry).
@@ -253,7 +253,7 @@ judged.
   the id too. The chain proves no row was changed, not that none was taken off its end.
 - A row is never changed: the state of a plan is its events (`waiting`, `approved`, `delivered`).
 
-The doctor compares the real ledger (`ledger` in `project.json`, an absolute path) with `schema.sql`, read only, and
+The doctor compares the real ledger (the path `HARNESS_LEDGER` names, on the user's PC) with `schema.sql`, read only, and
 names each table, index, view or trigger that is missing, extra or written another way. It never writes the real
 ledger: at rest (no `-wal`, no `-journal`) it reads it as immutable, so no file is made beside it; in use it reads it
 through its `-wal` and `-shm`, and only the `-shm` (the readers' shared index) may change. A ledger it cannot read
@@ -264,10 +264,10 @@ ERROR, never a match. The path is this machine's: where it does not exist, the d
 `harness/entry/doctor.py` (also `run("health", "doctor")`) reports every problem as an ERROR, in this order:
 - the indexes;
 - each item's ref, which must load;
-- the build (config, pipeline, rules), and each action file, which must load;
+- the build (pipeline, rules), and each action file, which must load;
 - the skill library: each skill reads, its name is its folder's, no name is used twice, and each action, block or
   skill it names (`run("block", "action"`, `guide("name", "mcp"|"skills")`) is there;
-- the real ledger's schema, when `project.json` names it;
+- the real ledger's schema, when `HARNESS_LEDGER` names it;
 - then every net.
 
 The nets read the whole tree except two places, and only these: `state/` (the private DB) and
@@ -280,7 +280,6 @@ The nets read the whole tree except two places, and only these: `state/` (the pr
 | `bridges` | no file only passes names on |
 | `size` | `.py` at most 400 lines, `.md` at most 300 |
 | `verdict` | outside `gear/decide/arbiter.py` and `utils/contracts.py`: no verdict word (allow, ask, refuse, deny), no `ALLOW`/`ASK`/`REFUSE`, no `Verdict` |
-| `config` | `project.json` is named only in `assemble/engine/config.py` |
 | `entry` | an entry script imports only the standard library at load time (in `try`, `if`... too); its `main()` catches `BaseException` |
 | `hints` | every parameter and return has a type hint, and every function and method a docstring (Args, Returns, Raises); a closure needs hints only. The data are named in `utils/shapes.py` |
 

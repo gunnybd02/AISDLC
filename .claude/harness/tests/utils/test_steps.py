@@ -4,7 +4,6 @@ up; a write in deliver goes back to execute for a fix."""
 import json
 import unittest
 
-from harness.assemble.engine.config import Config
 from harness.assemble.engine.ports import LedgerPort
 from harness.utils.contracts import YES
 from harness.utils.git.run import git
@@ -23,8 +22,7 @@ STEPS = {**LIGHT, "files": [], "tests": [], "steps": [
 
 class StepsTest(unittest.TestCase):
     def setUp(self):
-        self.claude_dir = copy_tree(self, {"project.json": json.dumps(
-            {"name": "t", "verify": ["{python}", "-m", "unittest", "discover", "-s", "."]})})
+        self.claude_dir = copy_tree(self)
         self.repo = git_repo(self, {"a.py": "X = 1\n", "test_a.py": TEST, "other.py": "Y = 1\n", "lib/b.py": "B = 1\n"})
         self.port = LedgerPort(self.claude_dir)
 
@@ -36,7 +34,7 @@ class StepsTest(unittest.TestCase):
         self.plan_id = plan_id
 
     def verify(self):
-        return verify(self.port, Config.load(self.claude_dir).verify, self.plan_id)
+        return verify(self.port, ["{python}", "-m", "unittest", "discover", "-s", "."], self.plan_id)
 
     def write(self, name, text):
         (self.repo / name).write_text(text, encoding="utf-8")

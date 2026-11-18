@@ -82,7 +82,7 @@ def git_commit(port: PlanStore, sid: str, files: list[str], message: Optional[st
     repo = top(plan["root"])
     if not repo:
         raise ShipError(f"the plan's root {plan['root']} is not in a git repository")
-    if port.protected(current(repo)):
+    if port.protected(current(repo), repo):
         raise ShipError(f"git-commit-protected-branch: {current(repo)} is protected")
     rels = []
     for f in files:
@@ -129,7 +129,7 @@ def git_push(port: PlanStore, sid: str, judge: GitJudge) -> str:
     if ticket["phase"] != DELIVER:
         raise ShipError(f"git-push-wrong-phase: a plan pushes in Deliver, after its last step (it is in {ticket['phase']})")
     branch = current(repo)
-    if not branch or port.protected(branch):
+    if not branch or port.protected(branch, repo):
         raise ShipError(f"git-push-protected-branch: {branch or 'a detached HEAD'} is not a branch of the plan")
     verdict = judge(repo, ["push", "-u", "origin", branch])
     if refused(verdict) or asked(verdict):

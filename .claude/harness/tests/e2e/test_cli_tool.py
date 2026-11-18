@@ -11,14 +11,14 @@ from harness.gear.translate.place import Places
 from harness.utils.contracts import Event
 from harness.tests import anchor_of
 from harness.tests.e2e import copy_tree, git_repo, run
-from harness.tests.e2e.test_flow import CONFIG, Flow
+from harness.tests.e2e.test_flow import Flow
 
 PLAN = {"plan": {"title": "Set X", "what": ["X becomes 2"], "files": ["a.py"], "tests": ["test_a.py"]}}
 
 
 class CliToolTest(unittest.TestCase):
     def setUp(self):
-        self.claude_dir = copy_tree(self, {"project.json": json.dumps(CONFIG)})
+        self.claude_dir = copy_tree(self)
         self.repo = git_repo(self, {"a.py": "X = 1\n", "test_a.py": "", "b.py": ""})
         self.flow = Flow(self.claude_dir, self.repo)
         self.boot = (anchor_of(self.claude_dir)).as_posix()

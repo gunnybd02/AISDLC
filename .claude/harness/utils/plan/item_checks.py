@@ -16,6 +16,12 @@ BRANCH_RE = re.compile(r"^(?!-)(?!.*\.\.)[A-Za-z0-9._/-]+$")
 COMMAND_RE = re.compile(r"^twg\s[^;&|<>`]*$")
 CODE_TITLE = re.compile(r"^(pd-\S+|[0-9a-f]{7,})$", re.I)
 ABSOLUTE = re.compile(r"^([A-Za-z]:|[\\/~])")
+REPO_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,39}$")
+REPO_URL = re.compile(r"^https://[A-Za-z0-9.-]+(:\d+)?/[\w.-]+/[\w.-]+/?$")
+REPO_KEYS = ("url", "base", "verify", "path", "pipeline")
+PIPELINE_NAME = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+MAX_REPOS = 10
+LIMITS = {"children": 3, "rounds": 3}  # the defaults (spec 05); a plan may lower a limit, never raise it
 
 
 def one_line(text: Any) -> str:
@@ -180,7 +186,7 @@ def test_problems(value: Any, units: Collection[str] = ()) -> list[str]:
 
 
 def services_problems(value: Any, units: Collection[str] = ()) -> list[str]:
-    """The problems of services: declared units, or none or agent-code alone.
+    """The problems of services: the plan's own repos or declared units, or none or agent-code alone.
 
     Args:
         value: the item as given.
@@ -193,7 +199,118 @@ def services_problems(value: Any, units: Collection[str] = ()) -> list[str]:
         return ["a list of units, or none, or agent-code"]
     if any(s in STANDALONE for s in value) and len(value) > 1:
         return ["none and agent-code stand alone"]
-    return [f"{s} is no declared unit" for s in value if s not in STANDALONE and s not in units]
+    return [f"{s} is no declared unit and no repo of the plan" for s in value if s not in STANDALONE and s not in units]
+
+
+def repo_key(url: str) -> str:
+    """The owner/name of a repository URL or remote, lower case, with ".git" and a trailing slash left out: how two
+    names of one repository compare (an https URL, an ssh remote, a proxy remote).
+
+    Args:
+        url: a repository URL or a git remote.
+
+    Returns:
+        "owner/name", or "" when the URL has fewer than two path parts.
+    """
+    parts = [p for p in str(url or "").strip().replace("\\", "/").replace(":", "/").split("/") if p]
+    if len(parts) < 3:
+        return ""
+    name = parts[-1][:-4] if parts[-1].endswith(".git") else parts[-1]
+    return f"{parts[-2]}/{name}".lower()
+
+
+def repo_problems(name: Any, spec: Any) -> list[str]:
+    """The problems of one entry of repos: its name, and {url, base?, verify?, path?, pipeline?}.
+
+    Args:
+        name: the repository's name in the plan.
+        spec: what the plan says of it.
+
+    Returns:
+        Each problem, starting with the name.
+    """
+    if not isinstance(name, str) or not REPO_NAME.match(name) or name in STANDALONE or name == "home":
+        return [f"{name!r} is no repository name (a-z, 0-9, -; not home, none or agent-code)"]
+    if not isinstance(spec, dict) or set(spec) - set(REPO_KEYS):
+        return [f"{name}: {{{', '.join(REPO_KEYS)}}} only"]
+    out = []
+    if not isinstance(spec.get("url"), str) or not REPO_URL.match(spec["url"]):
+        out.append(f"{name}: url is the https URL of a repository (https://host/owner/name)")
+    base = spec.get("base", "main")
+    if not isinstance(base, str) or not BRANCH_RE.match(base):
+        out.append(f"{name}: base is a branch name")
+    verify = spec.get("verify", ["x"])
+    if not isinstance(verify, list) or not verify or not all(isinstance(w, str) and w.strip() for w in verify):
+        out.append(f"{name}: verify is the test command, a list of words")
+    path = spec.get("path", ".")
+    if not isinstance(path, str) or ABSOLUTE.match(path) or ".." in path.replace("\\", "/").split("/"):
+        out.append(f"{name}: path is a folder inside the repository")
+    if "pipeline" in spec and not (isinstance(spec["pipeline"], str) and PIPELINE_NAME.match(spec["pipeline"])):
+        out.append(f"{name}: pipeline is the name of a pipeline file")
+    return out
+
+
+def repos_problems(value: Any, units: Collection[str] = ()) -> list[str]:
+    """The problems of repos: the repositories the plan works on, by name, each {url, base?, verify?, path?,
+    pipeline?}; form 1 shows them, so nothing is declared in advance.
+
+    Args:
+        value: the item as given.
+        units: the declared units (not read).
+
+    Returns:
+        One problem for a bad map, else every problem of every entry.
+    """
+    if not isinstance(value, dict) or not value or len(value) > MAX_REPOS:
+        return [f"a map of 1 to {MAX_REPOS} repositories by name, each {{url, base?, verify?, path?, pipeline?}}"]
+    return [p for name, spec in value.items() for p in repo_problems(name, spec)]
+
+
+def limits_problems(value: Any, units: Collection[str] = ()) -> list[str]:
+    """The problems of limits: children and rounds, each a whole number from 1 to its default (a plan may lower a
+    limit, never raise it).
+
+    Args:
+        value: the item as given.
+        units: the declared units (not read).
+
+    Returns:
+        One problem for a bad map, else one per limit out of range.
+    """
+    if not isinstance(value, dict) or not value or set(value) - set(LIMITS):
+        return [f"a map of {', '.join(LIMITS)} to whole numbers"]
+    return [f"{k} is a whole number from 1 to {LIMITS[k]}: a plan may lower a limit, never raise it"
+            for k, v in value.items() if isinstance(v, bool) or not isinstance(v, int) or not 1 <= v <= LIMITS[k]]
+
+
+def banned_problems(value: Any, units: Collection[str] = ()) -> list[str]:
+    """The problems of banned: 1 to 20 words or short phrases that commit and merge request text may never hold.
+
+    Args:
+        value: the item as given (cleaned to a list of strings).
+        units: the declared units (not read).
+
+    Returns:
+        One problem for a bad list, else one per entry that is too long.
+    """
+    if not isinstance(value, list) or not value or len(value) > 20:
+        return ["a list of 1 to 20 words that commit and merge request text never hold"]
+    return [f"{w!r} is at most 40 characters" for w in value if len(str(w)) > 40]
+
+
+def run_limits(items: Any, base: dict[str, int]) -> dict[str, int]:
+    """The limits a plan runs with: each of base, lowered by the plan's own limits item when it gives a lower one.
+
+    Args:
+        items: the plan's items (any value: no limits item means none).
+        base: the limits that hold without the plan, {children, rounds}.
+
+    Returns:
+        {name: number} for each limit of base.
+    """
+    own = items.get("limits") if isinstance(items, dict) and isinstance(items.get("limits"), dict) else {}
+    return {k: min(int(v), int(own[k])) if isinstance(own.get(k), int) and not isinstance(own[k], bool) else int(v)
+            for k, v in base.items()}
 
 
 def steps_problems(value: Any, units: Collection[str] = ()) -> list[str]:

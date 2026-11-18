@@ -72,8 +72,14 @@ session cannot read the old chat; it reads this file. The frame of every plan is
 | #55 | Every command check is a when row: commit, the server's write actions, Drive, agent files, the child and the plan files describe in `gear/translate/` and their rows decide; every rule action names its kind; an action that must be judged and meets no row is asked (`rule.unmatched`); only the content and state detectors remain |
 | #57 | Publish on merge, with a fallback: `live update` puts merged main in force with no form (the merge was the user's word; files not tracked under `harness/` stop it); after a merge tool merges the harness's own repository, the hook does the update by itself. Each publish keeps `state/live/previous`. `anchor.py` holds the fallback: a release whose hook crashes twice is left for the previous one and listed in `state/live/bad` (no update puts it back); the anchor's own MCP server `fallback` (`rollback`, `status`, in `.mcp.json` and the install) never loads a release, and the hook lets its calls pass, so a release that refuses everything can still be rolled back. One step back only |
 | #58 | A guards-off grant lifts the checks, never the recording: the hook runs the harness under a grant with the verdict waived (`contracts.waived`), so prompts, calls and form answers (an "Approve") are kept; a broken harness still passes. Each turn names the first plan in force in it (`pl_turns.plan_id`) |
+| #61 | Repositories by URL (`system.md`): a plan names its repos ({url, base, verify, path, pipeline}), limits and banned words, all shown in form 1; a plan with repos is kept only from a clone of one and takes its test command; protected branches come from GitHub (`utils/forge/protection.py`, kept 10 minutes, never fewer than main and master, plus the plan's bases); `config.py`, the config net and every reader of `project.json` are gone; the doctor reads `HARNESS_LEDGER`; a ready line per repo in the plan block. The file `project.json` stays until a release without readers is in force, then a small plan deletes it |
 
-547 tests pass (1 skipped, Windows only); doctor: 0 errors.
+About 565 tests pass (1 skipped, Windows only); doctor: 0 errors.
+
+Learned in #61: the release in force runs its own copy of `harness/`, but reads the other files of the home (such as
+`project.json`) from the home's working tree. Deleting one there broke the live harness at once; the fallback could
+not help, since the previous release read the same file. A grant (the form still works on a broken harness) restored
+it. Never remove a home file a release in force still reads.
 
 Learned in #57: a guards-off grant made the hook pass everything without recording, so an "Approve" given while the
 guards were off was lost (fixed in #58). And harness work is done in the home clone (`~/.harness` in the cloud): from

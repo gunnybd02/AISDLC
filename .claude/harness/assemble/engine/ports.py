@@ -16,11 +16,10 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Optional
 
-from harness.assemble.engine.config import Config, ConfigError
 from harness.assemble.engine.desk_port import DeskPort
 from harness.assemble.engine.ledger_core import now
 from harness.assemble.engine.record_port import RecordPort
@@ -28,6 +27,7 @@ from harness.assemble.engine.ticket_port import TicketPort
 from harness.utils.contracts import Event, Finding, Port
 from harness.utils.git.branches import DEFAULT_PROTECTED, current, is_protected
 from harness.utils.git.facts import top, unpushed_files
+from harness.utils.forge.protection import ask_github, protected_names
 from harness.utils.plan import grants, stop, tickets
 from harness.utils.plan.verify import dirty
 from harness.utils.plan.files import key, relative
@@ -111,20 +111,18 @@ class LedgerPort(DeskPort, TicketPort, RecordPort):
         """
         return tickets.approved_plan(self.read(lambda con: tickets.open_with_draft(con, plan_id)))
 
-    def protected(self, branch: str) -> bool:
-        """Whether the branch is protected (the config's protected; main and master when it cannot be read).
+    def protected(self, branch: str, repo: str = "") -> bool:
+        """Whether the branch is protected: main and master always, and the branches the forge protects in repo
+        (utils/forge/protection.py).
 
         Args:
             branch: the branch name (refs/heads/ may lead).
+            repo: the repository the branch is in; "" asks no forge.
 
         Returns:
             True when a protected name or pattern matches it.
         """
-        try:
-            patterns = Config.load(self.path.parent.parent).protected
-        except ConfigError:
-            patterns = DEFAULT_PROTECTED
-        return is_protected(branch, patterns)
+        return is_protected(branch, DEFAULT_PROTECTED + tuple(protected_names(repo, self) if repo else ()))
 
     def registry(self, plan: ApprovedPlan) -> dict[str, Behaviour]:
         """The behaviour registry of the plan (utils/plan/grants.replay), from pl_behaviors in the order written.
@@ -238,14 +236,32 @@ class GitView:
     """The git facts of the git rules (gear/detect/git.py), each read only when a command needs it: the branch a
     repository is on, whether a branch is protected, what a push would send, whether a repository is the home."""
 
-    def __init__(self, claude_dir: str | Path, protected: Iterable[str]) -> None:
-        """Keep the home and the protected branches.
+    def __init__(self, claude_dir: str | Path, protected: Iterable[str], port: Optional[PlanStore] = None,
+                 ask: Optional[Callable[[str], list[str]]] = None) -> None:
+        """Keep the home, the protected branches, and how the forge is asked.
 
         Args:
             claude_dir: the home, the .claude folder of the harness.
-            protected: the protected branch names or fnmatch patterns.
+            protected: the protected branch names or fnmatch patterns (main and master among them).
+            port: the ledger, where the forge's answers are kept; None asks no forge.
+            ask: ask(slug) -> the names the forge protects (GitHub by default).
         """
-        self.claude_dir, self.patterns = Path(claude_dir), tuple(protected)
+        self.claude_dir, self.patterns, self.port = Path(claude_dir), tuple(protected), port
+        self.ask, self.forge = ask or ask_github, {}
+
+    def plus(self, patterns: Iterable[str]) -> GitView:
+        """The same view with more protected names (the bases of the plan in force); it shares the forge's answers.
+
+        Args:
+            patterns: the names or patterns to add.
+
+        Returns:
+            A GitView.
+        """
+        view = GitView(self.claude_dir, self.patterns + tuple(p for p in patterns if p not in self.patterns),
+                       self.port, self.ask)
+        view.forge = self.forge
+        return view
 
     def branch_of(self, repo: str) -> str:
         """The branch the repository is on.
@@ -258,16 +274,20 @@ class GitView:
         """
         return current(repo) if Path(repo).is_dir() else ""
 
-    def protected(self, branch: str) -> bool:
-        """Whether the branch is protected.
+    def protected(self, branch: str, repo: str = "") -> bool:
+        """Whether the branch is protected: a name or pattern of the view, or a branch the forge protects in repo
+        (asked once per hook call and repository).
 
         Args:
             branch: the branch name.
+            repo: the repository the branch is in; "" asks no forge.
 
         Returns:
             True when a protected name or pattern matches it.
         """
-        return is_protected(branch, self.patterns)
+        if repo and self.port is not None and repo not in self.forge:
+            self.forge[repo] = tuple(protected_names(repo, self.port, self.ask))
+        return is_protected(branch, self.patterns + (self.forge.get(repo, ()) if repo else ()))
 
     def unpushed(self, repo: str, remote: str, source: str) -> list[str]:
         """What a push of source to remote would send.
@@ -296,6 +316,19 @@ class GitView:
         return bool(home and here) and key(home) == key(here)
 
 
+def bases(plan: Optional[ApprovedPlan]) -> list[str]:
+    """The base branches of a plan's repos: protected for as long as the plan is in force.
+
+    Args:
+        plan: the plan in force, or None.
+
+    Returns:
+        Each repo's base (main when it names none); [] for no plan or no repos.
+    """
+    repos = plan.get("repos") if plan and isinstance(plan.get("repos"), dict) else {}
+    return sorted({str(spec.get("base") or "main") for spec in repos.values() if isinstance(spec, dict)})
+
+
 class PlanState(Port):
     """The gears' view of the world: the approved plan, the harness's own state folder, and the git facts (GitView)."""
 
@@ -308,14 +341,16 @@ class PlanState(Port):
             protected: the protected branch names or patterns.
             banned: the words commit and merge request text never hold.
         """
-        self.port, self.git, self.banned = port, GitView(Path(port.path).parent.parent, protected), tuple(banned)
+        self.port, self.banned = port, tuple(banned)
+        self.git = GitView(Path(port.path).parent.parent, protected, port)
 
     def read(self, event: Event) -> Facts:
         """The facts of the event's session: plan (ApprovedPlan or None), state_dir, git_view (GitView), stop_owed
         (plan -> code files no green verify saw, but those another writer changed), stop_foreign (plan -> those), banned, store_owed (() -> the unsaved work of the store), child_role
         (() -> the session's ChildRole when it is a child of a delegated plan, else None)."""
-        return {"plan": self.port.approved(event.session), "state_dir": str(self.port.path.parent).replace("\\", "/"),
-                "git_view": self.git, "banned": self.banned,
+        plan = self.port.approved(event.session)
+        return {"plan": plan, "state_dir": str(self.port.path.parent).replace("\\", "/"),
+                "git_view": self.git.plus(bases(plan)), "banned": self.banned,
                 "stop_owed": lambda plan: stop.owed(self.port, plan, self.port.written(event.session)),
                 "stop_foreign": lambda plan: stop.foreign(self.port, plan, self.port.written(event.session)),
                 "store_owed": lambda: store.owed(self.port) if store.folder() else [],

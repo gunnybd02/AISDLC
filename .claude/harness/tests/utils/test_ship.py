@@ -7,7 +7,6 @@ import unittest
 from unittest import mock
 
 from harness.assemble.engine.build import items_of
-from harness.assemble.engine.config import Config
 from harness.assemble.engine.ports import LedgerPort
 from harness.assemble.engine.runner import Act
 from harness.assemble.engine.wire_mcp import ports_of
@@ -26,8 +25,7 @@ TEST = "import unittest\n\nclass T(unittest.TestCase):\n    def test_x(self):\n 
 
 class ShipTest(unittest.TestCase):
     def setUp(self):
-        self.claude_dir = copy_tree(self, {"project.json": json.dumps(
-            {"name": "t", "verify": ["{python}", "-m", "unittest", "discover", "-s", "."], "banned": ["wip"]})})
+        self.claude_dir = copy_tree(self)
         self.repo = git_repo(self, {"a.py": "X = 1\n", "test_a.py": TEST, "b.md": "b\n"})
         self.remote = tree(self, {})
         git(self.remote, "init", "-q", "--bare")
@@ -36,9 +34,11 @@ class ShipTest(unittest.TestCase):
         ports = ports_of(items_of(self.claude_dir), self.claude_dir)
         self.commit_judge, self.git_judge = ports["commit_judge"], ports["git_judge"]
         items = {**desk.normalize(desk.clean({"title": "Set the value", "what": ["w"], "files": ["a.py", "b.md"],
-                                              "tests": ["test_a.py"]})), "root": str(self.repo)}
+                                              "tests": ["test_a.py"], "banned": ["wip"]})), "root": str(self.repo),
+                 "verify": ["{python}", "-m", "unittest", "discover", "-s", "."]}  # set by the server from its repo
         plan_id, _, q = self.port.present(items, sid="s1")
         approvals(self.port, "s1", {q: YES})
+        self.port.touch_session("s1")  # the session the server works for: its plan's banned words hold
         self.plan_id = plan_id
 
     def commit(self, files, message="Set X"):
@@ -52,7 +52,7 @@ class ShipTest(unittest.TestCase):
     def test_git_commit_commits_named_verified_files_and_step_done_adopts_it(self):
         (self.repo / "a.py").write_text("X = 2\n", encoding="utf-8")
         self.refused("git-commit-unverified: a.py", lambda: self.commit(["a.py"]))
-        verify(self.port, Config.load(self.claude_dir).verify, self.plan_id)
+        verify(self.port, [], self.plan_id)
         for files, why in ((["."], "never ."), (["../x.py"], "outside"), (["other.py"], "git-commit-outside-plan"),
                            ([], "a list of paths")):
             with self.subTest(why=why):

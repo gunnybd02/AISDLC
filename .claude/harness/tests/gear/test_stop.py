@@ -3,7 +3,6 @@ Stop, no plan, or nothing owed lets it end; a failure to look keeps it."""
 import json
 import unittest
 
-from harness.assemble.engine.config import Config
 from harness.assemble.engine.ports import LedgerPort
 from harness.gear.detect.stop import StopGuard
 from harness.hooks.io import HookIO
@@ -20,12 +19,12 @@ TEST = "import unittest\n\nclass T(unittest.TestCase):\n    def test_x(self):\n 
 
 class StopTest(unittest.TestCase):
     def setUp(self):
-        self.claude_dir = copy_tree(self, {"project.json": json.dumps(
-            {"name": "t", "verify": ["{python}", "-m", "unittest", "discover", "-s", "."]})})
+        self.claude_dir = copy_tree(self)
         self.repo = git_repo(self, {"a.py": "X = 1\n", "test_a.py": TEST, "notes.md": "n\n"})
         self.port = LedgerPort(self.claude_dir)
         items = {**desk.normalize(desk.clean({"title": "Set the value", "what": ["w"], "files": ["a.py", "notes.md"],
-                                              "tests": ["test_a.py"]})), "root": str(self.repo)}
+                                              "tests": ["test_a.py"]})), "root": str(self.repo),
+                 "verify": ["{python}", "-m", "unittest", "discover", "-s", "."]}  # set by the server from its repo
         plan_id, _, q = self.port.present(items, sid="s1")
         approvals(self.port, "s1", {q: YES})
         self.plan_id = plan_id
@@ -42,7 +41,7 @@ class StopTest(unittest.TestCase):
         (self.repo / "a.py").write_text("X = 2\n", encoding="utf-8")
         self.assertEqual(self.stop(), ["stop.unverified"])
         self.assertEqual(self.stop(active=True), [])  # the repeated Stop ends the turn
-        verify(self.port, Config.load(self.claude_dir).verify, self.plan_id)
+        verify(self.port, [], self.plan_id)
         self.assertEqual(self.stop(), [])
         (self.repo / "a.py").write_text("X = 3\n", encoding="utf-8")
         self.assertEqual(self.stop(), ["stop.unverified"])
@@ -55,7 +54,7 @@ class StopTest(unittest.TestCase):
             return build_runner(self.claude_dir).run(Event(kind, tool, tool_input or {}, "s1", str(self.repo)))
         (self.repo / "a.py").write_text("X = 2\n", encoding="utf-8")
         hook("PostToolUse", "Write", {"file_path": a, "content": "X = 2\n"})  # this session wrote it: in the ledger
-        verify(self.port, Config.load(self.claude_dir).verify, self.plan_id)
+        verify(self.port, [], self.plan_id)
         self.assertEqual(hook("Stop").verdict.findings, ())
         (self.repo / "a.py").write_text("X = 9\n", encoding="utf-8")  # another writer: no write of this session
         out = hook("Stop")
@@ -66,7 +65,7 @@ class StopTest(unittest.TestCase):
 
     def test_a_file_with_no_recorded_write_is_owed_never_hidden(self):
         from harness.utils.plan.stop import foreign, owed
-        verify(self.port, Config.load(self.claude_dir).verify, self.plan_id)
+        verify(self.port, [], self.plan_id)
         (self.repo / "a.py").write_text("X = 5\n", encoding="utf-8")
         plan = self.port.approved("s1")
         self.assertEqual(foreign(self.port, plan, {}), [])  # nothing recorded: not another writer's, it is owed

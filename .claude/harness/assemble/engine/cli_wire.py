@@ -10,7 +10,6 @@ import shlex
 from pathlib import Path
 
 from harness.assemble.engine import cli_live, cli_tool
-from harness.assemble.engine.config import Config, ConfigError
 from harness.assemble.engine.ports import LedgerPort
 from harness.utils.plan import grants
 from harness.utils.plan.verify import command_of as plan_command, MAX_TIMEOUT, VERIFY_TIMEOUT, run
@@ -93,28 +92,23 @@ def plan_of(port: LedgerPort, sid: str) -> ApprovedPlan:
 
 
 def command_of(args: argparse.Namespace, claude_dir: str | Path) -> list[str]:
-    """The test command of a verify: the words after --, else the config's verify.
+    """The test command a verify was given: the words after --; a plan with tests and no command of its own needs one.
 
     Args:
         args: the parsed command line of the door verify.
-        claude_dir: the home, whose config names verify.
+        claude_dir: the home (not read: no config names a command).
 
     Returns:
         The command's words.
 
     Raises:
-        Refused: the config does not load, or names no verify command.
+        Refused: no words were given.
     """
     words = args.command[1:] if args.command[:1] == ["--"] else args.command
     if words:
-        return words
-    try:
-        command = Config.load(claude_dir).verify
-    except ConfigError as e:
-        raise Refused(str(e)) from e
-    if not command:
-        raise Refused("the config names no verify command: give one after --")
-    return list(command)
+        return list(words)
+    raise Refused("the plan has tests and names no test command: add its repo with verify to the plan's repos, or "
+                  "give a command after --")
 
 
 def verify(port: LedgerPort, sid: str, args: argparse.Namespace, claude_dir: Path) -> tuple[int, str]:

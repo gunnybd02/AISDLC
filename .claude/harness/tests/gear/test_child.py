@@ -19,7 +19,7 @@ SAID = "Run the git command the step needs in the repository"
 
 class ChildGuardTest(unittest.TestCase):
     def setUp(self):
-        self.claude_dir = copy_tree(self, {"project.json": json.dumps({"name": "t"})})
+        self.claude_dir = copy_tree(self)
         self.repo = git_repo(self, {"a.py": "X = 1\n"})
         self.port = LedgerPort(self.claude_dir)
         prompt = brief.brief(7, "pd-x", CARD, "session_parent01", rounds=3)

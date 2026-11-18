@@ -174,7 +174,7 @@ def step_done(port: PlanStore, sid: str, message: Optional[str], judge: Optional
     problems = owed(port, plan, n, changed_files)
     if problems:
         raise StepError("step-owed: " + "; ".join(problems))
-    if port.protected(current(repo)):
+    if port.protected(current(repo), repo):
         raise StepError(f"step-protected-branch: {current(repo)} is protected; work on a branch of the plan")
     prefix = os.path.relpath(os.path.realpath(plan["root"]), os.path.realpath(repo)).replace("\\", "/")
     paths = [f if prefix == "." else f"{prefix}/{f}" for f in changed_files]

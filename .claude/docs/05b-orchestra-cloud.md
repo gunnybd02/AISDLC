@@ -4,7 +4,7 @@
 > Decided by the user on 2026-11-16: a child is a **cloud session**; the card travels **in the brief** and the
 > handback receipt **on the child's branch** (no refs of the harness on the remote); at most **3** children run; a
 > live probe first, then one plan per part. All four parts are built. The cap of 3 running children and the 3
-> send-back rounds are `limits.children` and `limits.rounds` of `project.json` (`13-cloud-foundation.md`).
+> send-back rounds are the defaults `limits.children` and `limits.rounds`, which a plan may lower (`13-cloud-foundation.md`).
 > Changed by the user on 2026-11-17: parent and child **talk through git, never by message** (section 2b).
 
 ## 1. Why spec 05 changes here
@@ -175,7 +175,8 @@ did): it waits in deliver for `push` and `handback`. A child keeps its role and 
 session (`tickets.CARRIED`). The brief says to run verify from the shell (`python3 <core>/anchor.py cli verify`):
 through the MCP tool it stops at 60 s, and a suite can take longer.
 
-**Units, for any repository** (`project.json` `units`, `assemble/engine/config.py Unit`). A unit is a project the
+**Units, for any repository** (since PR 61: the plan's `repos`, `utils/orchestra/card.plan_units`; before, `units` of
+the removed `project.json`). A unit is a project the
 plans and children work on: its repository (`repo`, an https URL; none: the home's own), its folder in it (`path`;
 several units may share one repository, each with its own folder), its test command (`verify`; default the config's)
 and the branch its pull requests target (`base`; default `main`). A card's unit must be declared, or `home`. `spawn`
@@ -249,7 +250,7 @@ for GitHub to decide whether a pull request can merge, and a refusal while the l
 |---|---|---|
 | Children running at once | 3 | Each child is a whole cloud session: cost and the user's attention |
 | Children per plan | 4 (skill rule, as spec 05) | Quota |
-| Send-back rounds | `limits.rounds` in `project.json` (default 3), then the user decides | Spec 05 |
+| Send-back rounds | `limits.rounds` (default 3; a plan may lower it), then the user decides | Spec 05 |
 | Card | as spec 21 | Spec 05 |
 
 ## 10. Trust

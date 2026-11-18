@@ -23,9 +23,9 @@ Each child costs a whole cloud session. Four children at most, three running at 
 - Brief with pointers (unit, files, AC), never secrets or pasted file contents.
 
 ## 1. Plan
-1. Read the code each part touches. Each part needs a **unit**: `home`, or one `project.json` declares in `units`
-   (`{"repo", "path", "verify", "base"}`: any repository, or a folder of a shared one, with its own test command and
-   the branch its pull requests target).
+1. Read the code each part touches. Each part needs a **unit**: `home`, or a repo the plan names in `repos`
+   (`{"url", "base", "verify", "path"}`: any repository, or a folder of a shared one, with its own test command and
+   the branch its pull requests target). Form 1 shows each.
 2. Present a full plan with `children`, one card each:
    ```json
    {"name": "api", "unit": "api", "goal": "List the orders of a user",

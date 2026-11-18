@@ -206,7 +206,7 @@ def compare_real(path: str | Path) -> list[str]:
     rebuild the index), or a journal a read-only reader cannot roll back.
 
     Args:
-        path: the real ledger's file (project.json ledger).
+        path: the real ledger's file (HARNESS_LEDGER on the user's PC).
 
     Returns:
         One line per problem, each starting with the path; [] when the schema is the same as schema.sql's.

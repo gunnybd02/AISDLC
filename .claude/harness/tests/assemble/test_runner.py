@@ -6,7 +6,6 @@ import unittest
 from harness.assemble.engine.ports import LedgerPort
 
 from harness.assemble.engine.build import build_runner
-from harness.assemble.engine.config import Config, ConfigError
 from harness.assemble.engine.pipeline import PipelineBook, PipelineError
 from harness.assemble.engine.runner import Runner, RunnerError
 from harness.assemble.engine.select import select

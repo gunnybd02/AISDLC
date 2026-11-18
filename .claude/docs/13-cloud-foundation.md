@@ -15,19 +15,19 @@ purpose, and what is still open. Checked on 2026-11-17 by reading the code and r
 | Text is English (no letter above code point 127 outside tests) | Yes | english net |
 | A broken harness blocks only a tool call (PreToolUse, or no event name); every other event goes on with the failure on stderr | Yes; an answer to a form it could not keep is told to the model | `entry/hook.py`, `tests/e2e/test_hook.py` |
 | A gear that raises becomes a verdict, never a crash | Yes: `gear.fault` refuses before a tool call, `gear.fault_after` allows after it; another gear's refusal still stands | `assemble/engine/runner.py`, `gear/rules/base.json` |
-| A pipeline stands alone: no `extends`; the engine puts the floor (base) under a plan's pipelines, which only add gears. A unit names its pipeline in `project.json` (`units.<name>.pipeline`); a plan runs the floor plus the pipelines of its services, so the model never picks one | Yes | `assemble/engine/pipeline.py` refuses `extends`; `select.py` adds the floor; the doctor reads every pipeline file, names unknown gears and a unit naming a pipeline with no file |
+| A pipeline stands alone: no `extends`; the engine puts the floor (base) under a plan's pipelines, which only add gears. A repo of the plan names its pipeline (`repos.<name>.pipeline`, shown in form 1); a plan runs the floor plus the pipelines of its services | Yes | `assemble/engine/pipeline.py` refuses `extends`; `select.py` adds the floor; the doctor reads every pipeline file and names unknown gears; a repo naming a pipeline with no file is refused when the runner is built |
 | Adding a detector takes at most four files and never the runner or the arbiter; an action takes one | Yes, proven through a copied tree's own hook and MCP server | `tests/assemble/test_fitness.py` |
 | Block declaration files only declare (`ITEMS`, `ACTIONS` literals) | Yes | the loader, in the doctor |
 | Every file sits where the layout list allows | Yes | layout net |
 | No bridge modules | Yes | bridges net |
 | At most 400 lines of Python, 300 of Markdown | Yes | size net |
 | Verdict words only in the arbiter and contracts | Yes | verdict net |
-| `project.json` read only by `config.py` | Yes | config net |
+| No `project.json` (`system.md`, decided 2026-11-18): the plan names its repos, the repository its protection | Yes: no code reads one; the file itself goes once a release without readers is in force | `tests/nets/test_nets.py` NoConfigTest |
 | Entries thin; a broken harness still answers | Yes: an entry imports only the standard library at load and catches everything | entry net |
 | Every function typed and documented | Yes (beyond the spec) | hints net |
 | One judge; the strongest verdict wins; a finding with no row is asked | Yes | `gear/decide/arbiter.py` and its tests |
 | One owner per concept; no copies | Yes since this plan | **owners net** (section 2) |
-| Policy is data | Rule rows for hook calls; the orchestra limits in `project.json` (section 3) | arbiter load; config load |
+| Policy is data | Rule rows for hook calls; the orchestra limits and banned words in the plan (section 3) | arbiter load; plan checks |
 | The ledger: version and fingerprint on open, one upgrade door, hash chains, a fault never blocks | Yes | `docs/12-ledger.md`, the doctor's ledger line |
 | Approval only by the form's exact "Approve" | Yes | plan tests |
 
@@ -53,14 +53,16 @@ What the plan moved to one owner:
 
 ## 3. Policy limits are data
 
-`project.json` may hold `limits`, each a whole number from 1 to 10; a limit not given is its default.
+A plan may hold `limits`, shown in form 1, each a whole number from 1 to its default: a plan may lower a limit, never
+raise it.
 
 | Limit | Default | What it bounds | Read by |
 |---|---|---|---|
 | `children` | 3 | children of a delegated plan running at once | spawn, started, status |
 | `rounds` | 3 | send-backs of one child before the user decides | reject, and the brief that tells the child |
 
-`config.py` is the one place the defaults live; the MCP server hands them to the actions as the `limits` port.
+`utils/plan/item_checks.LIMITS` is the one place the defaults live; the MCP server hands them to the actions as the
+`limits` port, and the actions lower them by the plan in force (`run_limits`).
 Two numbers stay in code on purpose: `PER_QUESTION = 4` (the form tool shows at most 4 options: a fact of the host,
 not a policy) and `DEAD_AFTER` (6 hours: a guess of when a session no longer runs, not a rule anyone sets).
 

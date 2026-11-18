@@ -4,7 +4,6 @@ import json
 import unittest
 
 from harness.assemble.engine.build import build_runner
-from harness.assemble.engine.config import Config, ConfigError
 from harness.assemble.engine.pipeline import PipelineBook, PipelineError
 from harness.assemble.engine.runner import Runner, RunnerError
 from harness.assemble.engine.select import select
@@ -91,13 +90,13 @@ class RecipeTest(unittest.TestCase):
             "pipeline old: extends is not allowed: a pipeline is self-contained; the floor runs under it by itself",
             "pipeline ui: unknown detector nope"])
 
-    def test_the_doctor_checks_the_unit_to_pipeline_map(self):
-        from harness.assemble.engine.checks import pipelines
-        units = {"api": {"pipeline": "backend"}, "web": {"pipeline": "base"}, "docs": {}}
-        home = copy_tree(self, {"project.json": json.dumps({"name": "x", "units": units})})
-        self.assertEqual(pipelines(home), ["unit api: its pipeline backend has no file in assemble/pipelines"])
+    def test_a_repo_of_the_plan_runs_its_pipeline_and_one_with_no_file_is_refused(self):
+        home = copy_tree(self)
+        plan = {"services": ["api"], "repos": {"api": {"url": "https://github.com/acme/api", "pipeline": "backend"}}}
+        with self.assertRaises(PipelineError):
+            build_runner(home, plan=plan)
         (home / "harness/assemble/pipelines/backend.json").write_text(json.dumps({"detectors": ["secret_scan"]}))
-        self.assertEqual(pipelines(home), [])
+        self.assertIsInstance(build_runner(home, plan=plan), Runner)
 
 
 if __name__ == "__main__":

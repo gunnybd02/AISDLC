@@ -4,12 +4,16 @@ follow docs 04 sections 8 and 10: the head line, the form, the overview of a pla
 a revision shows only its changed lines."""
 import os
 import re
+import subprocess
 import unittest
+from unittest import mock
 
 from harness.assemble.engine.ports import LedgerPort
 from harness.utils.contracts import YES
+from harness.utils.git import github
+from harness.utils.git.github import GitHubError
 from harness.utils.plan.approval import approvals
-from harness.tests.e2e import copy_tree
+from harness.tests.e2e import copy_tree, git_repo
 from harness.tests.mcp import caller
 
 OVERVIEW = {"problem": ["no greeting"], "need": ["greet the user"], "how": ["a function"], "accept": ["hello shows"]}
@@ -166,6 +170,64 @@ class PlanStatusTest(unittest.TestCase):
         self.assertIn(f"open, phase execute, plan {plan_id}", out)
         self.assertIn("approved", out)
         self.assertIn("0 feedback not answered", out)  # found live: the approval word counted as feedback
+
+
+class RepoBindingTest(unittest.TestCase):
+    """repos.root: a plan with repos is kept only from a clone of one of them, and takes that repository's test
+    command as its verify."""
+
+    def setUp(self):
+        self.root = copy_tree(self)
+        self.port = LedgerPort(self.root)
+        self.port.touch_session("s1")
+        self.run = caller(self.root)
+        self.repo = git_repo(self, {"a.py": "X = 1\n"})
+        subprocess.run(["git", "-C", str(self.repo), "remote", "add", "origin", "https://github.com/acme/shop.git"],
+                       check=True, capture_output=True)
+        here = os.getcwd()
+        os.chdir(self.repo)  # the MCP server runs in the project's folder
+        self.addCleanup(os.chdir, here)
+
+    def present(self, repos):
+        return self.run("plan", "plan_present", plan={**PLAN, "repos": repos})
+
+    def test_a_plan_from_a_clone_of_its_repo_takes_its_test_command(self):
+        result = self.present({"shop": {"url": "https://github.com/acme/shop", "verify": ["npm", "test"]}})
+        self.assertFalse(result.is_error, result.text)
+        plan_id = re.search(r"plan (pd-[0-9a-z]+-[0-9a-f]{6}) rev", result.text).group(1)
+        self.assertEqual(self.port.revision(plan_id)["items"]["verify"], ["npm", "test"])
+        self.assertIn("- shop: https://github.com/acme/shop | base main | verify: npm test", result.text)
+
+    def test_a_plan_whose_folder_is_in_none_of_its_repos_is_refused(self):
+        result = self.present({"web": {"url": "https://github.com/acme/web", "verify": ["npm", "test"]}})
+        self.assertTrue(result.is_error)
+        self.assertIn("is in none of the plan's repos (its origin is https://github.com/acme/shop.git)", result.text)
+
+    def test_a_plan_with_tests_needs_the_test_command_of_its_repo(self):
+        result = self.present({"shop": {"url": "https://github.com/acme/shop"}})
+        self.assertTrue(result.is_error)
+        self.assertIn("repo shop names no verify and the plan has tests", result.text)
+
+    def test_the_ready_report_shows_the_forge_off_and_the_plan_is_kept(self):
+        result = self.present({"shop": {"url": "https://github.com/acme/shop", "verify": ["npm", "test"]}})
+        self.assertFalse(result.is_error, result.text)
+        self.assertIn("\nReady: shop | not checked (the forge is off)\n", result.text)
+
+    def test_an_unreachable_forge_is_reported_and_the_plan_is_still_kept(self):
+        def down(method, path):
+            raise GitHubError("gh: could not reach api.github.com")
+        with mock.patch.dict(os.environ, {"HARNESS_FORGE": "on"}), mock.patch.object(github, "call", down):
+            run = caller(self.root)  # the ports take github.call when they are built
+            result = run("plan", "plan_present", plan={**PLAN, "repos": {
+                "shop": {"url": "https://github.com/acme/shop", "verify": ["npm", "test"]}}})
+        self.assertFalse(result.is_error, result.text)
+        self.assertIn("Ready: shop | not reachable (gh: could not reach api.github.com)", result.text)
+        self.assertRegex(result.text, r"plan pd-[0-9a-z]+-[0-9a-f]{6} rev")
+
+    def test_the_model_cannot_set_the_verify_itself(self):
+        result = self.run("plan", "plan_present", plan={**PLAN, "verify": ["true"]})
+        self.assertTrue(result.is_error)
+        self.assertIn("unknown item verify", result.text)
 
 
 if __name__ == "__main__":

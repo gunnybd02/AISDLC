@@ -63,7 +63,7 @@ class Scenario(unittest.TestCase):
     """A parent with an approved delegated plan of one child, its origin, and helpers that write the child's branch."""
 
     def setUp(self):
-        self.port = LedgerPort(copy_tree(self, {"project.json": json.dumps({"name": "t"})}))
+        self.port = LedgerPort(copy_tree(self))
         self.origin = tree(self, {})
         git(self.origin, "init", "-q", "--bare")
         self.repo = git_repo(self, {"README.md": "r\n"})
