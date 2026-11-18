@@ -34,13 +34,17 @@ class ProblemsError(Exception):
 
 @dataclass(frozen=True)
 class Event:
-    """One hook call of Claude Code; response is the tool's answer, given to PostToolUse only."""
+    """One hook call of Claude Code; response is the tool's answer, given to PostToolUse only; mode is Claude Code's
+    permission mode (default, plan, acceptEdits, auto, dontAsk, bypassPermissions; "" when not sent); call is the
+    tool_use_id that pairs a PreToolUse with its PostToolUse ("" when not sent)."""
     kind: str
     tool: str = ""
     input: dict = field(default_factory=dict)
     session: str = ""
     cwd: str = ""
     response: object = None
+    mode: str = ""
+    call: str = ""
 
 
 @dataclass(frozen=True)

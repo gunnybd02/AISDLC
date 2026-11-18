@@ -23,8 +23,8 @@ class HookIO:
         """Read the hook JSON Claude Code gives on stdin as an Event.
 
         Args:
-            text: the hook payload (JSON) with hook_event_name, tool_name, tool_input, session_id, cwd and
-                tool_response.
+            text: the hook payload (JSON) with hook_event_name, tool_name, tool_input, session_id, cwd,
+                tool_response, permission_mode and tool_use_id.
 
         Returns:
             The Event: its input is tool_input, {"prompt"} for UserPromptSubmit, {"stop_hook_active"} for Stop (with transcript_path
@@ -49,7 +49,8 @@ class HookIO:
         if not isinstance(tool_input, dict):
             raise HookError("tool_input of the hook payload is not an object")
         return Event(data["hook_event_name"], str(data.get("tool_name") or ""), tool_input,
-                     str(data.get("session_id") or ""), str(data.get("cwd") or ""), data.get("tool_response"))
+                     str(data.get("session_id") or ""), str(data.get("cwd") or ""), data.get("tool_response"),
+                     str(data.get("permission_mode") or ""), str(data.get("tool_use_id") or ""))
 
     @staticmethod
     def write(event: Event, verdict: Verdict, notes: Sequence[str] = ()) -> str:

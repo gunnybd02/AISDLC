@@ -14,6 +14,11 @@ class HookIOTest(unittest.TestCase):
     def test_a_payload_becomes_an_event(self):
         self.assertEqual(HookIO.read(json.dumps(PAYLOAD)), Event("PreToolUse", "Bash", {"command": "ls"}, "s1", "C:/x"))
 
+    def test_the_permission_mode_and_the_call_id_are_read(self):
+        event = HookIO.read(json.dumps({**PAYLOAD, "permission_mode": "auto", "tool_use_id": "toolu_1"}))
+        self.assertEqual((event.mode, event.call), ("auto", "toolu_1"))
+        self.assertEqual((HookIO.read(json.dumps(PAYLOAD)).mode, HookIO.read(json.dumps(PAYLOAD)).call), ("", ""))
+
     def test_a_payload_that_is_not_a_hook_event_is_refused(self):
         for text in ("not json", "[]", json.dumps({"tool_name": "Bash"}), json.dumps({**PAYLOAD, "tool_input": "x"})):
             with self.subTest(text=text), self.assertRaises(HookError):
