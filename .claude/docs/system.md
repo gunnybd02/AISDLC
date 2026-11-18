@@ -127,18 +127,36 @@ child its scope, steps in words, criteria, and its acceptance test files.
 **The acceptance tests** are written by the parent before any child starts, pushed on the plan branch, and locked:
 no child may change them (its harness and CI refuse it). A child's job is to make them pass.
 
-**Issue #N**, opened by the parent: the goal, the steps in words, the criteria, and a machine block (scope, branch,
-acceptance test files) with its hash.
+**Issue #N**, opened by the parent's harness in one format, `harness-issue/1` (`utils/orchestra/issues.py`):
+
+| Part | Holds |
+|---|---|
+| title | `[p<plan>] <name>: <goal>` |
+| sections, in order | Goal, Acceptance criteria, Scope, Tests, Locked acceptance tests, Branch, Commits |
+| machine block | `{format, plan, planSha, child, repo, path, branch, start, scope, tests, acTests}` and its sha256 |
+
+**The registration** (`.harness/register/<name>.json`, format `harness-register/1`): the issue, its block's hash, the
+ticket file's hash and the plan's hash. The child's harness writes it at `take`, after the issue and the ticket row
+match, as the first commit of the branch (`#N <name>: register (...)`), and pushes it. The ledger keeps it as a row,
+and the card plan's approval names its commit.
+
+**The commit format**: every commit on a child's branch starts `#N <name>: `, written by the harness (steps, questions,
+handback, the parent's send-backs and answers).
 
 **The ticket CSV**, `tickets/<plan>__<sha>.csv` on Drive, one row per child, written by the harness at form 1 (the
 model only uploads it by reference):
 
 | key | plan sha | child | repo | issue | issue sha | branch | scope | AC tests | approved at |
 |---|---|---|---|---|---|---|---|---|---|
-| `41_issue_order-list` | `0ada55...` | api | github.com/acme/shop | #41 | `9f2c...` | `issue/41-order-list` | `api/src/orders/;api/src/routes/` | `.../order_history.py` | 2026-11-18T... |
+| `41_issue_api` | `0ada55...` | api | github.com/acme/shop | #41 | `9f2c...` | `orch/p7/api` | `api/src/orders/;api/src/routes/` | `.../order_history.py` | 2026-11-18T... |
 
 **The child's own plan**: its exact files, steps and tests; every commit names #N; approved by the parent's grant
 only inside the scope.
+
+**`harness ci`** (`python3 anchor.py cli ci --base <plan branch> --head <child branch>`, `utils/orchestra/ci.py`): the
+child's gate run again on the forge, from the branch and its issue alone (no session, no ledger). Rules: branch, base,
+issue, registered (first), subjects, marks, secrets, scope, locked. One line per rule; exit 1 when one fails; a rule
+that cannot run fails as "not checked".
 
 ## 7. The gates (one rule set, three runners)
 
@@ -215,7 +233,10 @@ Earlier (2026-11-17): a cloud child cannot message its parent (`05b-orchestra-cl
 4. Child: `take` registers the issue and checks the match; its plan is approved by its scope. Done: PR 66 (the
    child's harness reads its issue block and hash from GitHub; the hook checks the downloaded ticket row at Drive's
    answer and keeps only the result; a mismatch pushes question 1 with the reason and stops; commits name #N).
-5. CI: `harness ci` with the hard rules; the parent watches the PR (the doorbell).
+5. CI: `harness ci` with the hard rules; the parent watches the PR (the doorbell). Piece 1 done: PR 67 (the issue
+   format `harness-issue/1`; the registration as the first commit of the branch, named by the card plan's approval;
+   commits start `#N <name>: `; a child adds files only inside its scope; `cli ci` checks it all from the branch).
+   Next: piece 2 (the workflow file), 3 (draft PR and watch), 4 (the doorbell).
 6. Orders: signed one-way messages, checked at the notifications door, each unlocking one action.
 7. End: every PR merged stops the children; form 2; archive; ledgers to `db/`; join.
 8. Docs and the user's specs (13, 05) brought in line.
