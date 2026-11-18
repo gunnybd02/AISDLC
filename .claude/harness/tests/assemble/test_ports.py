@@ -4,7 +4,10 @@ import unittest
 from harness.assemble.engine.ports import LedgerPort, PlanState
 from harness.assemble.engine.runner import Act
 from harness.utils.contracts import Event, Verdict
+from harness.utils.ledger import writes
+from harness.utils.shell.after import snapshot, top_of
 from harness.tests import tree
+from harness.tests.e2e import git_repo
 
 
 class SessionTest(unittest.TestCase):
@@ -42,6 +45,24 @@ class PlanBaseTest(unittest.TestCase):
         for branch in ("develop", "main", "master"):
             self.assertTrue(view.protected(branch), branch)
         self.assertFalse(view.protected("issue/41-order-list"))
+
+
+class AfterWritesTest(unittest.TestCase):
+    """s5.after.recorded: after a shell line checked after it ran, the port gives the files it changed since its
+    snapshot, and nothing for a line with no snapshot or another tool."""
+
+    def test_the_files_changed_since_the_kept_snapshot_are_given(self):
+        port = LedgerPort(tree(self, {}))
+        repo = git_repo(self, {"a.py": "A = 1\n"})
+        top = top_of(str(repo))
+        port.write(lambda con, rec: writes.keep_before(con, "s1", "t1", {top: snapshot(top)}))
+        (repo / "a.py").write_text("A = 2\n", encoding="utf-8")
+
+        def facts(call, tool="Bash", kind="PostToolUse"):
+            return PlanState(port).read(Event(kind, tool, {"command": "make"}, "s1", str(repo), {}, "auto", call))
+        self.assertEqual((facts("t1")["after_writes"], facts("t1")["after_unseen"]), ([f"{top}/a.py"], []))
+        for given in (facts("t2"), facts("t1", tool="Write"), facts("t1", kind="PreToolUse"), facts("")):
+            self.assertNotIn("after_writes", given)
 
 
 if __name__ == "__main__":

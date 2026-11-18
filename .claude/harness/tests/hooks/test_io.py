@@ -34,7 +34,15 @@ class HookIOTest(unittest.TestCase):
                 self.assertEqual((out["permissionDecision"], out["permissionDecisionReason"]), (word, "why"))
 
     def test_an_event_other_than_pre_tool_use_gets_no_decision(self):
-        self.assertEqual(HookIO.write(Event("PostToolUse"), Verdict(REFUSE, "why")), "")
+        self.assertEqual(HookIO.write(Event("UserPromptSubmit"), Verdict(REFUSE, "why")), "")
+        self.assertEqual(HookIO.write(Event("PostToolUse"), Verdict(ASK, "why")), "")
+
+    def test_a_refused_post_tool_use_shows_its_reason_beside_the_result(self):
+        """s5.after.outside: the call ran; Claude Code shows the reason to the agent, and the notes still reach it."""
+        self.assertEqual(json.loads(HookIO.write(Event("PostToolUse"), Verdict(REFUSE, "why"))),
+                         {"decision": "block", "reason": "why"})
+        out = json.loads(HookIO.write(Event("PostToolUse"), Verdict(REFUSE, "why"), ["approved"]))
+        self.assertEqual((out["decision"], out["hookSpecificOutput"]["additionalContext"]), ("block", "approved"))
 
     def test_the_response_of_a_post_tool_use_is_read(self):
         payload = {**PAYLOAD, "hook_event_name": "PostToolUse", "tool_response": {"answers": {"q": "a"}}}

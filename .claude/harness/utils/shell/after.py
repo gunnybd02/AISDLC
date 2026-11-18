@@ -51,6 +51,25 @@ def snapshot(root: str) -> Optional[Snapshot]:
     return {path: content_hash(os.path.join(root, path)) for path in paths}
 
 
+def writes_after(shots: dict[str, Snapshot]) -> tuple[list[str], list[str]]:
+    """What a command changed since its snapshots were taken, in each repository.
+
+    Args:
+        shots: {top folder: the snapshot before the command}.
+
+    Returns:
+        (the absolute paths of the files it changed, sorted; the top folders whose snapshot cannot be taken now).
+    """
+    paths, unseen = [], []
+    for root, before in sorted(shots.items()):
+        now = snapshot(root)
+        if now is None:
+            unseen.append(root)
+        else:
+            paths += [f"{root}/{path}" for path in changed(before, now)]
+    return paths, unseen
+
+
 def changed(before: Snapshot, after: Snapshot) -> list[str]:
     """The files a command changed: dirty after it ran, with a content the snapshot before did not hold.
 

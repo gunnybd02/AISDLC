@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from harness.utils.contracts import CLAUDE_DECISION, Event, Verdict, refused
 
 DECIDES = "PreToolUse"
+AFTER = "PostToolUse"
 
 
 class HookError(ValueError):
@@ -62,12 +63,18 @@ class HookIO:
             notes: the notes of the act step for the model (an approval, a delivery), one per line.
 
         Returns:
-            JSON text: {"decision": "block", reason} for a refused Stop; hookSpecificOutput with permissionDecision
-            and its reason for a PreToolUse that asks or refuses; else hookSpecificOutput with additionalContext (the
-            notes) when there are notes; "" (nothing said) otherwise.
+            JSON text: {"decision": "block", reason} for a refused Stop, and for a refused PostToolUse (the call ran:
+            Claude Code shows the reason beside its result), with the notes as additionalContext; hookSpecificOutput
+            with permissionDecision and its reason for a PreToolUse that asks or refuses; else hookSpecificOutput
+            with additionalContext (the notes) when there are notes; "" (nothing said) otherwise.
         """
         if event.kind == "Stop" and refused(verdict):  # the turn does not end: Claude Code reads why and goes on
             return json.dumps({"decision": "block", "reason": verdict.reason}, ensure_ascii=False)
+        if event.kind == AFTER and refused(verdict):
+            out_after: dict = {"decision": "block", "reason": verdict.reason}
+            if notes:
+                out_after["hookSpecificOutput"] = {"hookEventName": event.kind, "additionalContext": "\n".join(notes)}
+            return json.dumps(out_after, ensure_ascii=False)
         if event.kind == DECIDES and verdict.decision in CLAUDE_DECISION:
             out = {"hookEventName": event.kind, "permissionDecision": CLAUDE_DECISION[verdict.decision],
                    "permissionDecisionReason": verdict.reason}

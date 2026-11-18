@@ -141,6 +141,26 @@ class AutoModeTest(unittest.TestCase):
         self.assertEqual(found, ["shell.unexplained"])
         self.assertNotIn("after_before", given)
 
+    def after(self, writes, unseen=(), plan=PLAN):
+        event = Event("PostToolUse", "Bash", {"command": "make", "description": SAID}, "s1", ROOT, {}, "auto", "t1")
+        facts = {"plan": plan, "state_dir": STATE, "after_writes": list(writes), "after_unseen": list(unseen)}
+        given = PlanPaths().translate(event, facts)
+        return [(f.kind, f.detail) for f in Decide.load(CLAUDE_DIR).matched(given.get(RULE_ACTIONS, []))]
+
+    def test_a_file_an_unclear_command_changed_outside_the_plan_is_refused_after_it(self):
+        """s5.after.outside: a file the plan names passes; another, any file with no plan, or a repository that cannot
+        be read again is refused, the file named."""
+        self.assertEqual(self.after([native("C:/repo/src/a.py"), native("C:/repo/test_a.py")]), [])
+        ((kind, detail),) = self.after([native("C:/repo/src/b.py")])
+        self.assertEqual(kind, "plan.outside_after")
+        self.assertIn(native("C:/repo/src/b.py"), detail)
+        self.assertEqual([k for k, _ in self.after([native("C:/repo/src/a.py")], plan=None)], ["plan.none_after"])
+        self.assertEqual([k for k, _ in self.after([], unseen=[native("C:/repo")])], ["plan.outside_after"])
+        self.assertEqual([k for k, _ in self.after([STATE + "/harness.db"])], ["plan.outside_after"])
+        rows = Decide.load(CLAUDE_DIR).codes
+        self.assertEqual((rows["plan.outside_after"]["verdict"], rows["plan.none_after"]["verdict"]),
+                         ("refuse", "refuse"))
+
 
 class RulesTest(unittest.TestCase):
     def test_each_finding_of_the_gate_is_refused_by_a_rule(self):

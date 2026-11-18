@@ -12,7 +12,9 @@ has_plan, in_plan, read_whole, explained, auto. The rows:
   copied back);
 - shell.after: in auto mode (Claude Code's permission mode), the explained call is not asked: the snapshot of each
   repository it may write (utils/shell/after.py) is given as after_before, kept under its call id, and what it changed
-  is judged after it ran. Outside a repository, or with no call id, it is asked as in the other modes.
+  is judged after it ran. Outside a repository, or with no call id, it is asked as in the other modes;
+- plan.outside_after, plan.none_after: after such a call ran (kind after), a file it changed that the approved plan
+  does not name, or any file it changed with no plan, or a repository it could not read again.
 A write with no approved plan is tracked.py's (plan.none). Paths are compared as utils/plan/files.py resolves them."""
 from __future__ import annotations
 
@@ -121,13 +123,15 @@ def before_shots(dirs: Sequence[str], plan: Optional[ApprovedPlan]) -> Optional[
 
 class PlanPaths(Translator):
     """The rule actions of the files a call writes or names, and of a shell line the reader cannot see whole."""
-    READS = ("plan", "state_dir", "writes", "mentions", "shell_unread", "shell_said", "shell_command", "shell_dirs")
+    READS = ("plan", "state_dir", "writes", "mentions", "shell_unread", "shell_said", "shell_command", "shell_dirs",
+             "after_writes", "after_unseen")
     VOCABULARY = ("kind", "in_state", "has_plan", "in_plan", "read_whole", "explained", "auto")
 
     def translate(self, event: Event, facts: Optional[Facts] = None) -> Facts:
         """One action per write (kind write), for the first place of the state a call names that it does not write
-        (kind mention), and for a shell line the reader cannot see whole (kind shell, auto when it is checked after:
-        its snapshots then come as after_before); {} when there is none."""
+        (kind mention), for a shell line the reader cannot see whole (kind shell, auto when it is checked after:
+        its snapshots then come as after_before), and after such a line ran, one per file it changed and per repository
+        it could not read again (kind after); {} when there is none."""
         facts = facts or {}
         out: list[dict[str, Any]] = []
         shots = None
@@ -149,5 +153,12 @@ class PlanPaths(Translator):
                 shots = before_shots(facts.get("shell_dirs") or [event.cwd], plan)
             out.append({"kind": "shell", "read_whole": False, "explained": said, "auto": shots is not None,
                         "detail": shell_detail(facts) if said else "; ".join(facts["shell_unread"])})
+        for path in facts.get("after_writes", []):
+            ours = plan is not None and not in_state(path, state) and allowed(plan, path)
+            out.append({"kind": "after", "has_plan": plan is not None, "in_plan": ours,
+                        "detail": f"{path} changed" + (f", and plan {plan['plan_id']} does not name it" if plan else "")})
+        for root in facts.get("after_unseen", []):
+            out.append({"kind": "after", "has_plan": plan is not None, "in_plan": False,
+                        "detail": f"what it changed in {root} cannot be read"})
         given: Facts = {RULE_ACTIONS: out} if out else {}
         return {**given, "after_before": shots} if shots is not None else given

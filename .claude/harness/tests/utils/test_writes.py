@@ -73,6 +73,21 @@ class WritesTest(unittest.TestCase):
         self.assertIsNone(self.port.read(lambda con: writes.before_of(con, "toolu_2")))
         self.assertIsNone(self.port.read(lambda con: writes.before_of(con, "")))
 
+    def test_the_files_an_unclear_line_changed_are_kept_as_its_writes(self):
+        """s5.after.recorded: after the line ran, each file it changed is a write of the session, with its content."""
+        call = {"command": "make", "description": "Build the project with make"}
+        build_runner(self.claude_dir).run(Event("PreToolUse", "Bash", call, "s1", str(self.repo), None, "auto", "t1"))
+        (self.repo / "a.py").write_text("X = 5\n", encoding="utf-8")
+        (self.repo / "made.txt").write_text("m\n", encoding="utf-8")
+        outcome = build_runner(self.claude_dir).run(Event("PostToolUse", "Bash", call, "s1", str(self.repo),
+                                                          {"exit_code": 0}, "auto", "t1"))
+        self.assertEqual(outcome.verdict.decision, "refuse")  # no plan names them: the agent is told
+        self.assertIn("made.txt", outcome.verdict.reason)
+        written = self.port.written("s1")
+        for name in ("a.py", "made.txt"):
+            real = writes.real(str(self.repo / name))
+            self.assertEqual(written[real], {writes.content_hash(real)})
+
     def test_how_a_shell_line_ended_is_read_from_the_tools_answer(self):
         self.assertEqual(writes.outcome({"exit_code": 0}), ("ok", 0))
         self.assertEqual(writes.outcome({"returncode": 3}), ("failed", 3))

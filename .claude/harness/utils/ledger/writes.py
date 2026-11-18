@@ -178,7 +178,8 @@ def record(con: sqlite3.Connection, event: Event, facts: Facts) -> None:
                 keep_before(con, sid, event.call, facts["after_before"])
         elif event.kind == "PostToolUse":
             shell_row(con, sid, command, event.cwd, *outcome(event.response))
-            targets = shell_places(command, dialect, event.cwd, "").get("writes", [])
+            seen = shell_places(command, dialect, event.cwd, "").get("writes", []) + list(facts.get("after_writes") or [])
+            targets = list(dict.fromkeys(real(path) for path in seen))  # a file both read and found after counts once
     elif event.kind == "PostToolUse":
         targets = facts.get("writes", [])
     for path in targets:
