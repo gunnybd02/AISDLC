@@ -21,7 +21,7 @@ from harness.utils.git.commit import commit
 from harness.utils.git.facts import head, top
 from harness.utils.git.run import GitError, git, run_git
 from harness.utils.orchestra import child
-from harness.utils.orchestra.brief import NOTES
+from harness.utils.orchestra.brief import NOTES, child_subject
 from harness.utils.plan import tickets
 from harness.utils.plan.ship import audit
 from harness.utils.shapes import ChildRole, CommitJudge, GitJudge, PlanStore, Ticket
@@ -212,7 +212,7 @@ def ask(port: PlanStore, sid: str, question: str, commit_judge: CommitJudge, git
     path = Path(repo) / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"# Question {n} from {role['name']} (plan {role['plan']})\n\n{text}\n", encoding="utf-8")
-    message = f"Question {n} of {role['name']} (plan {role['plan']})"
+    message = child_subject(role, f"Question {n} of {role['name']} (plan {role['plan']})")
     verdict = commit_judge(repo, [rel], message)
     if stopped(verdict):
         raise WorkError(f"the question's commit is stopped: {verdict.reason}")
@@ -350,7 +350,7 @@ def handback(port: PlanStore, sid: str, report: dict[str, Any], commit_judge: Co
     path = Path(repo) / rel
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(body, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-    message = f"Handback of {role['name']} (plan {role['plan']})"
+    message = child_subject(role, f"Handback of {role['name']} (plan {role['plan']})")
     verdict = commit_judge(repo, [rel], message)
     if stopped(verdict):
         raise WorkError(f"the receipt's commit is stopped: {verdict.reason}")

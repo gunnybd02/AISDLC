@@ -15,11 +15,11 @@ step_skip {why} gives the current step up: its behaviours are kept skipped, and 
 from __future__ import annotations
 
 import os
-import re
 from collections.abc import Sequence
 from typing import Optional
 
 from harness.utils.contracts import asked, refused
+from harness.utils.orchestra.brief import child_subject
 from harness.utils.git.branches import current
 from harness.utils.git.commit import commit
 from harness.utils.git.facts import blob, head, top
@@ -142,9 +142,7 @@ def step_done(port: PlanStore, sid: str, message: Optional[str], judge: Optional
     if len(text) > LONGEST_MESSAGE:
         raise StepError(f"the message is longer than {LONGEST_MESSAGE} characters")
     ticket, plan = in_force(port, sid)
-    issue = ((((ticket.get("child") or {}).get("record") or {}).get("issue")) or {}).get("number")
-    if issue and not re.search(rf"#{issue}\b", text):  # a child's commit names its issue: the forge links them
-        text = f"{text} (#{issue})"
+    text = child_subject(ticket.get("child") or {}, text)  # "#N <name>: ...": the forge links it to the issue
     n, steps = ticket["step"], steps_of(plan)
     repo = top(plan["root"])
     if not repo:

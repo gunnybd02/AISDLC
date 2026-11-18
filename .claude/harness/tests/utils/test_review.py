@@ -280,6 +280,18 @@ class ReviewTest(Scenario):
         with self.assertRaisesRegex(Exception, "has started already"):
             Spawn().run(self.ctx(), {"name": "hello"})
 
+    def test_the_notes_of_the_parent_start_with_the_issue_prefix(self):
+        """s2.commit.parent: a child with an issue in the parent's ticket gets "#N <name>: " notes."""
+        from harness.utils.orchestra import issues
+        from harness.utils.plan import tickets
+        self.hand_back()
+        self.port.write(lambda con, rec: tickets.save(con, {**tickets.latest(con, "s1"), issues.ISSUES: {
+            "children": {"hello": {"repo": "o/r", "number": 41, "url": f"{URL}/issues/41", "sha": "a" * 64}}}}))
+        review.reject(self.port, "s1", "hello", "AC2 is not tested", UNITS, 3)
+        review.answer(self.port, "s1", "hello", "use 404", UNITS)
+        self.assertEqual(git(self.origin, "log", "-2", "--format=%s", f"orch/p{self.plan}/hello").splitlines(),
+                         ["#41 hello: Answer 1 to hello", "#41 hello: Send-back 1 of hello"])
+
     def test_answer_pushes_a_note_and_forget_is_recorded(self):
         self.hand_back()
         text = review.answer(self.port, "s1", "hello", "use 404", UNITS)

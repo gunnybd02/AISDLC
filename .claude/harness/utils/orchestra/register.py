@@ -23,7 +23,7 @@ from harness.utils.contracts import Event
 from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError
 from harness.utils.ledger.store import note
-from harness.utils.orchestra.brief import NOTES
+from harness.utils.orchestra.brief import NOTES, child_subject
 from harness.utils.orchestra.fetch import FetchError, put_files
 from harness.utils.orchestra.issues import COLUMNS, format_problems, read_block
 from harness.utils.orchestra.locked import on_origin
@@ -188,7 +188,8 @@ def refuse(role: ChildRole, repo: str, problems: list[str]) -> str:
     unit = dict(role.get("unit") or {})
     start = role["branch"] if on_origin(unit, repo, role["branch"]) else role.get("start") or unit.get("base", "main")
     try:
-        sha = put_files(unit, repo, start, {rel: text}, f"Registration of {role['name']} failed (plan {role['plan']})",
+        sha = put_files(unit, repo, start, {rel: text},
+                        child_subject(role, f"Registration of {role['name']} failed (plan {role['plan']})"),
                         target=role["branch"])
     except FetchError as e:
         return f"The note could not be pushed ({str(e)[-200:]}): name it to the user."

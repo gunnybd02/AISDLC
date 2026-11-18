@@ -33,6 +33,34 @@ def branch(plan: int, name: str) -> str:
     return f"orch/p{plan}/{name}"
 
 
+def subject(number: Any, name: str, what: str) -> str:
+    """The subject of a commit on a child's branch, in its issue's format: "#<number> <name>: <what>", once.
+
+    Args:
+        number: the child's issue number; None or 0 for a child without an issue.
+        name: the child's name.
+        what: what the commit does.
+
+    Returns:
+        The subject; what as it is for a child without an issue, or when it starts with the prefix already.
+    """
+    head = f"#{number} {name}: " if number else ""
+    return what if not head or what.startswith(head) else head + what
+
+
+def child_subject(role: dict[str, Any], what: str) -> str:
+    """subject for a child's role: the issue number its brief's record names.
+
+    Args:
+        role: the child's role (utils/orchestra/child.parse).
+        what: what the commit does.
+
+    Returns:
+        The subject.
+    """
+    return subject(((role.get("record") or {}).get("issue") or {}).get("number"), str(role.get("name", "")), what)
+
+
 def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[str, Any] | None = None,
                start: str = "", issue: dict[str, Any] | None = None, ticket_file: dict[str, Any] | None = None) -> str:
     """The card as the child's harness reads it: one JSON object between CARD_OPEN and CARD_CLOSE.
@@ -99,7 +127,8 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
               f"{(ticket_file or {}).get('title', '(none)')} of the store's tickets folder. take registers you first: "
               "it asks you to download that file once with the Google Drive tool, the harness checks it and the issue "
               "against this brief and keeps no copy, and only then opens your card plan. Every commit names "
-              f"#{issue['number']}.") if issue else ""
+              f"#{issue['number']}: it starts \"#{issue['number']} {card['name']}: \", and the harness writes that."
+              if issue else "")
     name, spec = card["name"], unit or dict(HOME_SPEC)
     into, locked = start or spec["base"], list(card.get("acTests", []))
     held = (f"Acceptance tests (locked): {', '.join(locked)}. The orchestrator wrote them; they are on your branch from "
