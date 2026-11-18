@@ -18,6 +18,7 @@ from harness.utils.contracts import now
 from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError
 from harness.utils.git.run import GitError, git, run_git
+from harness.utils.ledger import store
 from harness.utils.orchestra import crew, locked, synced
 from harness.utils.orchestra.brief import branch
 from harness.utils.orchestra.card import unit_spec
@@ -236,8 +237,9 @@ def land(port: PlanStore, sid: str, units: dict[str, Any], verify: list[str], gi
                                   "commit them with step_done, then run('orchestra', 'land', {}) again."])
     gaps = synced.missing(port, port.ticket(sid)) if folder else []
     if gaps:
+        db = store.place(port, "db") if folder == store.folder() else ""
         return "\n".join(lines + ["Every pull request is merged and green. " + synced.ask_text(port.ticket(sid), folder,
-                                                                                            gaps)])
+                                                                                            gaps, db)])
     port.close_plan(sid, port.ticket(sid), "delivered", lines)
     return "\n".join(lines + [f"Plan {plan['id']} ({ticket['draft']}) is delivered. Delete the check-in if you set one "
                               "(delete_trigger). Then run('orchestra', 'remove', {}) for the child sessions, and report "

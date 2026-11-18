@@ -187,6 +187,7 @@ class Act:
             notes += synced.seen(self.port, event)  # a Drive answer shows copies of this session's orchestra run
             notes += delivery(self.port, event.session, facts.get("git_commit"), facts.get("plan"))
             notes += store.uploaded(self.port, event)  # a Drive tool answered with a copy of the ledger
+            notes += store.placed(self.port, event)  # a Drive tool showed the store's db or tickets folder
             from harness.assemble.engine.cli_live import after_merge  # cli_live imports build, which imports this
             notes += after_merge(Path(self.port.path).parent.parent, event)  # the harness's main merged: put it in force
             plan = facts.get("plan")

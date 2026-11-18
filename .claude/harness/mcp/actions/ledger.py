@@ -154,7 +154,8 @@ class Export(McpAction):
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Copy the whole ledger into <into>/.harness-export/ for the store and answer the one Drive call that uploads
-        it. ActionError with no store folder, into not a folder, an unknown reason, or no ledger yet."""
+        it into the store's db folder (first the calls that find or make db when no Drive answer showed it yet).
+        ActionError with no store folder, into not a folder, an unknown reason, or no ledger yet."""
         folder = str(args.get("folder") or ctx.ports["store"]() or "").strip()
         if not FOLDER_ID.match(folder):
             raise ActionError("no store folder: the environment variable HARNESS_DRIVE_FOLDER holds the id of the "
@@ -175,7 +176,8 @@ class Export(McpAction):
             copy = snapshot(port.path, into / FOLDER, record)
         except LedgerError as e:
             raise ActionError(str(e)) from e
-        return upload_call(copy, folder)
+        db = store.place(port, "db") if folder == store.folder() else ""  # a folder given by hand: its db is not known
+        return upload_call(copy, folder, db)
 
 
 class StoreStatus(McpAction):

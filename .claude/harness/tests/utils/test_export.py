@@ -55,12 +55,18 @@ class ExportTest(unittest.TestCase):
             snapshot(self.root / "none.db", self.out, self.record("s1__x-001__a.db"))
 
     def test_the_answer_names_the_one_drive_call(self):
+        """s2.export.db: into the db folder when it is known; else first the calls that find or make it."""
         copy = snapshot(self.db, self.out, self.record("s1__x-001__a.db"))
-        text = upload_call(copy, "folder-id-123")
-        for line in (f"  title: {copy['title']}", "  parentId: folder-id-123",
+        text = upload_call(copy, "folder-id-123", "db-folder-456")
+        for line in (f"  title: {copy['title']}", "  parentId: db-folder-456",
                      "  contentMimeType: application/x-sqlite3", "  disableConversionToGoogleType: true",
                      f"  base64Content: sha256:{copy['sha256']}:{copy['path']}"):
             self.assertIn(line, text.splitlines())
+        self.assertNotIn("First find", text)
+        first = upload_call(copy, "folder-id-123")
+        self.assertIn("First find the store's db folder", first)
+        self.assertIn("parentId = 'folder-id-123'", first)
+        self.assertIn("  parentId: <the id of the db folder Drive gave>", first.splitlines())
 
 
 if __name__ == "__main__":

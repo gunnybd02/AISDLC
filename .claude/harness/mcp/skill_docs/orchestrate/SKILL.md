@@ -47,6 +47,12 @@ Write each card's `acTests` (they fail now: the code is not there yet). Then `ru
 them on `plan/p<plan>`, made from the base, pushes it and keeps the hash of each file. Spawn refuses a card with
 acceptance tests until they are locked; once a child has started, the lock does not change.
 
+Then `run("orchestra", "tickets", {})`: the harness opens one GitHub issue per child (its card in words and a machine
+block with its hash) and writes the ticket file, a CSV row per child, into `.harness-export/`. Make the one Drive
+upload its answer gives, into the store's `tickets` folder (first find or make that folder when it says so); the harness
+reads Drive's answer and records it. For a plan with locked tests, spawn waits for the child's issue and, with a store
+folder, for the uploaded ticket file; the brief then names the issue and the ticket file.
+
 For each card: `run("orchestra", "spawn", {"name"})` gives the brief and the exact `create_session` call. Make the
 call, then at once `run("orchestra", "started", {"name", "sid": "<the new session id>"})`. After the first child, set
 the one check-in its answer gives (a child that dies silently wakes nobody).
@@ -102,6 +108,9 @@ When every child has ended (accepted, forgotten or released): `run("orchestra", 
 | `acceptance tests are not locked yet` (spawn) | write them, then `run("orchestra", "lock", {})` |
 | `write these acceptance tests first` (lock) | write the files it names |
 | `a child has started` (lock) | the tests stay as they were locked |
+| `has no issue yet` (spawn) | `run("orchestra", "tickets", {})` |
+| `is not in the store yet` (spawn) | make the Drive upload the tickets answer gave |
+| `lock the acceptance tests first` (tickets) | `run("orchestra", "lock", {})`, then tickets |
 | `has not passed a check this round` | check it first |
 | `holds no receipt` / `not handed back since it was sent back` | wait for its message, or reject it |
 | `have not ended` (land) | check and accept, or forget, each child still running |

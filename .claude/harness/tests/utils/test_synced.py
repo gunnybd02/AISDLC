@@ -3,6 +3,7 @@ to find each child's copy; a plan is delivered and a child archived only once it
 than its handback), or the user waived it for a child that can never upload."""
 import time
 import unittest
+from unittest import mock
 
 from harness.assemble.engine.runner import Act
 from harness.utils.contracts import Event, Verdict
@@ -80,6 +81,18 @@ class SyncedTest(Scenario):
         text = land.land(self.port, "s1", UNITS, [], github, folder=FOLDER)
         self.assertIn("is delivered", text)
         self.assertIn(f"orch.{draft}.parent", text)  # the parent saves its own ledger too
+
+    def test_the_search_names_the_db_folder_and_the_store_folder(self):
+        """s2.synced.db: new copies are in db; older ones stay in the store folder; db unknown, it is found first."""
+        github = self.accepted_and_merged()
+        draft = self.port.ticket("s1")["draft"]
+        with mock.patch.dict("os.environ", {store.ENV: FOLDER}):
+            text = land.land(self.port, "s1", UNITS, [], github, folder=FOLDER)
+            self.assertIn(f"title = 'db' and parentId = '{FOLDER}'", text)
+            self.port.write(lambda con, rec: store.note(con, store.FOLDER, "db", FOLDER, "1DbFolderId000001", "s1", 1))
+            text = land.land(self.port, "s1", UNITS, [], github, folder=FOLDER)
+        self.assertIn(f"title contains 'orch.{draft}.' and parentId = '1DbFolderId000001'", text)
+        self.assertIn(f"title contains 'orch.{draft}.' and parentId = '{FOLDER}'", text)
 
     def test_a_child_that_can_never_upload_passes_only_with_the_users_allow(self):
         github = self.accepted_and_merged()

@@ -26,6 +26,34 @@ class StoreTest(unittest.TestCase):
         answer = {"id": "1AbCdEfGhIjKlMnOp", "title": record["title"]} if answer is None else answer
         return store.uploaded(self.port, Event("PostToolUse", tool, {"title": record["title"]}, "s1", "/w", answer))
 
+    def test_the_store_keeps_its_db_and_tickets_folders_from_drives_answers(self):
+        """s1.store.folders: a made folder, or a search listing under the store folder; never another name, type or
+        parent; nothing without a store folder."""
+        root, kind = "1RootFolderId0001", store.FOLDER_MIME
+
+        def answer(tool, given, response):
+            return store.placed(self.port, Event("PostToolUse", f"mcp__Google_Drive__{tool}", given, "s1", "/w",
+                                                 response))
+        with mock.patch.dict("os.environ", {store.ENV: root}):
+            self.assertEqual(store.place(self.port, "db"), "")
+            made = {"id": "1DbFolderId000001", "title": "db", "mimeType": kind, "parentId": root}
+            self.assertEqual(answer("create_file", {"title": "db"}, made), ["The store's db folder is Drive folder "
+                                                                           "1DbFolderId000001."])
+            self.assertEqual(store.place(self.port, "db"), "1DbFolderId000001")
+            self.assertEqual(answer("create_file", {"title": "db"}, made), [])  # kept once
+            listing = json.dumps({"files": [{"id": "1TicketsFolder001", "title": "tickets", "mimeType": kind}]})
+            answer("search_files", {"query": f"title = 'tickets' and parentId = '{root}'"}, listing)
+            self.assertEqual(store.place(self.port, "tickets"), "1TicketsFolder001")
+            for bad in ({**made, "id": "1OtherParent00001", "parentId": "1ElsewhereFolder1"},
+                        {**made, "id": "1NotAFolder000001", "mimeType": "text/csv"},
+                        {**made, "id": "1OtherName0000001", "title": "dbx"}):
+                self.assertEqual(answer("create_file", {}, bad), [])
+            self.assertEqual(answer("search_files", {"query": "title = 'tickets'"},
+                                    {"files": [{"id": "1Unrooted00000001", "title": "tickets", "mimeType": kind}]}), [])
+            self.assertEqual(store.place(self.port, "db"), "1DbFolderId000001")
+            self.assertIn(f"parentId = '{root}'", store.find_or_make("db", root))
+        self.assertEqual(store.place(self.port, "db"), "")  # no store folder set
+
     def test_a_copy_has_a_record_and_a_name_that_say_who_and_when(self):
         self.commit("abcdef0123456789")
         first = store.begin(self.port, "session_01AB", "push", {"repo": "app", "branch": "work"}, now=0)

@@ -7,6 +7,10 @@ kept as rows of pl_notes, so the schema stays the pinned one and every copy carr
   store.uploaded  key = the copy's number, target = its file name, text = the Drive file's id; written when the
                   hook sees an MCP tool's create_file answer with that file
   store.asked     key = the mark a turn was held for, so a turn is held once for the same work
+  store.folder    target = db or tickets, key = the store folder's id, text = the subfolder's Drive id; written when
+                  the hook sees a Drive answer show that folder under the store folder (made, or listed by a search)
+  store.ticket    target = a ticket file's name, key = its sha256 (utils/orchestra/issues.py); store.ticket_uploaded
+                  its Drive id, when the hook sees create_file answer with it
 
 The mark counts what must not be lost: commits, plan events (approved, delivered, dropped), pushes and merge requests.
 Work is unsaved while the mark is ahead of the mark of the newest copy the store holds. Small rows (verify receipts,
@@ -37,6 +41,9 @@ COUNTED = (("commit", "SELECT COUNT(*) AS n FROM rec_commits"),
            ("push or merge request", "SELECT COUNT(*) AS n FROM pl_git_audit"))
 NEWEST = "SELECT key, target, text, at FROM pl_notes WHERE kind = ? ORDER BY at DESC, rowid DESC LIMIT 1"
 FILE_ID = re.compile(r'\\*"id\\*"\s*:\s*\\*"([A-Za-z0-9_-]{10,})')
+FOLDER, PLACES = "store.folder", ("db", "tickets")  # the store's subfolders: ledger copies, ticket files
+FOLDER_MIME = "application/vnd.google-apps.folder"
+TICKET, TICKET_UP = "store.ticket", "store.ticket_uploaded"  # a ticket file made (key: its sha256), and uploaded
 
 
 def folder() -> str:
@@ -219,13 +226,147 @@ def uploaded(port: PlanStore, event: Event) -> list[str]:
     made = port.rows("SELECT key FROM pl_notes WHERE kind = ? AND target = ?", (EXPORT, title)) if title else []
     answer = event.response if isinstance(event.response, str) else json.dumps(event.response, ensure_ascii=False)
     found = FILE_ID.search(answer or "")
-    if not made or not found or not re.search(r'\\*"title\\*"\s*:\s*\\*"' + re.escape(title), answer):
+    if not found or not re.search(r'\\*"title\\*"\s*:\s*\\*"' + re.escape(title), answer or ""):
         return []
+    if not made:
+        return ticket_uploaded(port, event, title, found.group(1))
     seq = made[0]["key"]
     if not port.rows("SELECT 1 AS x FROM pl_notes WHERE kind = ? AND key = ?", (UPLOADED, seq)):
         port.write(lambda con, rec: note(con, UPLOADED, title, seq, found.group(1), event.session,
                                          int(time.time() * 1000)))
     return [f"The store holds copy {seq} of this ledger: {title}."]
+
+
+def keep_ticket(port: PlanStore, sid: str, title: str, sha256: str, path: str) -> None:
+    """Keep that the harness made a ticket file, so the hook knows its upload.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the session that made it.
+        title: its file name.
+        sha256: the hash of its bytes.
+        path: where it is on this machine.
+    """
+    port.write(lambda con, rec: note(con, TICKET, title, sha256, path, sid, int(time.time() * 1000)))
+
+
+def ticket_uploaded(port: PlanStore, event: Event, title: str, file_id: str) -> list[str]:
+    """Keep that the store holds a ticket file the harness made, when Drive answered its create_file with it.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        event: the PostToolUse hook call.
+        title: the file name the call gave.
+        file_id: the Drive id in the answer.
+
+    Returns:
+        ["The store holds the ticket file <title>."] when it is a ticket file the harness made; else [].
+    """
+    if not port.rows("SELECT 1 AS x FROM pl_notes WHERE kind = ? AND target = ?", (TICKET, title)):
+        return []
+    if not ticket_held(port, title):
+        port.write(lambda con, rec: note(con, TICKET_UP, title, file_id, file_id, event.session,
+                                         int(time.time() * 1000)))
+    return [f"The store holds the ticket file {title} (Drive file {file_id})."]
+
+
+def ticket_held(port: PlanStore, title: str) -> str:
+    """The Drive id of an uploaded ticket file.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        title: its file name.
+
+    Returns:
+        The id; "" when the store does not hold it yet.
+    """
+    rows = port.rows("SELECT text FROM pl_notes WHERE kind = ? AND target = ? ORDER BY at DESC LIMIT 1", (TICKET_UP, title))
+    return rows[0]["text"] if rows else ""
+
+
+def place(port: PlanStore, name: str) -> str:
+    """The Drive id of a subfolder of the store (db or tickets), as a Drive answer showed it under the store folder.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        name: db or tickets.
+
+    Returns:
+        Its id; "" when no answer showed it yet, or no store folder is set.
+    """
+    rows = port.rows("SELECT text FROM pl_notes WHERE kind = ? AND target = ? AND key = ? ORDER BY at DESC, rowid DESC "
+                     "LIMIT 1", (FOLDER, name, folder())) if folder() else []
+    return rows[0]["text"] if rows else ""
+
+
+def find_or_make(name: str, root: str) -> str:
+    """The words of the Drive calls that find a subfolder of the store, or make it when Drive has none.
+
+    Args:
+        name: db or tickets.
+        root: the store folder's id.
+
+    Returns:
+        The text for the model.
+    """
+    return (f"First find the store's {name} folder: search_files with the query: title = '{name}' and mimeType = "
+            f"'{FOLDER_MIME}' and parentId = '{root}'. If Drive lists none, make it: create_file with title {name}, "
+            f"contentMimeType {FOLDER_MIME}, parentId {root}. The harness reads Drive's answer and keeps the folder's "
+            f"id; that id is the parentId below.")
+
+
+def folder_entries(answer: object) -> list[dict[str, object]]:
+    """Each object of a Drive answer that has an id and a title (or name), at any depth; a JSON text is read.
+
+    Args:
+        answer: the tool's response.
+
+    Returns:
+        The objects, in order.
+    """
+    if isinstance(answer, str):
+        try:
+            answer = json.loads(answer)
+        except ValueError:
+            return []
+    out = []
+    if isinstance(answer, dict):
+        if isinstance(answer.get("id"), str) and isinstance(answer.get("title") or answer.get("name"), str):
+            out.append(answer)
+        for value in answer.values():
+            out += folder_entries(value)
+    elif isinstance(answer, list):
+        for value in answer:
+            out += folder_entries(value)
+    return out
+
+
+def placed(port: PlanStore, event: Event) -> list[str]:
+    """Keep the id of a subfolder of the store (db or tickets) that a Drive tool's answer shows: a folder of that name
+    whose parent is the store folder (its parentId or parents), or listed by a call that names the store folder.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        event: the PostToolUse hook call of an MCP tool; its input and response are read.
+
+    Returns:
+        A note per subfolder newly kept.
+    """
+    root = folder()
+    if not root or not str(event.tool or "").startswith("mcp__") or event.kind != "PostToolUse":
+        return []
+    asked = json.dumps(event.input or {}, ensure_ascii=False)
+    found = {}
+    for entry in folder_entries(event.response):
+        name, parents = entry.get("title") or entry.get("name"), entry.get("parents")
+        parent = entry.get("parentId") or (parents[0] if isinstance(parents, list) and parents else None)
+        if name in PLACES and entry.get("mimeType") == FOLDER_MIME and (parent == root or (not parent and root in asked)):
+            found[str(name)] = str(entry["id"])
+    news = {n: i for n, i in found.items() if place(port, n) != i}
+    at = int(time.time() * 1000)
+    if news:
+        port.write(lambda con, rec: [note(con, FOLDER, n, root, i, event.session, at) for n, i in news.items()])
+    return [f"The store's {n} folder is Drive folder {i}." for n, i in news.items()]
 
 
 def status(port: PlanStore) -> str:

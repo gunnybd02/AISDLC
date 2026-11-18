@@ -97,6 +97,15 @@ class SkillsTest(unittest.TestCase):
             for part in ("acTests", 'run("orchestra", "lock", {})', "plan/p<plan>"):
                 self.assertIn(part, text, name)
 
+    def test_the_skills_name_the_tickets_and_the_stores_folders(self):
+        """s6.docs.tickets: orchestrate names orchestra.tickets after lock; store names db/ and tickets/."""
+        lib = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs")
+        orchestrate, store_text = lib.get("orchestrate").text, lib.get("store").text
+        self.assertIn('run("orchestra", "tickets", {})', orchestrate)
+        self.assertLess(orchestrate.index('run("orchestra", "lock", {})'), orchestrate.index('run("orchestra", "tickets"'))
+        for part in ("`db/`", "`tickets/`", "the `db` folder's id"):
+            self.assertIn(part, store_text)
+
     def test_a_request_in_plain_words_finds_its_skill_first(self):
         find = Find(Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs"), ActionTable())
         for words, name in (("where do I start in this session", "work"),

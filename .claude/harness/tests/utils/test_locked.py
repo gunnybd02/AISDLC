@@ -5,7 +5,7 @@ import subprocess
 import unittest
 
 from harness.assemble.engine.ports import LedgerPort
-from harness.mcp.actions.orchestra import Lock, Spawn, Started
+from harness.mcp.actions.orchestra import Lock, Spawn, Started, Tickets
 from harness.utils.contracts import YES, ActionContext, ActionError
 from harness.utils.ledger.writes import content_hash
 from harness.utils.orchestra import locked
@@ -82,6 +82,12 @@ class LockTest(unittest.TestCase):
         self.assertIn("run('orchestra', 'lock', {})", str(e.exception))
         self.write_test()
         Lock().run(self.ctx, {})
+        with self.assertRaises(ActionError) as e:  # part 3: its issue and the ticket come first
+            Spawn().run(self.ctx, {"name": "hello"})
+        self.assertIn("has no issue yet", str(e.exception))
+        github = lambda method, path, fields=None: {"number": 41, "html_url": f"{URL}/issues/41"}  # noqa: E731
+        ctx = ActionContext({**self.ctx.ports, "github": github})
+        Tickets().run(ctx, {"into": str(tree(self, {}))})
         self.assertIn("create_session", Spawn().run(self.ctx, {"name": "hello"}))
         Started().run(self.ctx, {"name": "hello", "sid": "session_child0001"})
         with self.assertRaises(ActionError) as e:

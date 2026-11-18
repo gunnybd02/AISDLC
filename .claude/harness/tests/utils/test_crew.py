@@ -95,6 +95,20 @@ class BriefTest(unittest.TestCase):
         self.assertEqual((body["parent"], body["branch"], body["card"]["name"], body["draft"]),
                          ("session_parent01", "orch/p7/api", "api", "pd-x"))
 
+    def test_the_brief_and_the_card_block_name_the_issue_and_the_ticket_file(self):
+        """s5.brief.issue: what part 4 checks from the child."""
+        issue = {"repo": "o/r", "number": 41, "url": "https://github.com/o/r/issues/41", "sha": "a" * 64}
+        made = {"title": "pd-x__0123456789ab.csv", "sha256": "b" * 64, "path": "/w/x.csv"}
+        text = brief.brief(7, "pd-x", GOOD, "session_parent01", rounds=3, start="plan/p7", issue=issue, ticket_file=made)
+        self.assertIn("issue #41 (https://github.com/o/r/issues/41)", text)
+        self.assertIn("ticket file pd-x__0123456789ab.csv", text)
+        self.assertIn("Every commit names #41", text)
+        block = text[text.index(brief.CARD_OPEN) + len(brief.CARD_OPEN):text.index(brief.CARD_CLOSE)]
+        body = json.loads(block)
+        self.assertEqual(body["issue"], issue)
+        self.assertEqual(body["ticket"], {"title": made["title"], "sha256": made["sha256"]})  # never its local path
+        self.assertNotIn("issue", json.loads(brief.card_block(7, GOOD, "s", "pd-x").splitlines()[1]))
+
     def test_the_create_session_call(self):
         call = brief.create_call(7, GOOD, "the brief", "https://github.com/o/r", "m1")
         self.assertEqual(call, {"title": "Orchestra p7: api", "prompt": "the brief", "tags": ["orchestra",
