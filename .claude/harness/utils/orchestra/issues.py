@@ -211,6 +211,9 @@ def open_issues(port: PlanStore, sid: str, units: dict[str, Any], github: Callab
         raise IssueError("no delegated plan is in force in this session")
     if ticket.get("crew"):
         raise IssueError("a child has started: its issue is the one it started with")
+    if any(c.get("acTests") for c in plan["children"]) and not ticket.get(locked.LOCK):
+        raise IssueError("lock the acceptance tests first (run('orchestra', 'lock', {})): an issue names the branch its "
+                         "child starts from")
     root = top(plan["root"])
     start, lines = (ticket.get(locked.LOCK) or {}).get("branch", ""), []
     for card in plan["children"]:
