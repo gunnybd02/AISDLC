@@ -1,6 +1,6 @@
 """PlanPaths: the files a call writes or names and its shell line, as rule actions with facts; the when rows say
 which is refused or asked (spec 13 section 7). The facts (VOCABULARY): kind (write, mention or shell), in_state,
-has_plan, in_plan, read_whole, explained. The rows:
+has_plan, in_plan, read_whole, explained, auto. The rows:
 - write.state: a write into the harness's own state (its ledger, its maint grant), approved plan or not;
 - plan.outside: a write to a file the approved plan does not allow (its file and test patterns, its add file
   grants; a drop grant refuses), under its root;
@@ -9,18 +9,24 @@ has_plan, in_plan, read_whole, explained. The rows:
 - shell.unread: a shell call the reader cannot see whole, with the agent's words on what it does, the command, the
   files the reader did see and what it could not read: the user is the one to say;
 - shell.unexplained: the same call with no words of the agent that explain it (fewer than three words, or the command
-  copied back).
+  copied back);
+- shell.after: in auto mode (Claude Code's permission mode), the explained call is not asked: the snapshot of each
+  repository it may write (utils/shell/after.py) is given as after_before, kept under its call id, and what it changed
+  is judged after it ran. Outside a repository, or with no call id, it is asked as in the other modes.
 A write with no approved plan is tracked.py's (plan.none). Paths are compared as utils/plan/files.py resolves them."""
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from typing import Any, Optional
 
 from harness.utils.contracts import RULE_ACTIONS, Event, Translator
 from harness.utils.plan.files import allows, holds, relative
 from harness.utils.shapes import ApprovedPlan, Facts
+from harness.utils.shell.after import Snapshot, snapshot, top_of
 
 LONGEST_COMMAND = 500  # characters of the command shown in the question; Claude Code shows the whole of it too
+AUTO = "auto"  # the permission mode in which an unclear command is checked after, not asked
 
 
 def in_state(path: str, state: Optional[str]) -> bool:
@@ -94,16 +100,37 @@ def shell_detail(facts: Facts) -> str:
             f'cannot read: {"; ".join(unread)}')
 
 
+def before_shots(dirs: Sequence[str], plan: Optional[ApprovedPlan]) -> Optional[dict[str, Snapshot]]:
+    """The snapshot of each repository an unclear command may write: those of the folders it may run in, and the
+    plan's root.
+
+    Args:
+        dirs: the folders the line may run in (shell_dirs).
+        plan: the approved plan, or None.
+
+    Returns:
+        {top folder: snapshot}; None when none of them is in a repository, or one cannot be taken.
+    """
+    roots = {top_of(d) for d in dirs} | ({top_of(plan["root"])} if plan else set())
+    roots.discard("")
+    shots = {root: snapshot(root) for root in sorted(roots)}
+    if not shots or any(shot is None for shot in shots.values()):
+        return None
+    return {root: shot for root, shot in shots.items() if shot is not None}
+
+
 class PlanPaths(Translator):
     """The rule actions of the files a call writes or names, and of a shell line the reader cannot see whole."""
-    READS = ("plan", "state_dir", "writes", "mentions", "shell_unread", "shell_said", "shell_command")
-    VOCABULARY = ("kind", "in_state", "has_plan", "in_plan", "read_whole", "explained")
+    READS = ("plan", "state_dir", "writes", "mentions", "shell_unread", "shell_said", "shell_command", "shell_dirs")
+    VOCABULARY = ("kind", "in_state", "has_plan", "in_plan", "read_whole", "explained", "auto")
 
     def translate(self, event: Event, facts: Optional[Facts] = None) -> Facts:
         """One action per write (kind write), for the first place of the state a call names that it does not write
-        (kind mention), and for a shell line the reader cannot see whole (kind shell); {} when there is none."""
+        (kind mention), and for a shell line the reader cannot see whole (kind shell, auto when it is checked after:
+        its snapshots then come as after_before); {} when there is none."""
         facts = facts or {}
         out: list[dict[str, Any]] = []
+        shots = None
         plan, state = facts.get("plan"), facts.get("state_dir")
         for path in facts.get("writes", []):
             inside = in_state(path, state)
@@ -118,6 +145,9 @@ class PlanPaths(Translator):
             out.append({"kind": "mention", "in_state": True, "detail": named})
         if facts.get("shell_unread"):
             said = explained(facts.get("shell_said", ""), facts.get("shell_command", ""))
-            out.append({"kind": "shell", "read_whole": False, "explained": said,
+            if said and event.mode == AUTO and event.call:
+                shots = before_shots(facts.get("shell_dirs") or [event.cwd], plan)
+            out.append({"kind": "shell", "read_whole": False, "explained": said, "auto": shots is not None,
                         "detail": shell_detail(facts) if said else "; ".join(facts["shell_unread"])})
-        return {RULE_ACTIONS: out} if out else {}
+        given: Facts = {RULE_ACTIONS: out} if out else {}
+        return {**given, "after_before": shots} if shots is not None else given

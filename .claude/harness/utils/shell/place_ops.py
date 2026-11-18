@@ -139,7 +139,8 @@ def shell_places(command_line: str, dialect: str, cwd: str, said: str) -> Facts:
 
     Returns:
         {"writes": sorted absolute paths} when it writes, and when part of it is unread also shell_unread (the
-        reasons), shell_command (the line) and shell_said (said); {} for a line that writes nothing it can see.
+        reasons), shell_command (the line), shell_said (said) and shell_dirs (every folder it may run in, after its
+        cd commands); {} for a line that writes nothing it can see.
     """
     line = read(command_line, dialect)
     unread, writes, cwds = list(line.unread), [], [cwd]
@@ -156,5 +157,5 @@ def shell_places(command_line: str, dialect: str, cwd: str, said: str) -> Facts:
             unread.append(str(e))
     facts = {"writes": sorted(set(writes))} if writes else {}
     if unread:
-        facts.update(shell_unread=unread, shell_command=command_line, shell_said=said)
+        facts.update(shell_unread=unread, shell_command=command_line, shell_said=said, shell_dirs=cwds)
     return facts

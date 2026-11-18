@@ -5,14 +5,17 @@ transaction.
   "wrote:<hash>:<real path>"; the same path and content again counts up. The Stop guard reads it to tell a change
   another writer made (utils/plan/stop.py).
 - pl_maint_runs: each shell line, a start row before it runs and an end row after (ok, failed, interrupted), secrets
-  masked, cut at 4000 characters: a line that never reports still has its start row."""
+  masked, cut at 4000 characters: a line that never reports still has its start row.
+- pl_notes of kind shell.before: the snapshots of an unclear line checked after it ran (auto mode,
+  utils/shell/after.py), kept under its call id before it runs."""
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import sqlite3
 import uuid
-from typing import Any
+from typing import Any, Optional
 
 from harness.utils.contracts import Event, now
 from harness.utils.ledger.mask import stored
@@ -23,6 +26,41 @@ SHELLS = {"Bash": "bash", "PowerShell": "powershell"}
 SHELL_MOST = 4000
 MARK = "wrote:"
 CODES = ("exit_code", "exitCode", "returncode", "code")
+BEFORE = "shell.before"
+
+
+def keep_before(con: sqlite3.Connection, sid: str, call: str, shots: dict[str, dict[str, str]]) -> None:
+    """Keep the snapshots taken before an unclear line runs, under its call id.
+
+    Args:
+        con: the connection of the transaction.
+        sid: the session id.
+        call: the call id (tool_use_id) that pairs the line with its result.
+        shots: {top folder of a repository: {path: content hash}}.
+    """
+    con.execute("INSERT INTO pl_notes (uid, kind, target, key, text, why, sid, at) VALUES (?, ?, ?, '', ?, '', ?, ?)",
+                (uuid.uuid4().hex, BEFORE, call, json.dumps(shots, sort_keys=True), sid, now()))
+
+
+def before_of(con: sqlite3.Connection, call: str) -> Optional[dict[str, dict[str, str]]]:
+    """The snapshots kept before the line of a call ran.
+
+    Args:
+        con: an open connection to the ledger.
+        call: the call id.
+
+    Returns:
+        {top folder: snapshot}; None when none was kept for it (a line that was not checked after) or it cannot be read.
+    """
+    if not call:
+        return None
+    row = con.execute("SELECT text FROM pl_notes WHERE kind = ? AND target = ? ORDER BY at DESC, rowid DESC LIMIT 1",
+                      (BEFORE, call)).fetchone()
+    try:
+        shots = json.loads(row[0]) if row else None
+    except ValueError:
+        return None
+    return shots if isinstance(shots, dict) else None
 
 
 def real(path: str) -> str:
@@ -121,13 +159,14 @@ def shell_row(con: sqlite3.Connection, sid: str, command: str, cwd: str, state: 
 
 
 def record(con: sqlite3.Connection, event: Event, facts: Facts) -> None:
-    """Keep what a hook call wrote and ran: a shell line's start row before it runs; after a call ran, a shell line's
-    end row and each file the call wrote, with its content.
+    """Keep what a hook call wrote and ran: a shell line's start row before it runs, and the snapshots of a line checked
+    after it runs; after a call ran, a shell line's end row and each file the call wrote, with its content.
 
     Args:
         con: the connection of the transaction.
         event: the hook call.
-        facts: the facts of the call (writes: the files an editing tool writes).
+        facts: the facts of the call (writes: the files an editing tool writes; after_before: the snapshots of an
+            unclear line in auto mode).
     """
     sid, given = event.session or "", event.input if isinstance(event.input, dict) else {}
     dialect, command = SHELLS.get(event.tool), given.get("command")
@@ -135,6 +174,8 @@ def record(con: sqlite3.Connection, event: Event, facts: Facts) -> None:
     if dialect and isinstance(command, str):
         if event.kind == "PreToolUse":
             shell_row(con, sid, command, event.cwd, "start", -1)
+            if facts.get("after_before") is not None and event.call:
+                keep_before(con, sid, event.call, facts["after_before"])
         elif event.kind == "PostToolUse":
             shell_row(con, sid, command, event.cwd, *outcome(event.response))
             targets = shell_places(command, dialect, event.cwd, "").get("writes", [])

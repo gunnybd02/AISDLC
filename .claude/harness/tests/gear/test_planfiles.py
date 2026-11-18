@@ -13,9 +13,12 @@ from harness.gear.detect.forms import Forms
 from harness.gear.detect.tracked import Tracked
 from harness.hooks.forms import Answers
 from harness.gear.translate.place import Places
-from harness.utils.contracts import Event, Finding
+from harness.gear.translate.planfiles import PlanPaths
+from harness.utils.contracts import RULE_ACTIONS, Event, Finding
+from harness.utils.ledger.writes import content_hash
+from harness.utils.shell.after import top_of
 from harness.tests import CLAUDE_DIR, WINDOWS, edit_gate, native, plan_paths, tree
-from harness.tests.e2e import copy_tree
+from harness.tests.e2e import copy_tree, git_repo
 
 ROOT = native("C:/repo")
 PLAN = {"id": 1, "plan_id": "pd-1", "rev": 1, "root": ROOT, "title": "t", "files": ["src/a.py"], "tests": ["test_a.py"]}
@@ -94,6 +97,49 @@ def shell(command, tool="Bash", said=SAID, cwd=ROOT, kind="PreToolUse"):
 
 def shell_facts(command, **kw):
     return Places().translate(shell(command, **kw))
+
+
+class AutoModeTest(unittest.TestCase):
+    """s4.auto.no-ask: in auto mode an unclear command the agent explained is not asked; the repositories it may write
+    are kept as they are (after_before). In the other modes, outside a repository or with no call id, it is asked;
+    with no words of the agent it is refused in every mode."""
+
+    def setUp(self):
+        self.repo = git_repo(self, {"a.py": "A = 1\n"})
+        (self.repo / "a.py").write_text("A = 2\n", encoding="utf-8")  # changed before the command
+        self.top = top_of(str(self.repo))
+
+    def judge(self, command, mode="auto", said=SAID, call="toolu_1", cwd=None):
+        event = Event("PreToolUse", "Bash", {"command": command, "description": said}, "s1", cwd or str(self.repo),
+                      None, mode, call)
+        facts = {**Places().translate(event), "plan": None, "state_dir": STATE}
+        given = PlanPaths().translate(event, {k: facts[k] for k in PlanPaths.READS if k in facts})
+        return [f.kind for f in Decide.load(CLAUDE_DIR).matched(given.get(RULE_ACTIONS, []))], given
+
+    def test_in_auto_mode_an_unclear_command_is_not_asked_and_its_repository_is_kept(self):
+        found, given = self.judge("make")
+        self.assertEqual(found, ["shell.after"])
+        self.assertEqual(given["after_before"], {self.top: {"a.py": content_hash(str(self.repo / "a.py"))}})
+        self.assertEqual(Decide.load(CLAUDE_DIR).decide([Finding("shell.after")]).decision, "allow")
+
+    def test_a_folder_the_line_goes_into_is_kept_too(self):
+        other = git_repo(self, {"b.py": "B = 1\n"})
+        found, given = self.judge(f"cd {other} && make")
+        self.assertEqual(found, ["shell.after"])
+        self.assertEqual(sorted(given["after_before"]), sorted([self.top, top_of(str(other))]))
+
+    def test_other_modes_no_repository_or_no_call_id_still_ask(self):
+        for mode, call, cwd in (("default", "toolu_1", None), ("", "toolu_1", None), ("acceptEdits", "toolu_1", None),
+                                ("auto", "", None), ("auto", "toolu_1", str(tree(self, {})))):
+            with self.subTest(mode=mode, call=call, cwd=cwd):
+                found, given = self.judge("make", mode=mode, call=call, cwd=cwd)
+                self.assertEqual(found, ["shell.unread"])
+                self.assertNotIn("after_before", given)
+
+    def test_an_unexplained_command_is_refused_in_auto_mode_too(self):
+        found, given = self.judge("make", said="make")
+        self.assertEqual(found, ["shell.unexplained"])
+        self.assertNotIn("after_before", given)
 
 
 class RulesTest(unittest.TestCase):
