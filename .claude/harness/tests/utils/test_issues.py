@@ -7,7 +7,7 @@ import re
 import unittest
 from unittest import mock
 
-from harness.mcp.actions.orchestra import Started, Tickets
+from harness.mcp.actions.orchestra import Spawn, Started, Tickets
 from harness.utils.contracts import ActionContext, ActionError, Event
 from harness.utils.ledger import store
 from harness.utils.orchestra import issues, locked
@@ -103,6 +103,25 @@ class IssuesTest(LockedScenario):
         for words in ("- AC1: hello('Ann') returns 'Hello, Ann'", "Locked acceptance tests: orch-probe/test_hello_ac.py",
                       f"Branch: orch/p{self.plan}/hello, from plan/p{self.plan}"):
             self.assertIn(words, body)
+
+    def test_spawn_waits_for_the_issue_and_the_uploaded_ticket(self):
+        """s5.spawn.tickets: a plan with locked tests starts a child only with its issue and, with a store folder,
+        the ticket file in the store."""
+        ctx = self.ctx(FakeIssues())
+        with self.assertRaises(ActionError) as e:
+            Spawn().run(ctx, {"name": "hello"})
+        self.assertIn("hello has no issue yet: run('orchestra', 'tickets', {})", str(e.exception))
+        with mock.patch.dict("os.environ", {store.ENV: "1RootFolderId0001"}):
+            self.tickets()
+            with self.assertRaises(ActionError) as e:
+                Spawn().run(ctx, {"name": "hello"})
+            self.assertIn("is not in the store yet", str(e.exception))
+            title = self.port.ticket("s1")[issues.ISSUES]["file"]["title"]
+            store.uploaded(self.port, Event("PostToolUse", "mcp__Google_Drive__create_file", {"title": title}, "s1",
+                                            "/w", {"id": "1TicketFileId0001", "title": title}))
+            text = Spawn().run(ctx, {"name": "hello"})
+        self.assertIn("issue #41 (https://github.com/o/r/issues/41)", text)
+        self.assertIn(title, text)
 
     def test_no_issue_once_a_child_has_started(self):
         Started().run(self.ctx(FakeIssues()), {"name": "hello", "sid": "session_child0002"})

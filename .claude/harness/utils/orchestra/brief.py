@@ -34,7 +34,7 @@ def branch(plan: int, name: str) -> str:
 
 
 def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[str, Any] | None = None,
-               start: str = "") -> str:
+               start: str = "", issue: dict[str, Any] | None = None, ticket_file: dict[str, Any] | None = None) -> str:
     """The card as the child's harness reads it: one JSON object between CARD_OPEN and CARD_CLOSE.
 
     Args:
@@ -45,6 +45,8 @@ def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[st
         unit: the unit it works in, {repo, path, verify, base} (card.unit_spec); None for the home.
         start: the plan branch the child's branch starts from and its pull request goes into (utils/orchestra/
             locked.py); "" for the unit's base.
+        issue: its issue {repo, number, url, sha} (utils/orchestra/issues.py); None for none.
+        ticket_file: the plan's ticket file {title, sha256} in the store's tickets folder; None for none.
 
     Returns:
         The block, three lines.
@@ -52,7 +54,9 @@ def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[st
     body = {"plan": plan, "draft": draft, "parent": parent_sid, "branch": branch(plan, card["name"]), "card": card,
             "unit": unit or dict(HOME_SPEC),
             "behaviours": [behaviour_id(plan, card["name"], n) for n in range(1, len(card["ac"]) + 1)],
-            **({"start": start} if start else {})}
+            **({"start": start} if start else {}),
+            **({"issue": {k: issue.get(k) for k in ("repo", "number", "url", "sha")}} if issue else {}),
+            **({"ticket": {k: ticket_file.get(k) for k in ("title", "sha256")}} if ticket_file else {})}
     return "\n".join([CARD_OPEN, json.dumps(body, ensure_ascii=False, sort_keys=True), CARD_CLOSE])
 
 
@@ -70,7 +74,8 @@ def listed(label: str, paths: list[str]) -> str:
 
 
 def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, Any] | None = None,
-          resume: str = "", *, rounds: int, start: str = "") -> str:
+          resume: str = "", *, rounds: int, start: str = "", issue: dict[str, Any] | None = None,
+          ticket_file: dict[str, Any] | None = None) -> str:
     """The first prompt of a child: who it is, its work, how it is approved, that nobody is at its keyboard, its
     permissions, how it asks and hands back, its files and criteria, and the card block.
 
@@ -84,10 +89,15 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
             its first session.
         rounds: the send-backs the child may have before the user decides (the config's limits.rounds).
         start: the plan branch the child starts from and its pull request goes into; "" for the unit's base.
+        issue: its issue {repo, number, url, sha}; None for none.
+        ticket_file: the plan's ticket file {title, sha256} in the store's tickets folder; None for none.
 
     Returns:
         The brief, as the prompt of create_session.
     """
+    record = (f"Your task on record: issue #{issue['number']} ({issue['url']}), and your row in the ticket file "
+              f"{(ticket_file or {}).get('title', '(none)')} of the store's tickets folder. Every commit names "
+              f"#{issue['number']}.") if issue else ""
     name, spec = card["name"], unit or dict(HOME_SPEC)
     into, locked = start or spec["base"], list(card.get("acTests", []))
     held = (f"Acceptance tests (locked): {', '.join(locked)}. The orchestrator wrote them; they are on your branch from "
@@ -108,6 +118,7 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
          f"stands on it. Read {resume} on it first: it is why you go on." if resume else ""),
         f"Your work: {card['goal'].rstrip('.')}. Work only in {where}. Once the orchestrator accepts it, your "
         f"branch becomes a pull request into {into}.",
+        record,
         held,
         "How you are approved: the user approved your card with the parent plan. First call "
         "run('orchestra', 'take'); it opens your card plan. Never present a plan of your own.",
@@ -131,7 +142,7 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
         "\n".join(x for x in (listed("Read", card.get("read", [])), listed("Change", card.get("change", [])),
                               listed("Tests", card.get("tests", []))) if x),
         f"{judged} It may send you back at most {rounds} times; then the user decides.\n" + "\n".join(acs),
-        card_block(plan, card, parent_sid, draft, spec, start),
+        card_block(plan, card, parent_sid, draft, spec, start, issue, ticket_file),
     ]
     return "\n\n".join(p for p in parts if p)
 

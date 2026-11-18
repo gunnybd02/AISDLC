@@ -33,7 +33,7 @@ from harness.utils.orchestra import brief as briefs
 from harness.utils.orchestra import crew, issues, locked, work
 from harness.utils.orchestra.card import in_force, plan_units, unit_spec
 from harness.utils.plan.item_checks import run_limits
-from harness.utils.shapes import PlanStore
+from harness.utils.shapes import PlanStore, Ticket
 
 ACTIONS = [("orchestra.lock", "Lock"), ("orchestra.tickets", "Tickets"), ("orchestra.spawn", "Spawn"),
            ("orchestra.started", "Started"),
@@ -120,7 +120,9 @@ class Spawn(McpAction):
         url = unit["repo"] or source_url(ticket["plan"].get("root") or os.getcwd())
         fresh = ((ticket.get("crew") or {}).get(card["name"]) or {}).get("fresh") or {}
         start = (ticket.get(locked.LOCK) or {}).get("branch", "")  # with a lock, every child starts from the plan branch
-        prompt = briefs.brief(plan, draft, card, sid, unit, fresh.get("note", ""), rounds=limits["rounds"], start=start)
+        issue, made = self.recorded(ctx.ports["plans"], ticket, card["name"]) if start else ({}, {})
+        prompt = briefs.brief(plan, draft, card, sid, unit, fresh.get("note", ""), rounds=limits["rounds"], start=start,
+                              issue=issue, ticket_file=made)
         call = briefs.create_call(plan, card, prompt, url, args.get("model", ""))
         where = "" if url else (" The unit's repository has no URL another machine can clone: add source_url to "
                                 "the call by hand.")
@@ -128,6 +130,31 @@ class Spawn(McpAction):
                 f"arguments, then record it at once: run('orchestra', 'started', {{name: '{card['name']}', sid: "
                 f"<the new session id>}}). Until then it does not count as running. Each child is a cloud session "
                 f"and costs as much as one.{where}\n" + json.dumps(call, ensure_ascii=False, indent=1))
+
+    @staticmethod
+    def recorded(port: PlanStore, ticket: Ticket, name: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        """The issue of a child and the plan's ticket file: a plan with locked tests starts a child only with both.
+
+        Args:
+            port: the ledger port.
+            ticket: the parent's ticket.
+            name: the child's name.
+
+        Returns:
+            (its issue {repo, number, url, sha}, the ticket file {title, sha256, path}).
+
+        Raises:
+            ActionError: no issue yet; or, with a store folder, the ticket file is not in the store yet.
+        """
+        held = ticket.get(issues.ISSUES) or {}
+        issue = (held.get("children") or {}).get(name)
+        if not issue:
+            raise ActionError(f"{name} has no issue yet: run('orchestra', 'tickets', {{}}) after lock, then spawn")
+        made = held.get("file") or {}
+        if store.folder() and not store.ticket_held(port, made.get("title", "")):
+            raise ActionError(f"the ticket file {made.get('title') or '(not written)'} is not in the store yet: upload "
+                              "it as run('orchestra', 'tickets', {}) said; the harness reads Drive's answer itself")
+        return dict(issue), dict(made)
 
 
 class Lock(McpAction):
