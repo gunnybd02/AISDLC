@@ -26,7 +26,7 @@ URL = "https://github.com/o/r"
 def records(card=CARD):
     """The issue (its body and entry) and the ticket file (text, entry) the parent's harness writes for a card."""
     block = issues.block_of(PLAN, "pd-x", card, URL, "plan/p7")
-    _, body, sha = issues.issue_text(card, block)
+    _, body, sha = issues.issue_text(card, block, 7)
     issue = {"repo": "o/r", "number": 41, "url": f"{URL}/issues/41", "sha": sha}
     text = issues.ticket_csv({**PLAN, "children": [card]}, {card["name"]: issue}, "2026-11-18T00:00:00Z")
     made = {"title": "pd-x__ffffffffffff.csv", "sha256": hashlib.sha256(text.encode()).hexdigest()}
@@ -65,9 +65,25 @@ class RegisterTest(unittest.TestCase):
         self.assertIn("the sha256 of issue #41 is not the one the brief names", problems)
         self.assertIn("issue #41 says scope ['app/'], the brief says ['app/orders.py']", problems)
         forged = self.body.replace('"app/orders.py"', '"app/"')  # the block edited, its sha left
-        self.assertIn("the machine block of issue #41 does not match its own sha256",
+        self.assertIn("issue #41 is not in the issue format: its machine block does not match its own sha256",
                       register.issue_problems(self.role, github_of(forged))[1])
-        self.assertEqual(register.issue_problems(self.role, github_of("no block"))[1], ["issue #41 holds no machine block"])
+        self.assertIn("issue #41 is not in the issue format: it holds no machine block",
+                      register.issue_problems(self.role, github_of("no block"))[1])
+
+    def test_an_issue_out_of_format_or_of_other_paths_is_refused(self):
+        """s1.register.format: sections in order and a block of harness-issue/1; path and tests as the brief says."""
+        moved = self.body.replace("## Commits\n", "").replace("## Goal\n", "## Commits\n## Goal\n")
+        problems = register.issue_problems(self.role, github_of(moved))[1]
+        self.assertIn("issue #41 is not in the issue format: its section Commits is out of order", problems)
+        old = self.body.replace('"format": "harness-issue/1", ', "")
+        self.assertIn("issue #41 is not in the issue format: its machine block is of format None, not harness-issue/1",
+                      register.issue_problems(self.role, github_of(old))[1])
+        tested, _, _, _ = records({**CARD, "tests": ["tests/test_more.py"]})
+        problems = register.issue_problems(self.role, github_of(tested))[1]
+        self.assertIn("issue #41 says tests ['tests/test_more.py'], the brief says []", problems)
+        other = self.body.replace('"path": "."', '"path": "api"')
+        self.assertIn("issue #41 says path 'api', the brief says '.'", register.issue_problems(self.role,
+                                                                                             github_of(other))[1])
 
     def test_the_ticket_is_checked_at_the_drive_answer_and_not_kept(self):
         """s1.register.ticket: the content whose sha256 is the brief's is checked at once; only the result stays."""

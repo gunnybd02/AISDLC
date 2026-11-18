@@ -79,7 +79,7 @@ class IssuesTest(LockedScenario):
         self.assertIn("hello: issue #41 (https://github.com/o/r/issues/41) opened", text)
         (method, path, fields), = github.calls
         self.assertEqual((method, path), ("POST", "repos/o/r/issues"))
-        self.assertTrue(fields["title"].startswith("hello: Add a hello module"))
+        self.assertTrue(fields["title"].startswith(f"[p{self.plan}] hello: Add a hello module"))
         held = self.port.ticket("s1")[issues.ISSUES]["children"]["hello"]
         self.assertEqual((held["number"], held["repo"]), (41, "o/r"))
         self.assertIn("opened before", self.tickets(github))
@@ -94,15 +94,35 @@ class IssuesTest(LockedScenario):
                           re.escape(issues.ISSUE_CLOSE), body)
         block = json.loads(found.group(1))
         ticket = self.port.ticket("s1")
-        self.assertEqual(block, {"plan": ticket["draft"], "planSha": ticket["plan"]["sha"], "child": "hello",
-                                 "repo": "https://github.com/o/r", "branch": f"orch/p{self.plan}/hello",
-                                 "start": f"plan/p{self.plan}", "scope": ["orch-probe/hello.py"],
+        self.assertEqual(block, {"format": "harness-issue/1", "plan": ticket["draft"], "planSha": ticket["plan"]["sha"],
+                                 "child": "hello", "repo": "https://github.com/o/r", "path": ".",
+                                 "branch": f"orch/p{self.plan}/hello", "start": f"plan/p{self.plan}",
+                                 "scope": ["orch-probe/hello.py"], "tests": [],
                                  "acTests": ["orch-probe/test_hello_ac.py"]})
         self.assertEqual(found.group(2), issues.block_sha(block))
         self.assertEqual(ticket[issues.ISSUES]["children"]["hello"]["sha"], found.group(2))
-        for words in ("- AC1: hello('Ann') returns 'Hello, Ann'", "Locked acceptance tests: orch-probe/test_hello_ac.py",
-                      f"Branch: orch/p{self.plan}/hello, from plan/p{self.plan}"):
-            self.assertIn(words, body)
+        self.assertEqual(issues.read_block(body), (block, found.group(2)))
+
+    def test_an_issue_is_in_one_format(self):
+        """s1.issue.format: the title, the sections in order, the card in words, the branch and the commit format."""
+        github = FakeIssues()
+        self.tickets(github)
+        title, body = github.calls[0][2]["title"], github.calls[0][2]["body"]
+        self.assertEqual(title, f"[p{self.plan}] hello: Add a hello module that greets a person by name")
+        self.assertEqual(issues.format_problems(body), [])
+        lines = body.split("\n")
+        self.assertEqual([h for h in lines if h.startswith("## ")], list(issues.SECTIONS))
+        for heading, words in (("## Acceptance criteria", "- AC1: hello('Ann') returns 'Hello, Ann'"),
+                               ("## Scope", "- orch-probe/hello.py"), ("## Tests", "- none"),
+                               ("## Locked acceptance tests", "- orch-probe/test_hello_ac.py"),
+                               ("## Branch", f"orch/p{self.plan}/hello, from plan/p{self.plan}. The child pushes only "
+                                             "this branch.")):
+            self.assertIn(words, lines[lines.index(heading):], heading)
+        self.assertIn("`#<this issue> hello: <what>`", body)
+        self.assertIn("`#<this issue> hello: register`", body)
+        self.assertEqual(issues.format_problems("## Goal\nx"), ["it has no section Acceptance criteria",
+                         "it has no section Scope", "it has no section Tests", "it has no section Locked acceptance "
+                         "tests", "it has no section Branch", "it has no section Commits", "it holds no machine block"])
 
     def test_spawn_waits_for_the_issue_and_the_uploaded_ticket(self):
         """s5.spawn.tickets: a plan with locked tests starts a child only with its issue and, with a store folder,

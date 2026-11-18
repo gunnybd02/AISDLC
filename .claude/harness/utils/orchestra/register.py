@@ -15,7 +15,6 @@ import csv
 import hashlib
 import io
 import json
-import re
 import time
 from collections.abc import Callable, Iterator
 from typing import Any, Optional
@@ -26,12 +25,11 @@ from harness.utils.git.github import GitHubError
 from harness.utils.ledger.store import note
 from harness.utils.orchestra.brief import NOTES
 from harness.utils.orchestra.fetch import FetchError, put_files
-from harness.utils.orchestra.issues import COLUMNS, ISSUE_CLOSE, ISSUE_OPEN, block_sha
+from harness.utils.orchestra.issues import COLUMNS, format_problems, read_block
 from harness.utils.orchestra.locked import on_origin
 from harness.utils.shapes import ChildRole, PlanStore
 
 RESULT = "child.ticket"  # pl_notes: target = the ticket file, key = ok or refused, text = {sha256, planSha, problems}
-BLOCK = re.compile(re.escape(ISSUE_OPEN) + r"\s*\n(\{.*\})\s*\nsha256: ([0-9a-f]{64})\s*\n" + re.escape(ISSUE_CLOSE))
 
 
 def expected(role: ChildRole) -> dict[str, Any]:
@@ -41,15 +39,17 @@ def expected(role: ChildRole) -> dict[str, Any]:
         role: the child's role.
 
     Returns:
-        {plan, child, branch, start, scope, acTests}.
+        {plan, child, path, branch, start, scope, tests, acTests}.
     """
     card = role["card"]
-    return {"plan": role["draft"], "child": role["name"], "branch": role["branch"], "start": role.get("start", ""),
-            "scope": list(card.get("change", [])), "acTests": list(card.get("acTests", []))}
+    return {"plan": role["draft"], "child": role["name"], "path": (role.get("unit") or {}).get("path") or ".",
+            "branch": role["branch"], "start": role.get("start", ""), "scope": list(card.get("change", [])),
+            "tests": list(card.get("tests", [])), "acTests": list(card.get("acTests", []))}
 
 
 def issue_problems(role: ChildRole, github: Callable[..., Any]) -> tuple[dict[str, Any], list[str]]:
-    """Read the child's issue on GitHub and compare its machine block with its own sha256, the brief's sha and card.
+    """Read the child's issue on GitHub: it is in the issues' format (issues.format_problems), its block's sha256 is
+    the brief's, and the block says what the brief says.
 
     Args:
         role: the child's role (its record names the issue).
@@ -64,17 +64,12 @@ def issue_problems(role: ChildRole, github: Callable[..., Any]) -> tuple[dict[st
         got = github("GET", f"repos/{issue.get('repo')}/issues/{issue.get('number')}")
     except GitHubError as e:
         return {}, [f"{name} cannot be read: {str(e)[-160:]}"]
-    found = BLOCK.search(str((got or {}).get("body") or "").replace("\r\n", "\n"))
-    if not found:
-        return {}, [f"{name} holds no machine block"]
-    try:
-        block = json.loads(found.group(1))
-    except ValueError:
-        return {}, [f"the machine block of {name} is not JSON"]
-    problems = []
-    if block_sha(block) != found.group(2):
-        problems.append(f"the machine block of {name} does not match its own sha256")
-    if found.group(2) != issue.get("sha"):
+    body = str((got or {}).get("body") or "")
+    block, sha = read_block(body)
+    problems = [f"{name} is not in the issue format: {p}" for p in format_problems(body)]
+    if not block:
+        return {}, problems
+    if sha != issue.get("sha"):
         problems.append(f"the sha256 of {name} is not the one the brief names")
     for key, want in expected(role).items():
         if block.get(key) != want:
