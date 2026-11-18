@@ -102,6 +102,8 @@ send it with `send_message`. Last: `run("orchestra", "handback", {"changed", "ch
 3. Verify: `run("verify", "run", {"plan": "<pd-id>"})`, or `python3 <core>/anchor.py cli verify` (another command:
    add `-- <command>`; a longer run: `--timeout <seconds>`). It runs the tests in the plan's root and keeps a receipt
    of each file as the tests saw it.
+   Run tests only this way, never `python3 -m unittest` or `npm test` by hand: the harness cannot read those, and
+   outside auto mode each one asks the user.
 4. Red: fix and verify again. A file changed after a green verify needs a new verify.
 5. Green: `run("plan", "step_done", {"message": "<the commit message>"})`. The harness checks what the step owes and
    commits its changed files; the next step opens. Write the message as the author of the change: no AI co-author,
@@ -128,6 +130,11 @@ python3 <core>/anchor.py cli behaviors list
 ```
 A wider change (a new step, another unit) is `plan_revise` and a new form. The turn does not end while a code file of
 the plan changed since the last green verify.
+
+Shell commands: write them plain (one command, plain paths), and edit files with the Edit and Write tools. A command
+the harness cannot read whole (a script, a loop, `$VAR` paths, `git checkout <branch>`) asks the user, except in
+auto mode: there it runs, and the harness compares the repositories before and after. A file it changed outside the
+plan is named right after (`plan.outside_after`) and holds the turn (`stop.outside`) until it is undone or added.
 
 ## 4. Ship
 - Commit named files outside a step: `run("git", "commit", {"files": ["a.py"], "message": "..."})`. Paths from the

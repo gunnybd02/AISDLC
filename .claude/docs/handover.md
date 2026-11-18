@@ -73,8 +73,14 @@ session cannot read the old chat; it reads this file. The frame of every plan is
 | #57 | Publish on merge, with a fallback: `live update` puts merged main in force with no form (the merge was the user's word; files not tracked under `harness/` stop it); after a merge tool merges the harness's own repository, the hook does the update by itself. Each publish keeps `state/live/previous`. `anchor.py` holds the fallback: a release whose hook crashes twice is left for the previous one and listed in `state/live/bad` (no update puts it back); the anchor's own MCP server `fallback` (`rollback`, `status`, in `.mcp.json` and the install) never loads a release, and the hook lets its calls pass, so a release that refuses everything can still be rolled back. One step back only |
 | #58 | A guards-off grant lifts the checks, never the recording: the hook runs the harness under a grant with the verdict waived (`contracts.waived`), so prompts, calls and form answers (an "Approve") are kept; a broken harness still passes. Each turn names the first plan in force in it (`pl_turns.plan_id`) |
 | #61 | Repositories by URL (`system.md`): a plan names its repos ({url, base, verify, path, pipeline}), limits and banned words, all shown in form 1; a plan with repos is kept only from a clone of one and takes its test command; protected branches come from GitHub (`utils/forge/protection.py`, kept 10 minutes, never fewer than main and master, plus the plan's bases); `config.py`, the config net and every reader of `project.json` are gone; the doctor reads `HARNESS_LEDGER`; a ready line per repo in the plan block. The file `project.json` stays until a release without readers is in force, then a small plan deletes it |
+| #62 | Fewer asks: the hook reads Claude Code's `permission_mode` and `tool_use_id`; in auto mode a command the reader cannot see whole runs with no ask (`shell.after`), its repositories snapshot before (`utils/shell/after.py`, kept under the call id) and compared after: a changed file the plan does not name is told at once (`plan.outside_after`, `plan.none_after`, a PostToolUse block) and holds the turn (`stop.outside`). `git push` and a new branch at HEAD are read. Under a grant, the hook's trace keeps the agent's words, the file and the command (masked with a copy of the mask's shapes); a crash names the way out. `project.json` is deleted |
 
-About 565 tests pass (1 skipped, Windows only); doctor: 0 errors.
+About 590 tests pass (1 skipped, Windows only); doctor: 0 errors.
+
+Learned in #62: one session asked the user 72 times, all for commands the reader could not see whole (inline
+scripts, loops, `$VAR` paths, `python3 -m unittest`, `git checkout`, `git push`). A hook's "ask" reaches the user even
+in auto mode; only the harness can stop asking. And a word git in a shell argument (a plan's text, a grep pattern) is
+read as git run by another program: say "a push", or use the Grep tool.
 
 Learned in #61: the release in force runs its own copy of `harness/`, but reads the other files of the home (such as
 `project.json`) from the home's working tree. Deleting one there broke the live harness at once; the fallback could

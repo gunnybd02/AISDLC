@@ -77,6 +77,18 @@ class SkillsTest(unittest.TestCase):
                      "## 6. Release", 'guide("work", "skills")'):
             self.assertIn(part, dev)
 
+    def test_the_skills_name_every_place_code_the_check_after_and_the_verify_door(self):
+        """s8.docs.auto: the refused skill names every code of the place rules (the check after among them); work and
+        harness-dev name the check after (auto mode) and the verify door for tests."""
+        lib = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs")
+        rows = json.loads((CLAUDE_DIR / "harness" / "gear" / "rules" / "place.json").read_text(encoding="utf-8"))
+        codes = [row.get("code") or row.get("finding") for row in rows["rules"]]
+        self.assertEqual([c for c in codes if c not in lib.get("refused").text], [])
+        self.assertLessEqual({"shell.after", "plan.outside_after", "plan.none_after", "stop.outside"}, set(codes))
+        for name in ("work", "harness-dev"):
+            self.assertIn("auto mode", lib.get(name).text)
+            self.assertIn("cli verify", lib.get(name).text)
+
     def test_a_request_in_plain_words_finds_its_skill_first(self):
         find = Find(Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs"), ActionTable())
         for words, name in (("where do I start in this session", "work"),

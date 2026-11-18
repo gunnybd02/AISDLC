@@ -43,6 +43,13 @@ the plan with its suite:
 The home's working files outside `harness/` are read by the release in force: never delete or break one before a
 release that no longer reads it is in force.
 
+Plan text and commands that hold the word git as a word of their own (a plan's points, a `grep` pattern) are read as
+git run by another program and refused: write "a push", "the branch", or use the Grep tool. Run the suite through
+`anchor.py cli verify`, not `python3 -m unittest`. In auto mode a command the reader cannot see whole is checked after
+it ran (`utils/shell/after.py`, the rows `shell.after`, `plan.outside_after`, `plan.none_after`, `stop.outside`); in
+the other modes it asks the user. The hook (`entry/hook.py`, standard library only) keeps its own copy of the secret
+shapes of `utils/ledger/mask.py` for the trace while the guards are off; `tests/utils/test_grant.py` keeps them equal.
+
 ## 3. Build
 Write the test first: `harness/tests/<block>/test_<module>.py`, named after the module it tests.
 
