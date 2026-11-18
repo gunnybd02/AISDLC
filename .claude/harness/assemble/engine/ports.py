@@ -347,7 +347,9 @@ class PlanState(Port):
 
     def read(self, event: Event) -> Facts:
         """The facts of the event's session: plan (ApprovedPlan or None), state_dir, git_view (GitView), stop_owed
-        (plan -> code files no green verify saw, but those another writer changed), stop_foreign (plan -> those), banned, store_owed (() -> the unsaved work of the store), child_role
+        (plan -> code files no green verify saw, but those another writer changed), stop_foreign (plan -> those),
+        stop_outside (plan -> files the session changed that the plan does not name), banned, store_owed (() -> the
+        unsaved work of the store), child_role
         (() -> the session's ChildRole when it is a child of a delegated plan, else None); after a shell line checked
         after it ran (auto mode), after_writes (the files it changed) and after_unseen (repositories it could not
         read again)."""
@@ -356,6 +358,7 @@ class PlanState(Port):
                  "git_view": self.git.plus(bases(plan)), "banned": self.banned,
                  "stop_owed": lambda plan: stop.owed(self.port, plan, self.port.written(event.session)),
                  "stop_foreign": lambda plan: stop.foreign(self.port, plan, self.port.written(event.session)),
+                 "stop_outside": lambda plan: stop.outside(plan, self.port.written(event.session)),
                  "store_owed": lambda: store.owed(self.port) if store.folder() else [],
                  "child_role": lambda: child.role_of(self.port.ticket(event.session)) if event.session else None}
         if event.kind == "PostToolUse" and event.call and event.tool in writes.SHELLS:

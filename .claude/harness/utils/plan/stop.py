@@ -1,15 +1,20 @@
 """The Stop guard (docs 04, section 4): a turn may not end while a code file of the session's plan is changed and no
 green verify saw its current content. .md, .json and other files owe nothing. Whatever cannot be read keeps the turn
 (fail closed): the detector reports it as owed. A file another writer changed after the last green verify (the session's
-own writes are in the ledger, utils/ledger/writes.py) is named in a note and does not hold the turn."""
+own writes are in the ledger, utils/ledger/writes.py) is named in a note and does not hold the turn.
+A file this session changed that the plan does not name, and that still holds the session's change, holds the turn too
+(stop.outside): a command checked after it ran (auto mode) may have left one."""
 from __future__ import annotations
 
 import os
 from typing import Callable
 
 from harness.utils.git.facts import blob
+from harness.utils.ledger.writes import real
+from harness.utils.plan.files import allows, relative
 from harness.utils.plan.verify import dirty
 from harness.utils.shapes import ApprovedPlan, PlanStore
+from harness.utils.shell.after import snapshot, top_of
 
 FOREIGN = ("GATE: {files} changed after your last green verify, but this session did not make that change (another "
            "writer did), so the turn is not held for it. Run the verify again before you rely on it.")
@@ -87,6 +92,28 @@ def owed(port: PlanStore, plan: ApprovedPlan, written: dict[str, set[str]]) -> l
     """
     others = set(foreign(port, plan, written))
     return [path for path in unverified(port, plan) if path not in others]
+
+
+def outside(plan: ApprovedPlan, written: dict[str, set[str]]) -> list[str]:
+    """The files of the plan's repository that differ from HEAD with a content this session wrote, and that the plan
+    does not name: a change outside the plan the session left behind.
+
+    Args:
+        plan: the session's approved plan.
+        written: {real path: the hashes of every content the session wrote} (utils/ledger/writes.written).
+
+    Returns:
+        Their real paths, sorted; [] when the plan's root is in no repository or its snapshot cannot be taken.
+    """
+    root = top_of(plan["root"])
+    shot = snapshot(root) if root else None
+    out = []
+    for path, digest in (shot or {}).items():
+        full = real(os.path.join(root, path))
+        rel = relative(full, plan["root"])
+        if digest in written.get(full, set()) and (rel is None or not allows(plan, rel)):
+            out.append(full)
+    return sorted(out)
 
 
 def foreign_note(look: Callable[[ApprovedPlan], list[str]], plan: ApprovedPlan) -> list[str]:
