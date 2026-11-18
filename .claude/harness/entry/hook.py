@@ -6,8 +6,11 @@ Before the harness is even imported, this file (standard library only, entry_net
 - the user's approval word to the form 'Turn guards off for N min: <why>?' (read from the PostToolUse of
   AskUserQuestion, which the model cannot write) turns every guard off for N minutes, at most 120: a pl_notes row of
   kind maint.grant, written in one transaction with its trace in pl_logs;
-- while a grant lasts, each call passes and is traced in pl_logs; the harness still records it and keeps the user's
-  answers, with nothing held (run_hook with waive), and a broken harness only says on stderr that it did not record;
+- while a grant lasts, each call passes and is traced in pl_logs with what it does (the agent's words, the file, the
+  command, secrets masked by the shapes of utils/ledger/mask.py, kept here); the harness still records it and keeps
+  the user's answers, with nothing held (run_hook with waive), and a broken harness only says on stderr that it did
+  not record, so the trace is the record;
+- a tool call a broken harness blocks names the way out (WAY_OUT): the fallback release, the fallback tools, the grant;
 - AskUserQuestion is answered here: refused when the model filled the answers in or built a question to look like an
   answer ('"="' in it), let through otherwise even when the harness is broken, so the user can always be asked.
 - A form not shaped as one (questions and options that are not lists of objects) is refused too, and any error while
@@ -43,6 +46,18 @@ PREFILLED = "Only the user answers a form: call AskUserQuestion with the questio
 
 BLOCKING = ("PreToolUse", None, "")  # the events a failure of the harness blocks (exit 2)
 CRASHED = "HARNESS_HOOK_FAILED"  # set when this release failed, not refused: the anchor then falls back
+TRACED = 2000  # characters of each part of a call kept in its trace while the guards are off
+SAID_KEYS = ("description", "file_path", "notebook_path", "path", "url", "command")
+SECRET_SHAPES = tuple(re.compile(p, f) for p, f in (  # utils/ledger/mask.py SECRETS: test_grant.py keeps them equal
+    (r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY", 0), (r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b", 0),
+    (r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,})\b", 0), (r"\bglpat-[A-Za-z0-9_-]{20,}\b", 0),
+    (r"\bxox[abprs]-[A-Za-z0-9-]{10,}\b", 0), (r"\bsk-(?:ant-)?[A-Za-z0-9_-]{32,}\b", 0),
+    (r"\bAIza[0-9A-Za-z_-]{35}\b", 0), (r"[a-z][a-z0-9+.-]*://[^/\s:@]+:[^/\s:@]{3,}@", re.I)))
+REDACTED = "[redacted]"
+WAY_OUT = ("Way out: the anchor tries a failing release twice, then puts the previous release in force by itself (the "
+           "fallback tools status and rollback say which is in force and go back one release). If no release is left, "
+           "ask the user with AskUserQuestion, one question, exactly: Turn guards off for 15 min: <why>? with the "
+           "options \"Approve\" and \"Deny\". The form passes a broken harness, and every call is still traced.")
 
 def ledger(create: bool) -> Optional[sqlite3.Connection]:
     """The ledger, made from schema.sql as utils/ledger/db.py makes it when it has no table yet; None when it does not
@@ -67,8 +82,25 @@ def ledger(create: bool) -> Optional[sqlite3.Connection]:
     return con
 
 
+def summary(data: dict[str, Any]) -> dict[str, str]:
+    """What a call does, for its trace: the agent's words, the file it names and its command, each line of a secret's
+    shape redacted as utils/ledger/mask.py does (with the standard library only: it works when the harness is broken).
+
+    Args:
+        data: the hook payload (tool_input).
+
+    Returns:
+        {description?, file_path?, notebook_path?, path?, url?, command?}, each masked and at most TRACED characters.
+    """
+    given = data.get("tool_input") if isinstance(data.get("tool_input"), dict) else {}
+    return {k: "\n".join(REDACTED if any(p.search(line) for p in SECRET_SHAPES) else line
+                         for line in given[k].split("\n"))[:TRACED]
+            for k in SAID_KEYS if isinstance(given.get(k), str) and given[k]}
+
+
 def trace(con: sqlite3.Connection, what: str, data: dict[str, Any]) -> None:
-    """Write the trace of a call in pl_logs: what happened, and the call's event, tool and session.
+    """Write the trace of a call in pl_logs: what happened, the call's event, tool and session, and what it does
+    (summary).
 
     Args:
         con: the ledger.
@@ -76,7 +108,7 @@ def trace(con: sqlite3.Connection, what: str, data: dict[str, Any]) -> None:
         data: the hook payload.
     """
     body = {"what": what, "event": data.get("hook_event_name"), "tool": data.get("tool_name"),
-            "session": data.get("session_id")}
+            "session": data.get("session_id"), "call": summary(data)}
     con.execute("INSERT INTO pl_logs (uid, body, at) VALUES (?, ?, ?)",
                 (uuid.uuid4().hex, json.dumps(body, ensure_ascii=False), int(time.time() * 1000)))
 
@@ -338,7 +370,7 @@ def main() -> int:
                 return answer(f"The harness could not keep this answer ({type(e).__name__}: {e}); nothing it asked "
                               "for is granted, and the guards stay on.")
             return 0
-        say(f"harness hook failed, the call is blocked: {type(e).__name__}: {e}")
+        say(f"harness hook failed, the call is blocked: {type(e).__name__}: {e}\n{WAY_OUT}")
         os.environ[CRASHED] = "1"  # a failure, not a refusal: the anchor may run the previous release instead
         return 2
     sys.stdout.buffer.write(out.encode("utf-8"))

@@ -1,9 +1,11 @@
 """h10.maint-grant: utils/maint/grant.py and entry/hook.py read the same rows the same way."""
+import importlib.util
 import json
 import re
 import time
 import unittest
 
+from harness.utils.ledger import mask
 from harness.utils.maint import grant
 from harness.tests import CLAUDE_DIR, entry_of
 
@@ -21,6 +23,17 @@ class GrantTest(unittest.TestCase):
         self.assertIn(f"MAX_MINUTES = {grant.MAX_MINUTES}", HOOK)
         hook_question = re.search(r'PAUSE = re.compile\("(.*)"\)', HOOK).group(1).encode().decode("unicode_escape")
         self.assertEqual(hook_question, grant.QUESTION.pattern)
+
+    def test_the_hook_masks_the_shapes_the_ledger_masks(self):
+        """s7.grant.trace: the trace of the hook (standard library only) redacts what utils/ledger/mask.py redacts."""
+        spec = importlib.util.spec_from_file_location("harness_hook_entry", entry_of(CLAUDE_DIR, "hook"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.assertEqual([(p.pattern, p.flags) for p in module.SECRET_SHAPES],
+                         [(p.pattern, p.flags) for p in mask.SECRETS.values()])
+        self.assertEqual(module.REDACTED, mask.REDACTED)
+        payload = {"tool_input": {"command": "ls\nAKIA" + "A" * 16, "description": "List it", "other": "x"}}
+        self.assertEqual(module.summary(payload), {"command": "ls\n[redacted]", "description": "List it"})
 
     def test_a_grant_lasts_until_its_end_and_never_past_the_longest(self):
         now = 1000.0
