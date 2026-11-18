@@ -7,6 +7,8 @@ import os
 from typing import Any
 
 from harness.utils.contracts import ActionContext, ActionError, McpAction, READ, WRITE, session_of
+from harness.utils.forge import ready
+from harness.utils.forge.protection import forge_off
 from harness.utils.git.run import GitError, git
 from harness.utils.orchestra import child, crew
 from harness.utils.plan import desk
@@ -114,12 +116,13 @@ class PlanPresent(McpAction):
     summary = ("Present a plan as data (title, what, files, tests; a full plan: steps, behaviors, checks, "
                "assumptions, notDoing, risks...); kept waiting for the user's approval in the form")
     args_schema = {"type": "object", "properties": {"plan": {"type": "object"}}, "required": ["plan"]}
-    needs = ("plans", "session", "units")
+    needs = ("plans", "session", "units", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Keep a new desk plan from the plan's data (cleaned, normalized, checked; its root the server's folder); answer
-        its head line, the form call and its ## Plan block. ActionError in a child session, while a delegated plan runs in the
-        session, for unknown keys or a plan that does not check."""
+        its head line, a ready line per repo (utils/forge/ready.py: a report, outside the approved block), the form call
+        and its ## Plan block. ActionError in a child session, while a delegated plan runs in the session, for unknown
+        keys or a plan that does not check."""
         sid, raw = session_of(ctx), args["plan"]
         ticket = ctx.ports["plans"].ticket(sid)
         busy = child.refusal(ticket, "never presents a plan of its own: its card plan opens with "
@@ -133,7 +136,8 @@ class PlanPresent(McpAction):
         items["root"] = os.getcwd().replace("\\", "/")  # the MCP server runs in the project's folder
         bind_repo(items)
         plan_id, rev, _ = ctx.ports["plans"].present(items, sid=sid)
-        return answer(render.head(items, plan_id, rev), items, plan_id, rev)
+        lines = ready.report(items.get("repos"), None if forge_off() else ctx.ports["github"])
+        return answer("\n".join([render.head(items, plan_id, rev)] + lines), items, plan_id, rev)
 
 
 class PlanRevise(McpAction):

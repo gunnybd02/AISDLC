@@ -6,9 +6,12 @@ import os
 import re
 import subprocess
 import unittest
+from unittest import mock
 
 from harness.assemble.engine.ports import LedgerPort
 from harness.utils.contracts import YES
+from harness.utils.git import github
+from harness.utils.git.github import GitHubError
 from harness.utils.plan.approval import approvals
 from harness.tests.e2e import copy_tree, git_repo
 from harness.tests.mcp import caller
@@ -204,6 +207,22 @@ class RepoBindingTest(unittest.TestCase):
         result = self.present({"shop": {"url": "https://github.com/acme/shop"}})
         self.assertTrue(result.is_error)
         self.assertIn("repo shop names no verify and the plan has tests", result.text)
+
+    def test_the_ready_report_shows_the_forge_off_and_the_plan_is_kept(self):
+        result = self.present({"shop": {"url": "https://github.com/acme/shop", "verify": ["npm", "test"]}})
+        self.assertFalse(result.is_error, result.text)
+        self.assertIn("\nReady: shop | not checked (the forge is off)\n", result.text)
+
+    def test_an_unreachable_forge_is_reported_and_the_plan_is_still_kept(self):
+        def down(method, path):
+            raise GitHubError("gh: could not reach api.github.com")
+        with mock.patch.dict(os.environ, {"HARNESS_FORGE": "on"}), mock.patch.object(github, "call", down):
+            run = caller(self.root)  # the ports take github.call when they are built
+            result = run("plan", "plan_present", plan={**PLAN, "repos": {
+                "shop": {"url": "https://github.com/acme/shop", "verify": ["npm", "test"]}}})
+        self.assertFalse(result.is_error, result.text)
+        self.assertIn("Ready: shop | not reachable (gh: could not reach api.github.com)", result.text)
+        self.assertRegex(result.text, r"plan pd-[0-9a-z]+-[0-9a-f]{6} rev")
 
     def test_the_model_cannot_set_the_verify_itself(self):
         result = self.run("plan", "plan_present", plan={**PLAN, "verify": ["true"]})

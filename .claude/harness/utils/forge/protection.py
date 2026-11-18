@@ -5,6 +5,7 @@ cannot be reached the last list it gave stays. Only a repository whose origin is
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import uuid
@@ -18,6 +19,7 @@ from harness.utils.shapes import PlanStore
 
 TTL_MS = 10 * 60 * 1000
 KIND = "forge.protected"
+OFF = "HARNESS_FORGE"  # "off": no forge is asked (the tests set it, so no test reaches the real GitHub)
 LAST = "SELECT text, at FROM pl_notes WHERE kind = ? AND target = ? ORDER BY at DESC, rowid DESC LIMIT 1"
 KEEP = "INSERT INTO pl_notes (uid, kind, target, key, text, why, sid, at) VALUES (?, ?, ?, '', ?, '', '', ?)"
 
@@ -40,6 +42,15 @@ def slug_of(repo: str | Path) -> str:
     return repo_key(origin) if "github.com" in origin.lower() else ""
 
 
+def forge_off() -> bool:
+    """Whether no forge may be asked (HARNESS_FORGE=off).
+
+    Returns:
+        True when HARNESS_FORGE is off.
+    """
+    return os.environ.get(OFF, "").strip().lower() == "off"
+
+
 def ask_github(slug: str) -> list[str]:
     """The protected branches GitHub names for a repository.
 
@@ -50,8 +61,10 @@ def ask_github(slug: str) -> list[str]:
         Their names, sorted.
 
     Raises:
-        GitHubError: gh cannot reach GitHub or GitHub refuses.
+        GitHubError: the forge is off, gh cannot reach GitHub, or GitHub refuses.
     """
+    if forge_off():
+        raise github.GitHubError(f"the forge is off ({OFF}=off)")
     answer = github.call("GET", f"repos/{slug}/branches?protected=true&per_page=100")
     if not isinstance(answer, list):
         return []
