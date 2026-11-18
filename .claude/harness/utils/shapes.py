@@ -212,7 +212,8 @@ class Ticket(TypedDict, total=False):
     steps; noted (commits git.commit made, waiting for step_done); stepCommits by step; closeReason (delivered,
     abandoned, superseded); what a superseded ticket carried over (priorCommits, spentPlan); backs how many times a
     write sent it back from deliver to execute, and backTold, set False each time it goes back. A delegated ticket
-    (a plan with children) also holds the grant and its crew, the started children by name; a child's ticket holds
+    (a plan with children) also holds the grant and its crew, the started children by name, and the lock of its
+    acceptance tests (utils/orchestra/locked.py: {branch, units}); a child's ticket holds
     its role (child), the questions it asked (asks) and its last handback ({sha, at}) (utils/orchestra)."""
     id: str
     sid: str
@@ -237,6 +238,7 @@ class Ticket(TypedDict, total=False):
     backTold: bool
     grant: ChildGrant
     crew: dict[str, CrewEntry]
+    lock: dict[str, Any]
     child: ChildRole
     asks: list[dict[str, Any]]
     handback: dict[str, Any]

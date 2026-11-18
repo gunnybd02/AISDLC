@@ -179,16 +179,39 @@ def put_note(unit: dict[str, Any], repo: str, ref: str, rel: str, text: str, mes
     Raises:
         FetchError: the branch cannot be checked out, or the commit or the push fails.
     """
+    return put_files(unit, repo, ref, {rel: text}, message)
+
+
+def put_files(unit: dict[str, Any], repo: str, ref: str, files: dict[str, str], message: str, target: str = "") -> str:
+    """Commit files of the parent on a branch and push the result to a branch: a plain branch push. Files that are
+    already there as given make no commit.
+
+    Args:
+        unit: the unit's spec {repo, path, verify, base}.
+        repo: the parent's repository root.
+        ref: the branch the commit starts from.
+        files: {path in the repository: text}.
+        message: the commit message.
+        target: the branch pushed to; ref when "".
+
+    Returns:
+        The commit the target branch holds now.
+
+    Raises:
+        FetchError: the branch cannot be checked out, or the commit or the push fails.
+    """
+    to = target or ref
     try:
         with checkout(unit, repo, ref) as folder:
-            path = Path(folder) / rel
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8")
-            who = committer(folder)
-            git(folder, "add", "--", rel)
-            git(folder, *who, "commit", "-q", "-m", message)
+            for rel, text in files.items():
+                path = Path(folder) / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text, encoding="utf-8")
+                git(folder, "add", "--", rel)
+            if git_or_empty(folder, "diff", "--cached", "--name-only"):
+                git(folder, *committer(folder), "commit", "-q", "-m", message)
             sha = git(folder, "rev-parse", "HEAD").strip()
-            git(folder, "push", "-q", "origin", f"HEAD:refs/heads/{ref}", timeout=300)
+            git(folder, "push", "-q", "origin", f"HEAD:refs/heads/{to}", timeout=300)
     except GitError as e:
-        raise FetchError(f"the note was not pushed on {ref}: {str(e)[-300:]}") from e
+        raise FetchError(f"the files were not pushed on {to}: {str(e)[-300:]}") from e
     return sha
