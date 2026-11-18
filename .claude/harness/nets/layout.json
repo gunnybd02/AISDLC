@@ -1,7 +1,6 @@
 {
   "about": "Where a file of the .claude tree may be. * matches inside one folder name, ** any number of folders.",
   "allow": [
-    "project.json",
     "settings.json",
     "harness/entry/*.py",
     "harness/__init__.py",
