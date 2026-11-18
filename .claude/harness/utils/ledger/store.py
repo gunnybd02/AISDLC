@@ -9,6 +9,8 @@ kept as rows of pl_notes, so the schema stays the pinned one and every copy carr
   store.asked     key = the mark a turn was held for, so a turn is held once for the same work
   store.folder    target = db or tickets, key = the store folder's id, text = the subfolder's Drive id; written when
                   the hook sees a Drive answer show that folder under the store folder (made, or listed by a search)
+  store.ticket    target = a ticket file's name, key = its sha256 (utils/orchestra/issues.py); store.ticket_uploaded
+                  its Drive id, when the hook sees create_file answer with it
 
 The mark counts what must not be lost: commits, plan events (approved, delivered, dropped), pushes and merge requests.
 Work is unsaved while the mark is ahead of the mark of the newest copy the store holds. Small rows (verify receipts,
@@ -41,6 +43,7 @@ NEWEST = "SELECT key, target, text, at FROM pl_notes WHERE kind = ? ORDER BY at 
 FILE_ID = re.compile(r'\\*"id\\*"\s*:\s*\\*"([A-Za-z0-9_-]{10,})')
 FOLDER, PLACES = "store.folder", ("db", "tickets")  # the store's subfolders: ledger copies, ticket files
 FOLDER_MIME = "application/vnd.google-apps.folder"
+TICKET, TICKET_UP = "store.ticket", "store.ticket_uploaded"  # a ticket file made (key: its sha256), and uploaded
 
 
 def folder() -> str:
@@ -223,13 +226,62 @@ def uploaded(port: PlanStore, event: Event) -> list[str]:
     made = port.rows("SELECT key FROM pl_notes WHERE kind = ? AND target = ?", (EXPORT, title)) if title else []
     answer = event.response if isinstance(event.response, str) else json.dumps(event.response, ensure_ascii=False)
     found = FILE_ID.search(answer or "")
-    if not made or not found or not re.search(r'\\*"title\\*"\s*:\s*\\*"' + re.escape(title), answer):
+    if not found or not re.search(r'\\*"title\\*"\s*:\s*\\*"' + re.escape(title), answer or ""):
         return []
+    if not made:
+        return ticket_uploaded(port, event, title, found.group(1))
     seq = made[0]["key"]
     if not port.rows("SELECT 1 AS x FROM pl_notes WHERE kind = ? AND key = ?", (UPLOADED, seq)):
         port.write(lambda con, rec: note(con, UPLOADED, title, seq, found.group(1), event.session,
                                          int(time.time() * 1000)))
     return [f"The store holds copy {seq} of this ledger: {title}."]
+
+
+def keep_ticket(port: PlanStore, sid: str, title: str, sha256: str, path: str) -> None:
+    """Keep that the harness made a ticket file, so the hook knows its upload.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        sid: the session that made it.
+        title: its file name.
+        sha256: the hash of its bytes.
+        path: where it is on this machine.
+    """
+    port.write(lambda con, rec: note(con, TICKET, title, sha256, path, sid, int(time.time() * 1000)))
+
+
+def ticket_uploaded(port: PlanStore, event: Event, title: str, file_id: str) -> list[str]:
+    """Keep that the store holds a ticket file the harness made, when Drive answered its create_file with it.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        event: the PostToolUse hook call.
+        title: the file name the call gave.
+        file_id: the Drive id in the answer.
+
+    Returns:
+        ["The store holds the ticket file <title>."] when it is a ticket file the harness made; else [].
+    """
+    if not port.rows("SELECT 1 AS x FROM pl_notes WHERE kind = ? AND target = ?", (TICKET, title)):
+        return []
+    if not ticket_held(port, title):
+        port.write(lambda con, rec: note(con, TICKET_UP, title, file_id, file_id, event.session,
+                                         int(time.time() * 1000)))
+    return [f"The store holds the ticket file {title} (Drive file {file_id})."]
+
+
+def ticket_held(port: PlanStore, title: str) -> str:
+    """The Drive id of an uploaded ticket file.
+
+    Args:
+        port: the harness ledger (plans, tickets, audit rows).
+        title: its file name.
+
+    Returns:
+        The id; "" when the store does not hold it yet.
+    """
+    rows = port.rows("SELECT text FROM pl_notes WHERE kind = ? AND target = ? ORDER BY at DESC LIMIT 1", (TICKET_UP, title))
+    return rows[0]["text"] if rows else ""
 
 
 def place(port: PlanStore, name: str) -> str:

@@ -28,6 +28,7 @@ from typing import Any
 from harness.utils.contracts import ActionContext, ActionError, McpAction, READ, WRITE, answered, session_of
 from harness.utils.git.facts import top
 from harness.utils.git.run import GitError, git
+from harness.utils.ledger import store
 from harness.utils.orchestra import brief as briefs
 from harness.utils.orchestra import crew, issues, locked, work
 from harness.utils.orchestra.card import in_force, plan_units, unit_spec
@@ -152,19 +153,26 @@ class Tickets(McpAction):
     """orchestra.tickets: one GitHub issue per child, and the ticket file of the delegated plan."""
     block, name, effect = "orchestra", "tickets", WRITE
     summary = ("Open one GitHub issue per child of the delegated plan (after lock, before spawn), each with its card and "
-               "a machine block with its hash; a second call opens none again")
-    args_schema = {"type": "object", "properties": {}}
+               "a machine block with its hash, then write the ticket file (a CSV row per child) and give its one Drive "
+               "upload into the store's tickets folder; a second call opens no issue again")
+    args_schema = {"type": "object", "properties": {"into": {"type": "string"}}}
     needs = ("plans", "session", "units", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Open the issues (utils/orchestra/issues.py). ActionError for no delegated plan, a started child, a unit with
-        no repository URL, or GitHub refusing."""
-        sid = session_of(ctx)
-        units = plan_units(in_force(ctx.ports["plans"], sid), ctx.ports["units"]())
+        """Open the issues and write the ticket file (utils/orchestra/issues.py) into <into>/.harness-export/ (the
+        working folder by default). ActionError for no delegated plan, a started child, a unit with no repository URL,
+        GitHub refusing, or into not a folder."""
+        sid, port = session_of(ctx), ctx.ports["plans"]
+        units = plan_units(in_force(port, sid), ctx.ports["units"]())
+        into = str(args.get("into") or os.getcwd())  # the Drive tool reads files only from the session's own folders
+        if not os.path.isdir(into):
+            raise ActionError(f"into is a folder of this session's working folder; {into} is not a folder")
         try:
-            return "\n".join(issues.open_issues(ctx.ports["plans"], sid, units, ctx.ports["github"]))
+            lines = issues.open_issues(port, sid, units, ctx.ports["github"])
+            made = issues.write_ticket(port, sid, into)
         except issues.IssueError as e:
             raise ActionError(str(e)) from e
+        return "\n".join(lines + [issues.upload_words(made, store.folder(), store.place(port, "tickets"))])
 
 
 class Started(McpAction):
