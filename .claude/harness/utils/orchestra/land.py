@@ -48,7 +48,8 @@ def covers(card: Card, path: str) -> bool:
 
 
 def own_files(ticket: Ticket) -> list[str]:
-    """The files of the delegated plan no card covers: the parent's own work.
+    """The files of the delegated plan no card covers: the parent's own work. A card's acceptance tests are no own
+    file: lock ships them on the plan branch (live run 6: land waited for them).
 
     Args:
         ticket: the parent's ticket.
@@ -57,7 +58,7 @@ def own_files(ticket: Ticket) -> list[str]:
         Those files, in the plan's order.
     """
     plan, cards = ticket["plan"], ticket["plan"].get("children", [])
-    return [f for f in plan.get("files", []) if not any(covers(c, f) for c in cards)]
+    return [f for f in plan.get("files", []) if not any(covers(c, f) or f in c.get("acTests", []) for c in cards)]
 
 
 def conflicts(repo: str, base: str, ref: str) -> list[str]:
