@@ -7,6 +7,7 @@ from harness.assemble.engine.runner import Act
 from harness.mcp.actions.orchestra_parent import Answer, Reject
 from harness.utils.contracts import ActionContext, Event, Verdict
 from harness.utils.orchestra import orders
+from harness.utils.plan import tickets as plan_tickets
 from harness.tests.utils.test_review import UNITS, Scenario, git
 
 KEY = "0123456789abcdef0123456789abcdef"
@@ -115,6 +116,73 @@ class SendTest(Scenario):
         other = Act(self.port).run(Event("PostToolUse", "mcp__x__send_message", {"message": "hello"}, "s1", "/w", "ok"),
                                    {}, Verdict("allow"))
         self.assertFalse(any("recorded order" in n for n in other))
+
+
+class ArriveTest(unittest.TestCase):
+    """Part 6, the child's side: its hook checks each order in a ReadNotifications answer, records it, and a valid one
+    unlocks one action; an invalid one unlocks nothing."""
+    PARENT = "session_parent01"
+
+    def setUp(self):
+        from harness.assemble.engine.ports import LedgerPort
+        from harness.utils.orchestra import brief, work
+        from harness.tests import tree
+        from harness.tests.e2e import copy_tree, git_repo
+        from harness.tests.utils.test_work import CARD
+        self.port, self.repo, origin = LedgerPort(copy_tree(self)), git_repo(self, {"a.py": "X = 1\n"}), tree(self, {})
+        git(origin, "init", "-q", "--bare")
+        git(self.repo, "remote", "add", "origin", str(origin))
+        prompt = brief.brief(7, "pd-x", CARD, "s-harness", rounds=3, cloud=self.PARENT, key=KEY)
+        Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": prompt}, "c1", str(self.repo)), {}, Verdict("allow"))
+        work.take(self.port, "c1", str(self.repo))
+        self.port.write(lambda con, rec: plan_tickets.save(con, {**plan_tickets.latest(con, "c1"), "phase": "deliver"}))
+
+    def read(self, *messages, sid="c1", sender=PARENT):
+        answer = "\n".join(f'<message from-session="{sender}">\n{m}\n</message>' for m in messages)
+        return Act(self.port).run(Event("PostToolUse", "ReadNotifications", {}, sid, str(self.repo),
+                                        f"Exactly {len(messages)} notification.\n{answer}\n0 remaining"), {},
+                                  Verdict("allow"))
+
+    def order(self, n, kind="fix", body="AC2 fails: hello('') must raise ValueError."):
+        return orders.text(KEY, 7, "api", orders.NO_ISSUE, orders.NO_SHA, n, kind, body)
+
+    def received(self):
+        return [(int(r["key"]), json.loads(r["text"])["valid"])
+                for r in self.port.rows("SELECT key, text FROM pl_notes WHERE kind = 'order.received' ORDER BY rowid")]
+
+    def test_a_valid_fix_or_answer_reopens_the_card_plan_for_one_round(self):
+        """s4.orders.fix-resumes"""
+        notes = self.read(self.order(1))
+        self.assertTrue(any(n.startswith("The orchestrator's order fix (round 1) is valid") for n in notes))
+        self.assertTrue(any("Its words: AC2 fails" in n for n in notes))
+        ticket = self.port.ticket("c1")
+        self.assertEqual((ticket["phase"], ticket[orders.TAKEN]["round"]), ("execute", 1))
+        self.assertTrue(any("order answer (round 2) is valid" in n for n in self.read(self.order(2, "answer", "Use 400."))))
+        self.assertEqual(self.received(), [(1, True), (2, True)])
+
+    def test_a_valid_stop_ends_the_child(self):
+        """s4.orders.stop"""
+        notes = self.read(self.order(1, "stop", ""))
+        self.assertTrue(any("order stop (round 1) is valid: your work is over" in n for n in notes))
+        self.assertEqual(self.port.ticket("c1")[orders.TAKEN]["kind"], "stop")
+        self.assertEqual(self.port.ticket("c1")["phase"], "deliver")  # stop opens nothing
+
+    def test_an_invalid_or_replayed_order_unlocks_nothing_and_is_recorded(self):
+        """s4.orders.invalid: a replay, a changed body, a wrong key, another sender; none moves the plan."""
+        self.read(self.order(1))
+        self.port.write(lambda con, rec: plan_tickets.save(con, {**plan_tickets.latest(con, "c1"), "phase": "deliver"}))
+        cases = [(self.order(1), "the next one is 2"),
+                 (self.order(2).replace("must raise", "may skip"), "its mac is wrong"),
+                 (orders.text("f" * 32, 7, "api", 0, orders.NO_SHA, 2, "fix", "x"), "its mac is wrong")]
+        for said, why in cases:
+            with self.subTest(why=why):
+                notes = self.read(said)
+                self.assertTrue(any(n.startswith("An order (round") and why in n for n in notes), notes)
+        notes = self.read(self.order(2), sender="session_other")
+        self.assertTrue(any("does not name the parent's session session_parent01" in n for n in notes))
+        self.assertEqual(self.port.ticket("c1")["phase"], "deliver")
+        self.assertEqual(self.received(), [(1, True), (1, False), (2, False), (2, False), (2, False)])
+        self.assertEqual(self.read(self.order(2), sid="s9"), [])  # no child: nothing is read
 
 
 if __name__ == "__main__":

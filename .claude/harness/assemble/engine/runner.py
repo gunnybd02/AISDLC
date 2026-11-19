@@ -177,6 +177,7 @@ class Act:
                 if role:
                     notes.append(BOUND.format(name=role["name"], plan=role["plan"]))
             notes += doorbell.rung(self.port, event)  # a CI result woke a parent: the doorbell reads it
+            notes += orders.arrived(self.port, event)  # an order in a child's prompt
         if event.kind == "PostToolUse":
             notes += approvals(self.port, event.session, facts.get("answers") or {})
             notes += accepts(self.port, facts.get("answers") or {})
@@ -186,6 +187,7 @@ class Act:
             notes += merges.accepts(self.port, facts.get("answers") or {})  # the user allows one merge
             notes += merges.used(self.port, event)  # a merge ran: its pass is used
             notes += orders.sent_seen(self.port, event)  # a parent sent a child its signed order
+            notes += orders.arrived(self.port, event)  # a child read its notifications: an order may be in them
             notes += release_accepts(self.port, facts.get("answers") or {})
             notes += removal_accepts(self.port, facts.get("answers") or {})  # a remove checklist the user ticked
             notes += synced.waiver_accepts(self.port, facts.get("answers") or {})  # a child closed without its copy
