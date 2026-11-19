@@ -1,0 +1,35 @@
+# Written by the harness for plan 22: harness ci on each push to a pull request of a child into plan/p22.
+# Locked with the acceptance tests: never edit it by hand; a child that changes it is refused.
+name: harness ci p22
+'on':
+  pull_request:
+    branches: ['plan/p22']
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+jobs:
+  harness-ci:
+    if: startsWith(github.head_ref, 'orch/p22/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Get the harness at 38961a9a5b9b
+        run: |
+          git clone --quiet https://github.com/gunnybd02/aisdlc "$RUNNER_TEMP/harness"
+          git -C "$RUNNER_TEMP/harness" checkout --quiet 38961a9a5b9b0acda8fa4f670a482131c4e69986
+      - name: harness ci
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python "$RUNNER_TEMP/harness/.claude/harness/entry/cli.py" ci --base "$GITHUB_BASE_REF" --head "$GITHUB_HEAD_REF"
+      - name: tests of hello
+        if: ${{ !cancelled() && github.head_ref == 'orch/p22/hello' && steps.ci.outputs.code == 'yes' }}
+        run: |
+          python -m unittest discover -s orch-probe -t orch-probe
