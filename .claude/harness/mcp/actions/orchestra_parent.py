@@ -12,7 +12,9 @@ requests at the end, the parent resolving conflicts there, and closes the plan a
 - land {timeoutMin?}: merge every accepted pull request, run each unit's tests, close the plan delivered.
 - release {name, why}: give a child's session back to the user (utils/orchestra/cleanup.py).
 - remove: one checklist the user ticks, then the archive_session call of each ticked child.
-- digest: one line per child."""
+- digest: one line per child.
+- doorbell: after a CI result woke the parent, each child's CI result, failed rules and new comments, read on GitHub,
+  recorded, with its next step (utils/orchestra/doorbell.py)."""
 from __future__ import annotations
 
 from typing import Any, Callable
@@ -20,7 +22,7 @@ from typing import Any, Callable
 from harness.utils.contracts import ActionContext, ActionError, McpAction, READ, WRITE, answered, session_of
 from harness.utils.git.github import GitHubError
 from harness.utils.git.run import GitError
-from harness.utils.orchestra import cleanup, land, review
+from harness.utils.orchestra import cleanup, doorbell, land, review
 from harness.utils.orchestra.card import in_force, plan_units
 from harness.utils.plan.item_checks import run_limits
 from harness.utils.orchestra.fetch import FetchError
@@ -28,7 +30,7 @@ from harness.utils.orchestra.fetch import FetchError
 ACTIONS = [("orchestra.check", "Check"), ("orchestra.accept", "Accept"), ("orchestra.reject", "Reject"),
            ("orchestra.answer", "Answer"), ("orchestra.forget", "Forget"), ("orchestra.read", "Read"),
            ("orchestra.land", "Land"), ("orchestra.release", "Release"), ("orchestra.remove", "Remove"),
-           ("orchestra.digest", "Digest")]
+           ("orchestra.digest", "Digest"), ("orchestra.doorbell", "Doorbell")]
 PARENT_ERRORS = (review.ReviewError, FetchError, GitError, GitHubError)  # the refusals of its steps, answered as the action's error
 NAME = {"type": "string", "description": "the child's name, as its card names it"}
 MINUTES = {"type": "integer", "description": "minutes each test run may take, 1 to 30 (default 10)"}
@@ -197,3 +199,17 @@ class Digest(McpAction):
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """The digest of the session's delegated plan (utils/orchestra/cleanup.digest)."""
         return cleanup.digest(ctx.ports["plans"], session_of(ctx))
+
+
+class Doorbell(McpAction):
+    """orchestra.doorbell: what a CI result that woke the parent means for each child."""
+    block, name, effect = "orchestra", "doorbell", WRITE
+    summary = ("After a GitHub event woke you: each child's CI result, failed rules and new comments, read on GitHub "
+               "by the harness and recorded, with the next step (wait, reject, answer, or check then accept)")
+    args_schema = {"type": "object", "properties": {}}
+    needs = ("plans", "session", "github")
+
+    def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
+        """Read and record each child's draft (utils/orchestra/doorbell.ring)."""
+        sid = session_of(ctx)
+        return answered(PARENT_ERRORS, lambda: doorbell.ring(ctx.ports["plans"], sid, ctx.ports["github"]))

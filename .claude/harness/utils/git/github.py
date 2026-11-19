@@ -70,6 +70,27 @@ def call(method: str, path: str, fields: dict[str, Any] | None = None) -> Any:
     Raises:
         GitHubError: gh cannot start, times out, or exits non-zero (GitHub's message in it).
     """
+    out = text(method, path, fields)
+    try:
+        return json.loads(out) if out.strip() else {}
+    except ValueError as e:
+        raise GitHubError(f"gh api {method} {path}: the answer is not JSON") from e
+
+
+def text(method: str, path: str, fields: dict[str, Any] | None = None) -> str:
+    """One call whose answer is read as text, as GitHub gives it (a job's log is plain text, not JSON).
+
+    Args:
+        method: GET, POST, PUT...
+        path: the endpoint, e.g. "repos/o/r/actions/jobs/1/logs".
+        fields: the fields of the body (words_of).
+
+    Returns:
+        The answer as text.
+
+    Raises:
+        GitHubError: gh cannot start, times out, or exits non-zero (GitHub's message in it).
+    """
     words = words_of(method, path, fields)
     try:
         p = subprocess.run(words, capture_output=True, text=True, timeout=TIMEOUT, stdin=subprocess.DEVNULL)
@@ -77,7 +98,4 @@ def call(method: str, path: str, fields: dict[str, Any] | None = None) -> Any:
         raise GitHubError(f"gh api {method} {path}: {e}") from e
     if p.returncode != 0:
         raise GitHubError(f"gh api {method} {path}: {(p.stderr or p.stdout).strip()[-600:]}")
-    try:
-        return json.loads(p.stdout) if p.stdout.strip() else {}
-    except ValueError as e:
-        raise GitHubError(f"gh api {method} {path}: the answer is not JSON") from e
+    return p.stdout
