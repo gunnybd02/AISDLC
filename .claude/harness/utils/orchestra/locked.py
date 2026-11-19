@@ -1,7 +1,8 @@
 """Locked: the plan branch of a delegated plan and the acceptance tests the parent locks on it (docs/system.md
 sections 5 and 6). The parent writes each card's acTests in its own tree, at their paths from the plan's root; lock
 commits them at the same paths in the unit's folder on plan/p<plan> (made from the unit's base the first time) in the
-unit's repository, pushes that branch, and keeps the content hash of each file in the ticket (its lock). With the
+unit's repository, pushes that branch, keeps the content hash of each file in the ticket (its lock), and deletes the
+parent's untracked copies (clear): a red test left in its tree would keep its verify red (live run 2). With the
 harness's source it also writes the repository's CI workflow (utils/orchestra/workflow.py) on the plan branch and keeps
 its sha256: GitHub runs harness ci on each push of a child. A child starts from the plan branch and never changes a
 locked file; the parent's check runs only the tests and refuses a changed workflow. Once a child has started, nothing
@@ -139,11 +140,39 @@ def lock(port: PlanStore, sid: str, units: dict[str, Any], source: Optional[dict
         fresh = tickets.latest(con, sid)
         tickets.save(con, {**fresh, LOCK: {"branch": ref, "units": kept}})
     port.write(write)
+    gone, here = clear(root, [p for card in cards for p in card["acTests"]])
     names = ", ".join(p for unit in kept for p in unit["files"])
     flows = (f" With them, the CI workflow {WORKFLOW} pins the harness at {str(source.get('sha'))[:12]}: GitHub runs "
              f"harness ci on each push of a child to a pull request into {ref}." if source is not None else "")
+    cleared = (f" Your tree keeps no copy of {', '.join(gone)}: {ref} holds it (write it again to lock again)."
+               if gone else "") + (f" Kept in your tree, as the repository tracks it: {', '.join(here)}." if here else "")
     return (f"Locked on {ref}: {names}. A child starts from {ref}, never changes these files, and its check runs "
-            f"only them.{flows} Now spawn the children.")
+            f"only them.{flows}{cleared} Now spawn the children.")
+
+
+def clear(root: Path, paths: list[str]) -> tuple[list[str], list[str]]:
+    """Delete the parent's copies of the locked tests that its repository does not track: the plan branch holds them
+    now, and a test that is red until a child writes the code would keep the parent's verify red. A tracked file stays.
+
+    Args:
+        root: the plan's root.
+        paths: the locked tests, from the root.
+
+    Returns:
+        (the paths deleted, the paths kept because they are tracked or cannot be told).
+    """
+    gone, here = [], []
+    for path in dict.fromkeys(paths):
+        try:
+            tracked = bool(git(str(root), "ls-files", "--", path).strip())
+        except GitError:
+            tracked = True  # not known: keep it
+        if tracked:
+            here.append(path)
+        else:
+            (root / path).unlink(missing_ok=True)
+            gone.append(path)
+    return gone, here
 
 
 def plan_prs(port: PlanStore, sid: str, github: Callable[..., Any]) -> tuple[list[str], bool]:
