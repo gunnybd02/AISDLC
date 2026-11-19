@@ -64,6 +64,16 @@ class JoinTest(unittest.TestCase):
         with self.assertRaises(ActionError):
             Join().run(self.ctx, {"files": []})
 
+    def test_a_gzipped_copy_named_bin_joins(self):
+        """s4.join.gzip-by-content: Drive saves a downloaded copy as .bin."""
+        import shutil
+        from pathlib import Path
+        copy = Path(self.copy_of("child", [("u9", "stop")]))
+        as_drive = self.root / "mcp-Google_Drive-blob-1.bin"
+        shutil.copy(copy, as_drive)
+        self.assertEqual(Join().run(self.ctx, {"files": [str(as_drive)]}), "mcp-Google_Drive-blob-1.bin: 2 rows taken")
+        self.assertEqual(DbQuery().run(self.ctx, {"sql": "SELECT body FROM pl_logs", "memory": True}), "body\nstop")
+
     def test_db_query_with_memory_reads_the_joined_memory(self):
         """s7.join.query"""
         with self.assertRaisesRegex(ActionError, "there is no memory yet"):

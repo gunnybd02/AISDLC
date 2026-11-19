@@ -42,11 +42,16 @@ def opened(memory: Path) -> sqlite3.Connection:
     return con
 
 
+GZIP = b"\x1f\x8b"  # the first two bytes of every gzip file
+
+
 def plain_copy(path: Path, folder: Path) -> Path:
-    """The copy as an SQLite file: a .gz copy is unpacked into folder."""
-    if path.suffix != ".gz":
-        return path
-    out = folder / path.with_suffix("").name
+    """The copy as an SQLite file: a gzipped copy is unpacked into folder. Gzip is known by its first bytes, not its
+    name: Drive saves a download as .bin (live run 6)."""
+    with open(path, "rb") as head:
+        if head.read(2) != GZIP:
+            return path
+    out = folder / (path.name.removesuffix(".gz").removesuffix(".bin") + ".plain.db")
     with gzip.open(path, "rb") as packed, open(out, "wb") as raw:
         shutil.copyfileobj(packed, raw)
     return out
