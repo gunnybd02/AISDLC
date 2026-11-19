@@ -1,4 +1,8 @@
-"""Greet a person by name."""
+"""Greet a person by name.
+
+AC1: hello("Ann") returns "Hello, Ann".
+AC2: hello("") raises ValueError.
+"""
 
 
 def hello(name):
