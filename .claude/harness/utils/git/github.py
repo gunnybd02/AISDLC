@@ -34,13 +34,35 @@ def repo_of(url: str) -> str:
     return f"{m['owner']}/{m['name']}"
 
 
-def call(method: str, path: str, fields: dict[str, str] | None = None) -> Any:
-    """One REST call: `gh api -X <method> <path> -f key=value...`.
+def words_of(method: str, path: str, fields: dict[str, Any] | None = None) -> list[str]:
+    """The gh command of one call: a text field as text (-f), a bool or a number typed (-F), as GitHub wants it.
+
+    Args:
+        method: GET, POST, PUT...
+        path: the endpoint, e.g. "repos/o/r/pulls", or "graphql".
+        fields: the fields of the body.
+
+    Returns:
+        The words of the command.
+    """
+    words = ["gh", "api", "-X", method, path]
+    for key, value in (fields or {}).items():
+        if isinstance(value, bool):
+            words += ["-F", f"{key}={'true' if value else 'false'}"]
+        elif isinstance(value, int):
+            words += ["-F", f"{key}={value}"]
+        else:
+            words += ["-f", f"{key}={value}"]
+    return words
+
+
+def call(method: str, path: str, fields: dict[str, Any] | None = None) -> Any:
+    """One REST call (or GraphQL, path "graphql" with a query field): `gh api -X <method> <path> -f key=value...`.
 
     Args:
         method: GET, POST, PUT...
         path: the endpoint, e.g. "repos/o/r/pulls".
-        fields: the string fields of the body.
+        fields: the fields of the body (words_of: text, bool, number).
 
     Returns:
         The decoded JSON answer ({} for an empty one).
@@ -48,9 +70,7 @@ def call(method: str, path: str, fields: dict[str, str] | None = None) -> Any:
     Raises:
         GitHubError: gh cannot start, times out, or exits non-zero (GitHub's message in it).
     """
-    words = ["gh", "api", "-X", method, path]
-    for key, value in (fields or {}).items():
-        words += ["-f", f"{key}={value}"]
+    words = words_of(method, path, fields)
     try:
         p = subprocess.run(words, capture_output=True, text=True, timeout=TIMEOUT, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.TimeoutExpired) as e:

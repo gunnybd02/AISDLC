@@ -27,6 +27,7 @@ from harness.utils.git.run import GitError, git
 from harness.utils.git.staged_diff import added_between
 from harness.utils.ledger.mask import SECRETS
 from harness.utils.orchestra.brief import NOTES, subject
+from harness.utils.orchestra.draft import START
 from harness.utils.orchestra.issues import format_problems, read_block
 from harness.utils.orchestra.locked import in_unit
 from harness.utils.orchestra.register import RECORD, RECORD_FORMAT
@@ -35,6 +36,7 @@ from harness.utils.plan.files import matches
 
 RULES = ("branch", "base", "issue", "registered", "subjects", "marks", "secrets", "scope", "locked")
 HEAD = re.compile(r"^orch/p(?P<plan>\d+)/(?P<name>[a-z0-9][a-z0-9-]{0,39})$")
+WAITING = "only the parent's start commit is on the branch; the child has not registered yet"
 Result = tuple[str, bool, str]
 
 
@@ -112,9 +114,15 @@ def check(repo: str, base: str, head: str, github: Callable[..., Any]) -> list[R
     if not found:
         return fill([("branch", False, f"{head} is no branch of a child (orch/p<plan>/<name>)")],
                     "the head is no branch of a child")
-    name, rel = found["name"], RECORD.format(name=found["name"])
+    name, rel, opened = found["name"], RECORD.format(name=found["name"]), START.format(name=found["name"])
     record = record_of(repo, {"sha": ref_of(repo, head), "files": [rel]}, name)  # the record at the tip
     if not record:
+        try:
+            only_start = [c["files"] for c in commits(repo, ref_of(repo, base), ref_of(repo, head))] == [[opened]]
+        except GitError:
+            only_start = False
+        if only_start:  # the parent's start commit alone: the draft pull request is open, the child not yet
+            return [(rule, True, WAITING) for rule in RULES]
         return fill([("registered", False, f"{head} holds no registration ({rel})")], "no registration names the issue")
     out: list[Result] = []
     block = issue_rule(record, github, out)
@@ -127,7 +135,8 @@ def check(repo: str, base: str, head: str, github: Callable[..., Any]) -> list[R
         log = commits(repo, ref_of(repo, start), ref_of(repo, head))
     except GitError as e:
         return fill(out, f"git cannot read {head} over {start}: {str(e)[-200:]}")
-    first = log[0] if log else {"sha": "", "files": []}
+    body = log[1:] if log and log[0]["files"] == [opened] else log  # after the parent's start commit
+    first = body[0] if body else {"sha": "", "files": []}
     why = ""
     if record_of(repo, first, name) != record:
         why = (f"{head} does not start with its registration: its first commit over {start} changes "
@@ -250,6 +259,9 @@ def report(repo: str, base: str, head: str, github: Callable[..., Any]) -> tuple
     """
     results = check(repo, base, head, github)
     failed = [rule for rule, ok, _ in results if not ok]
+    if all(why == WAITING for _, _, why in results):
+        return True, "\n".join([f"harness ci: {head} into {base}", f"WAIT: {WAITING}.",
+                                "Result: WAITING, nothing to check yet."])
     lines = [f"harness ci: {head} into {base}"] + [f"{'PASS' if ok else 'FAIL'} {rule}: {why}"
                                                     for rule, ok, why in results]
     lines.append("Result: GREEN, every rule passed." if not failed else

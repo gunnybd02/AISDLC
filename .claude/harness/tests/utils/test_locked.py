@@ -89,7 +89,7 @@ class LockTest(unittest.TestCase):
         github = lambda method, path, fields=None: {"number": 41, "html_url": f"{URL}/issues/41"}  # noqa: E731
         ctx = ActionContext({**self.ctx.ports, "github": github})
         Tickets().run(ctx, {"into": str(tree(self, {}))})
-        self.assertIn("create_session", Spawn().run(self.ctx, {"name": "hello"}))
+        self.assertIn("create_session", Spawn().run(ctx, {"name": "hello"}))  # it opens the draft pull request too
         Started().run(self.ctx, {"name": "hello", "sid": "session_child0001"})
         with self.assertRaises(ActionError) as e:
             Lock().run(self.ctx, {})
