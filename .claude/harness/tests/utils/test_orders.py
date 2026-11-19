@@ -269,6 +269,34 @@ class CatchUpTest(unittest.TestCase):
         (self.repo / "app" / "orders.py").write_text('"""Orders."""\nORDERS = []\n', encoding="utf-8")
         self.assertNotIn("the repository moved", self.step())
 
+    def handed_back(self):
+        """The child's harness commits its receipt and keeps it on the ticket, as work.handback does."""
+        from harness.utils.contracts import now
+        self.child_commits(".harness/handback/api.json", "{}\n")
+        sha = git(self.repo, "rev-parse", "HEAD").strip()
+        self.port.write(lambda con, rec: plan_tickets.save(con, {**plan_tickets.latest(con, "c1"),
+                                                                 "handback": {"sha": sha, "at": now()}}))
+        self.push()
+
+    def test_after_a_handback_and_a_catch_up_step_done_goes_on(self):
+        """s1.catchup.harness-commits: live run 6 refused here: the handback commit was no recorded move."""
+        self.push()
+        self.handed_back()
+        self.parent_commits(".harness/notes/api/sendback-1.md", "add a docstring\n")
+        self.read(self.order(1))
+        (self.repo / "app").mkdir(exist_ok=True)
+        (self.repo / "app" / "orders.py").write_text('"""Orders."""\nORDERS = []\n', encoding="utf-8")
+        self.assertNotIn("the repository moved", self.step())
+
+    def test_a_commit_the_harness_did_not_make_is_still_refused_after_a_handback(self):
+        """s1.catchup.still-foreign"""
+        self.push()
+        self.handed_back()
+        self.parent_commits(".harness/notes/api/sendback-1.md", "add a docstring\n")
+        self.read(self.order(1))
+        self.child_commits("a.py", "X = 3\n")
+        self.assertIn("the repository moved", self.step())
+
     def test_a_move_the_harness_did_not_make_is_still_refused(self):
         """s1.catchup.foreign-move"""
         self.push()

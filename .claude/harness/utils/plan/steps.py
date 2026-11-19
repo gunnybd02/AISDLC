@@ -20,6 +20,7 @@ from typing import Optional
 
 from harness.utils.contracts import asked, refused
 from harness.utils.orchestra.brief import child_subject
+from harness.utils.orchestra.catchup import expected_after
 from harness.utils.git.branches import current
 from harness.utils.git.commit import commit
 from harness.utils.git.facts import blob, head, top
@@ -149,8 +150,7 @@ def step_done(port: PlanStore, sid: str, message: Optional[str], judge: Optional
         raise StepError(f"the plan's root {plan['root']} is not in a git repository")
     noted = ticket.get("noted", [])
     expected = (ticket["commits"] + noted)[-1] if ticket["commits"] + noted else plan.get("base")
-    for move in ticket.get("caughtUp") or []:  # the harness took in the orchestrator's notes (orchestra/catchup.py)
-        expected = move.get("to") if move.get("from") == expected else expected
+    expected = expected_after(repo, ticket, expected) if expected else expected  # the harness's own moves (a child)
     if not expected or head(repo) != expected:
         raise StepError("the repository moved since the approval or the plan's last commit (or had no commit): "
                         "present a new plan")

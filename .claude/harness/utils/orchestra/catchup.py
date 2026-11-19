@@ -116,3 +116,31 @@ def catch_up(repo: str, branch: str, name: str) -> str:
                            "nothing was changed")
     return (f"Your branch took in the orchestrator's note commit(s) {shas} and replayed your {len(ahead)} commit(s) "
             "on top of them.")
+
+
+def expected_after(repo: str, ticket: Any, expected: str) -> str:
+    """The commit a child's step_done expects, after the moves the harness made itself on its branch, in time order:
+    its handback and question commits (each from its parent; live run 6) and the catch-ups of the orchestrator's notes
+    (MOVES). A commit nobody of these made is no move: step_done still refuses it.
+
+    Args:
+        repo: the child's clone.
+        ticket: the child's ticket.
+        expected: the plan's last commit (or its base).
+
+    Returns:
+        The commit the branch may stand on now.
+    """
+    ticket = ticket or {}
+    moves = [(int(m.get("at") or 0), m.get("from"), m.get("to")) for m in ticket.get(MOVES) or []]
+    made = [ticket.get("handback") or {}] + [a for a in ticket.get("asks") or [] if isinstance(a, dict)]
+    for commit in made:
+        if commit.get("sha"):
+            try:
+                moves.append((int(commit.get("at") or 0), git(repo, "rev-parse", f"{commit['sha']}^").strip(),
+                              commit["sha"]))
+            except GitError:
+                continue
+    for _, start, end in sorted(moves, key=lambda move: move[0]):
+        expected = end if start == expected and end else expected
+    return expected
