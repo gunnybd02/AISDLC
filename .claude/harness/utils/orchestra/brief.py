@@ -13,6 +13,7 @@ import json
 import os
 from typing import Any, Mapping
 
+from harness.utils.forge.sessions import DEFAULT_MODEL
 from harness.utils.orchestra.card import HOME_SPEC, behaviour_id
 from harness.utils.shapes import Card
 
@@ -222,15 +223,14 @@ def create_call(plan: int, card: Card, prompt: str, source_url: str, model: str 
         card: the child's card.
         prompt: its brief.
         source_url: the URL of the repository it clones.
-        model: a model to start it with, or "" for the parent's.
+        model: a model to start it with; "" for DEFAULT_MODEL (Sonnet). Another model asks the user's form when the
+            call is made (the model gate, utils/forge/sessions.py).
 
     Returns:
-        {title, prompt, source_url?, tags, model?}.
+        {title, prompt, source_url?, tags, model}.
     """
     call: dict[str, Any] = {"title": f"Orchestra p{plan}: {card['name']}", "prompt": prompt,
-                            "tags": ["orchestra", f"orchestra:p{plan}"]}
+                            "tags": ["orchestra", f"orchestra:p{plan}"], "model": model or DEFAULT_MODEL}
     if source_url:
         call["source_url"] = source_url
-    if model:
-        call["model"] = model
     return call

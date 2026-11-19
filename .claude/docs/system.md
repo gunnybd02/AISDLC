@@ -295,5 +295,5 @@ id; the doorbell line follows `ReadNotifications`; CI runs the tests only once t
 - Parent to child: signed one-way orders; child to parent: through git and CI only.
 - 2026-11-19: a child's words go as comments on its draft PR, posted by its harness (probes A, B, C: auto mode
   refuses child-to-parent messages).
-- 2026-11-19: every merge of a pull request needs the user's Allow in a form for that PR and head commit (the merge
-  gate, PR 80); shell merges with `gh` are refused.
+- 2026-11-19: the user's Allow in a form for each merge of a pull request at its head commit (PR 80; `gh` merges are
+  refused), and for each `create_session` on a model other than Sonnet `claude-sonnet-5-5` (the model gate, PR 93).
