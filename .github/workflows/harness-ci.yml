@@ -1,0 +1,34 @@
+# Written by the harness for plan 17: harness ci on each push to a pull request of a child into plan/p17.
+# Locked with the acceptance tests: never edit it by hand; a child that changes it is refused.
+name: harness ci p17
+'on':
+  pull_request:
+    branches: ['plan/p17']
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+jobs:
+  harness-ci:
+    if: startsWith(github.head_ref, 'orch/p17/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Get the harness at 7cc5bf86c368
+        run: |
+          git clone --quiet https://github.com/gunnybd02/aisdlc "$RUNNER_TEMP/harness"
+          git -C "$RUNNER_TEMP/harness" checkout --quiet 7cc5bf86c3688c7c2be1e6c18f7f3b63221ace98
+      - name: harness ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python "$RUNNER_TEMP/harness/.claude/harness/entry/cli.py" ci --base "$GITHUB_BASE_REF" --head "$GITHUB_HEAD_REF"
+      - name: tests of hello
+        if: ${{ !cancelled() && github.head_ref == 'orch/p17/hello' }}
+        run: |
+          python -m unittest discover -s orch-probe -t orch-probe
