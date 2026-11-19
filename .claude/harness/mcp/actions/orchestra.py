@@ -30,7 +30,7 @@ from harness.utils.git.facts import top
 from harness.utils.git.run import GitError, git
 from harness.utils.ledger import store
 from harness.utils.orchestra import brief as briefs
-from harness.utils.orchestra import crew, issues, locked, register, work
+from harness.utils.orchestra import crew, issues, locked, orders, register, work
 from harness.utils.orchestra import draft as drafts  # draft is also the desk id of a plan here
 from harness.utils.orchestra.card import in_force, plan_units, unit_spec
 from harness.utils.plan.item_checks import run_limits
@@ -132,7 +132,8 @@ class Spawn(McpAction):
             watch = (f"First watch its draft pull request #{pr['number']} ({pr['url']}), so a CI result of any push "
                      f"wakes you: {drafts.WATCH} {json.dumps(drafts.watch_call(pr))}. Then ")
         prompt = briefs.brief(plan, draft, card, sid, unit, fresh.get("note", ""), rounds=limits["rounds"], start=start,
-                              issue=issue, ticket_file=made, pr=pr, cloud=briefs.cloud_id())
+                              issue=issue, ticket_file=made, pr=pr, cloud=briefs.cloud_id(),
+                              key=orders.key_for(ctx.ports["plans"], sid, card["name"]))
         call = briefs.create_call(plan, card, prompt, url, args.get("model", ""))
         where = "" if url else (" The unit's repository has no URL another machine can clone: add source_url to "
                                 "the call by hand.")

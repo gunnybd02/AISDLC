@@ -22,7 +22,7 @@ from typing import Any, Callable
 from harness.utils.contracts import ActionContext, ActionError, McpAction, READ, WRITE, answered, session_of
 from harness.utils.git.github import GitHubError
 from harness.utils.git.run import GitError
-from harness.utils.orchestra import cleanup, doorbell, land, review
+from harness.utils.orchestra import cleanup, doorbell, land, orders, review
 from harness.utils.orchestra.card import in_force, plan_units
 from harness.utils.plan.item_checks import run_limits
 from harness.utils.orchestra.fetch import FetchError
@@ -89,11 +89,31 @@ class Accept(McpAction):
                                                 ctx.ports["github"]))
 
 
+def with_order(done: str, ctx: ActionContext, name: str, kind: str, body: str) -> str:
+    """The answer of reject or answer, and then the signed order that tells the running child (utils/orchestra/orders.py).
+
+    Args:
+        done: the answer of the step (the note is pushed).
+        ctx: the action's context.
+        name: the child's name.
+        kind: fix or answer.
+        body: the reason or the answer.
+
+    Returns:
+        done, then the order's call when the child takes orders.
+    """
+    order = orders.give(ctx.ports["plans"], session_of(ctx), name, kind, body)
+    if not order:
+        return done
+    note, cut, _ = done.partition("; nothing is sent to the child")  # review.fresh_session's words for a fresh session
+    return f"{note}.\n{order}" if cut else f"{done}\n{order}"
+
+
 class Reject(McpAction):
     """orchestra.reject: send a child back, one round of limits.rounds."""
     block, name, effect = "orchestra", "reject", WRITE
-    summary = ("Send a child back with why (limits.rounds at most): a note pushed on its branch; then spawn opens a fresh "
-               "session of it")
+    summary = ("Send a child back with why (limits.rounds at most): a note pushed on its branch and a signed order for its "
+               "running session (or spawn opens a fresh one)")
     args_schema = {"type": "object", "properties": {"name": NAME, "why": {"type": "string"}},
                    "required": ["name", "why"]}
     needs = ("plans", "session", "units", "limits")
@@ -101,14 +121,16 @@ class Reject(McpAction):
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Push the send-back note and keep the round (utils/orchestra/review.reject)."""
         sid = session_of(ctx)
-        return answered(PARENT_ERRORS, lambda: review.reject(ctx.ports["plans"], sid, args["name"], args["why"], units(ctx),
-                                                                   run_limits(in_force(ctx.ports["plans"], session_of(ctx)), ctx.ports["limits"]())["rounds"]))
+        rounds = run_limits(in_force(ctx.ports["plans"], sid), ctx.ports["limits"]())["rounds"]
+        return answered(PARENT_ERRORS, lambda: with_order(review.reject(
+            ctx.ports["plans"], sid, args["name"], args["why"], units(ctx), rounds), ctx, args["name"], "fix", args["why"]))
 
 
 class Answer(McpAction):
     """orchestra.answer: the reply to a child's question."""
     block, name, effect = "orchestra", "answer", WRITE
-    summary = "Answer a child's question: a note pushed on its branch; then spawn opens a fresh session of it"
+    summary = ("Answer a child's question: a note pushed on its branch and a signed order for its running session (or "
+               "spawn opens a fresh one)")
     args_schema = {"type": "object", "properties": {"name": NAME, "text": {"type": "string"}},
                    "required": ["name", "text"]}
     needs = ("plans", "session", "units")
@@ -116,7 +138,8 @@ class Answer(McpAction):
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Push the answer note (utils/orchestra/review.answer)."""
         sid = session_of(ctx)
-        return answered(PARENT_ERRORS, lambda: review.answer(ctx.ports["plans"], sid, args["name"], args["text"], units(ctx)))
+        return answered(PARENT_ERRORS, lambda: with_order(review.answer(
+            ctx.ports["plans"], sid, args["name"], args["text"], units(ctx)), ctx, args["name"], "answer", args["text"]))
 
 
 class Forget(McpAction):

@@ -1,6 +1,7 @@
 # 05 - Orchestra mode, part 4 of 4 (section 22)
 
 > The user's spec, continued from `05-orchestra-3.md`. How this cloud harness differs: `05b-orchestra-cloud.md`.
+> Replaced in the cloud by `system.md` (PRs 61 to 81): 22.1 and 22.3 (inbox, SendMessage, resume: signed orders).
 
 ## 22. What went wrong before, and the rule each failure left
 

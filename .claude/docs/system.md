@@ -186,21 +186,25 @@ The rules have one owner: the rows of the floor pipeline. CI runs the same rows 
 |---|---|
 | Child to parent | a push; CI runs; the CI result wakes the parent that watches the draft PR. The hook names `orchestra.doorbell`, which reads GitHub itself: the CI result, the failed rules, new comments, the tip (`utils/orchestra/doorbell.py`) |
 | Child's words | its question and its handback, posted by its harness as comments on its draft PR (`draft.say`, with a `<!-- harness-comment -->` marker), next to the commits on its branch; never `send_message`, which auto mode refuses |
-| Parent to child | a signed order by `send_message`: `fix`, `answer` or `stop` (part 6; today a note on the branch and a fresh session) |
+| Parent to child | a signed order by `send_message`: `fix`, `answer` or `stop` (`utils/orchestra/orders.py`); the note stays on the branch as the record, read by a fresh session only when the child's session ended |
 | Record | each CI result (`ci.result`) and each comment (`child.comment`: from the child or a GitHub login, to the parent) is one ledger row |
 | Safety net | one timer check-in (about 50 minutes, then about every 4 hours), for a child that dies silently |
 
-**An order:** `orch <plan> | child <name> | issue #N <sha> | round <n> | kind <k> | mac <hmac>`. The child's
-harness checks it where it arrives (the notifications answer): the sender is the parent's cloud session id given in
-the brief, plan and issue match, the round is the next one and at most 3, the mac is right (a key per child, made at
-spawn). A valid order unlocks one action (`resume` for a fix, going on for an answer, `stop`); an invalid one
-unlocks nothing. No order widens the scope, touches the locked tests or approves anything.
+**An order:** `orch <plan> | child <name> | issue #N <sha12> | round <n> | kind <k> | mac <hmac>`, its body up to
+`end of order`. The mac is HMAC-SHA256 with a key per child, made at spawn and carried in its card block with the
+parent's cloud id and the rounds. The child's hook checks it where it arrives (a ReadNotifications answer or a prompt):
+the parent's cloud id in the same text, plan, child and issue match, the round is the next one, the mac is right; it
+records `order.received`. A valid fix or answer opens one more round of the card plan; stop: export, upload, end. An
+invalid one unlocks nothing. After a handback or a question a child changes nothing until a valid order
+(`child.waiting`); after stop only its export and upload pass (`child.stopped`). No order widens the scope, touches
+the locked tests or approves anything.
 
 ## 9. Memory
 
 - Each session's ledger records by itself: prompts, turns with their plan, calls, gates, commits, verify receipts,
   the issue a child registered, orders, CI events.
-- Drive `db/` gets each child's copy when it stops and the parent's at the end; they are joined into one memory.
+- Drive `db/` gets each child's copy when it stops and the parent's at the end; `ledger join` merges copies into one
+  memory beside the ledger, each row once (`utils/ledger/join.py`), read by `db_query` with `memory: true`.
 - The trace: form 1, ticket row, issue #N, branch, commits "#N", CI runs, parent's check, merge, form 2; a ledger row
   at every step.
 
@@ -209,7 +213,7 @@ unlocks nothing. No order widens the scope, touches the locked tests or approves
 | Form | When |
 |---|---|
 | Form 1: approve the plan | start |
-| Form 2: merge the plan branch into the base and delete the children | end |
+| Form 2: merge the plan branch into the base, delete the branches, archive the children (`utils/orchestra/ending.py`) | end |
 | Only when needed | a 4th send-back round; `add_repo`; turning on a repository setting |
 
 ## 11. The harness repository is one repository
@@ -277,9 +281,9 @@ id; the doorbell line follows `ReadNotifications`; CI runs the tests only once t
    ready). Piece 4 done: PR 70 (the brief names the draft; question and handback become PR comments posted by the
    child's harness; `orchestra.doorbell` reads CI, failed rules and comments, records them, names the next step; a
    GitHub wake-up points to it).
-6. Orders: signed one-way messages, checked at the notifications door, each unlocking one action.
-7. End: every PR merged stops the children; form 2; archive; ledgers to `db/`; join.
-8. Docs and the user's specs (13, 05) brought in line.
+6. Orders: signed one-way messages, checked at the notifications door, each unlocking one action. Done: PR 81.
+7. End: every PR merged stops the children; form 2; archive; ledgers to `db/`; join. Done: PR 81.
+8. Docs and the user's specs (13, 05) brought in line. Done: PR 81. Next: live run 4 proves orders and form 2.
 
 ## 14. Decided by the user (2026-11-18)
 

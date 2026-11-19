@@ -21,7 +21,7 @@ from harness.utils.plan.life import accepts as drop_accepts
 from harness.utils.plan.ship import mr_accepts
 from harness.utils.forge import merges
 from harness.utils.gateway.release import accepts as release_accepts
-from harness.utils.orchestra import child, doorbell, draft, register, synced
+from harness.utils.orchestra import child, doorbell, draft, ending, orders, register, synced
 from harness.utils.orchestra.cleanup import removal_accepts
 from harness.utils.plan.request import FORM_ONLY
 from harness.utils.shapes import Facts
@@ -177,6 +177,7 @@ class Act:
                 if role:
                     notes.append(BOUND.format(name=role["name"], plan=role["plan"]))
             notes += doorbell.rung(self.port, event)  # a CI result woke a parent: the doorbell reads it
+            notes += orders.arrived(self.port, event)  # an order in a child's prompt
         if event.kind == "PostToolUse":
             notes += approvals(self.port, event.session, facts.get("answers") or {})
             notes += accepts(self.port, facts.get("answers") or {})
@@ -184,7 +185,10 @@ class Act:
             notes += drop_accepts(self.port, facts.get("answers") or {})
             notes += mr_accepts(self.port, facts.get("answers") or {})
             notes += merges.accepts(self.port, facts.get("answers") or {})  # the user allows one merge
+            notes += ending.accepts(self.port, event.session, facts.get("answers") or {})  # form 2: the end of a plan
             notes += merges.used(self.port, event)  # a merge ran: its pass is used
+            notes += orders.sent_seen(self.port, event)  # a parent sent a child its signed order
+            notes += orders.arrived(self.port, event)  # a child read its notifications: an order may be in them
             notes += release_accepts(self.port, facts.get("answers") or {})
             notes += removal_accepts(self.port, facts.get("answers") or {})  # a remove checklist the user ticked
             notes += synced.waiver_accepts(self.port, facts.get("answers") or {})  # a child closed without its copy

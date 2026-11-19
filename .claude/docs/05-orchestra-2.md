@@ -1,6 +1,8 @@
 # 05 - Orchestra mode, part 2 of 4 (sections 8 to 13)
 
 > The user's spec, continued from `05-orchestra.md`. How this cloud harness differs: `05b-orchestra-cloud.md`.
+> Replaced in the cloud by `system.md` (PRs 61 to 81): 8.2, 11.2, 11.3 and 12.1 to 12.3 (inbox, SendMessage, resume
+> routes: signed orders by `send_message`, checked by the child's hook); 13's watch (the doorbell on CI results).
 
 ## 8. Starting children
 

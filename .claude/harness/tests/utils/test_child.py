@@ -10,8 +10,9 @@ from harness.mcp.actions.maint import Grant
 from harness.mcp.actions.plan import PlanPresent
 from harness.mcp.actions.steps import PlanClose
 from harness.utils.contracts import ActionContext, ActionError, Event, Verdict
-from harness.utils.orchestra import brief, child
+from harness.utils.orchestra import brief, child, orders
 from harness.tests.e2e import copy_tree
+from harness.tests.utils.test_draft import DraftScenario
 
 CARD = {"name": "api", "unit": "home", "goal": "List the orders of a user",
         "ac": ["GET /orders returns the user's orders", "an unknown user gets 404"],
@@ -64,6 +65,28 @@ class ChildTest(unittest.TestCase):
             Grant().run(ctx, {"minutes": 5, "why": "w"})
         other = ActionContext({"plans": self.port, "session": lambda: "s9", "limits": lambda: {"children": 3, "rounds": 3}})
         self.assertIn("Turn guards off", Grant().run(other, {"minutes": 5, "why": "w"}))
+
+
+class OrderKeyTest(DraftScenario):
+    """Part 6: each child gets its own order key at spawn, in its card block with the parent's cloud id and rounds."""
+
+    def test_spawn_puts_a_key_of_its_own_in_the_card_block_and_the_role_reads_it(self):
+        """s2.brief.order-key"""
+        out = self.spawn()
+        prompt = json.loads(out[out.index("\n{") + 1:])["prompt"]
+        held = orders.of_role(child.parse(prompt))
+        self.assertEqual(held["key"], self.port.ticket("s1")[orders.KEYS]["hello"])
+        self.assertEqual((held["rounds"], set(held)), (3, {"key", "cloud", "rounds"}))
+        text = brief.brief(7, "pd-x", CARD, "330e-harness", rounds=2, cloud="session_01abc", key="k" * 32)
+        self.assertEqual(orders.of_role(child.parse(text)), {"key": "k" * 32, "cloud": "session_01abc", "rounds": 2})
+        self.assertEqual(orders.of_role(child.parse(BRIEF)), {})  # a brief without a key: no orders
+
+    def test_a_fresh_session_of_the_same_child_gets_the_same_key(self):
+        """s2.brief.key-kept"""
+        first = orders.key_for(self.port, "s1", "hello")
+        self.assertEqual(orders.key_for(self.port, "s1", "hello"), first)
+        self.assertNotEqual(orders.key_for(self.port, "s1", "web"), first)
+        self.assertEqual(set(self.port.ticket("s1")[orders.KEYS]), {"hello", "web"})
 
 
 class CloudIdTest(unittest.TestCase):

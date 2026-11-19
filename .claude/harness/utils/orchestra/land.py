@@ -19,7 +19,7 @@ from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError
 from harness.utils.git.run import GitError, git, run_git
 from harness.utils.ledger import store
-from harness.utils.orchestra import crew, locked, synced
+from harness.utils.orchestra import crew, ending, locked, synced
 from harness.utils.orchestra.brief import branch
 from harness.utils.orchestra.card import unit_spec
 from harness.utils.orchestra.fetch import checkout, rerun, same_repo
@@ -223,14 +223,15 @@ def land(port: PlanStore, sid: str, units: dict[str, Any], verify: list[str], gi
     if red:
         return "\n".join(lines + ["Not delivered: a merged base is red. Fix it through a new plan, then land again."]
                          + red)
-    if held:  # the plan branch goes into the base only by the user's word
+    lines += ending.stops(port, sid)  # every child's pull request is merged: each child is told to stop
+    if held:  # the plan branch goes into the base only by the user's word: form 2
         try:
             more, merged = locked.plan_prs(port, sid, github)
         except locked.LockError as e:
             return "\n".join(lines + [str(e)])
         lines += more
         if not merged:
-            return "\n".join(lines)
+            return "\n".join(lines + [ending.form(port, sid, github)])
     own = own_files(port.ticket(sid))
     if own and port.ticket(sid).get("phase") != "deliver":
         return "\n".join(lines + [f"Every pull request is merged. The plan waits for your own files ({', '.join(own)}): "
@@ -240,9 +241,14 @@ def land(port: PlanStore, sid: str, units: dict[str, Any], verify: list[str], gi
         db = store.place(port, "db") if folder == store.folder() else ""
         return "\n".join(lines + ["Every pull request is merged and green. " + synced.ask_text(port.ticket(sid), folder,
                                                                                             gaps, db)])
+    if held and not ending.allowed(port, port.ticket(sid)):  # merged without form 2: it still decides the rest
+        return "\n".join(lines + [ending.form(port, sid, github)])
+    lines += ending.finish(port, sid, github) if held else []
     port.close_plan(sid, port.ticket(sid), "delivered", lines)
+    rest = ("archive each child session as said above, and report to the user." if held else
+            "Then run('orchestra', 'remove', {}) for the child sessions, and report to the user; the merged branches "
+            "are left for the user to delete.")
     return "\n".join(lines + [f"Plan {plan['id']} ({ticket['draft']}) is delivered. Delete the check-in if you set one "
-                              "(delete_trigger). Then run('orchestra', 'remove', {}) for the child sessions, and report "
-                              "to the user; the merged branches are left for the user to delete."]
+                              f"(delete_trigger). {rest[0].upper() + rest[1:]}"]
                      + ([f"Save your own ledger too: run('ledger', 'export', {{reason: 'plan-close'}}) and upload it "
                          f"(its name carries orch.{ticket['draft']}.parent)."] if folder else []))

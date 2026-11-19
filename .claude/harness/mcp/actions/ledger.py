@@ -16,8 +16,9 @@ from harness.utils.orchestra import crew
 from harness.utils.ledger.export import FOLDER, FOLDER_ID, snapshot, upload_call
 from harness.utils.plan.life import settle
 from harness.utils.ledger.db import LedgerError, query
+from harness.utils.ledger.join import join, memory_of
 
-ACTIONS = [("ledger.db_query", "DbQuery"), ("ledger.plans_settle", "PlansSettle"), ("ledger.export", "Export"),
+ACTIONS = [("ledger.db_query", "DbQuery"), ("ledger.join", "Join"), ("ledger.plans_settle", "PlansSettle"), ("ledger.export", "Export"),
            ("ledger.store_status", "StoreStatus"), ("ledger.usage_backfill", "UsageBackfill"),
            ("ledger.annotate", "Annotate"), ("ledger.chain_check", "ChainCheck")]
 STORE_NOTE = ("\nStore: run('ledger', 'export', {reason: 'push'}) and upload the copy as its answer says "
@@ -54,21 +55,46 @@ def where(folder: str | Path) -> dict[str, str]:
 
 
 class DbQuery(McpAction):
-    """ledger.db_query: one read-only SELECT on the ledger."""
+    """ledger.db_query: one read-only SELECT on the ledger, or on the memory the copies were joined into."""
     block, name, effect = "ledger", "db_query", READ
-    summary = "Read the ledger: one SELECT, read only, at most 200 rows; writes, PRAGMA and the tx_* tables are refused"
-    args_schema = {"type": "object", "properties": {"sql": {"type": "string"}}, "required": ["sql"]}
+    summary = ("Read the ledger (or, with memory true, the memory joined from ledger copies): one SELECT, read only, at "
+               "most 200 rows; writes, PRAGMA and the tx_* tables are refused")
+    args_schema = {"type": "object", "properties": {"sql": {"type": "string"}, "memory": {"type": "boolean"}},
+                   "required": ["sql"]}
     needs = ("ledger",)
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Run one read-only SELECT on the ledger; answer its rows as tab-separated lines under the column names, with a
-        note when rows were cut. ActionError for a query the ledger refuses."""
+        """Run one read-only SELECT on the ledger or the memory; answer its rows as tab-separated lines under the
+        column names, with a note when rows were cut. ActionError for a query refused."""
+        path = memory_of(ctx.ports["ledger"].path) if args.get("memory") else ctx.ports["ledger"].path
+        if args.get("memory") and not path.is_file():
+            raise ActionError("there is no memory yet: join ledger copies first with run('ledger', 'join', {files})")
         try:
-            columns, rows, cut = query(ctx.ports["ledger"].path, args["sql"])
+            columns, rows, cut = query(path, args["sql"])
         except LedgerError as e:
             raise ActionError(str(e)) from e
         lines = ["\t".join(columns)] + ["\t".join("" if v is None else str(v) for v in row) for row in rows]
         return "\n".join(lines + (["(more rows: narrow the query)"] if cut else []))
+
+
+class Join(McpAction):
+    """ledger.join: one memory from ledger copies (utils/ledger/join.py)."""
+    block, name, effect = "ledger", "join", WRITE
+    summary = ("Join ledger copies (.db or .db.gz, as downloaded from the store's db/ folder) into one memory beside "
+               "the ledger, each row once; read it with db_query and memory true")
+    args_schema = {"type": "object", "properties": {"files": {"type": "array", "items": {"type": "string"}}},
+                   "required": ["files"]}
+    needs = ("ledger",)
+
+    def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
+        """One line per copy: rows taken, clashes, joined already, or why it was refused."""
+        files = [str(f) for f in args.get("files") or [] if str(f).strip()]
+        if not files:
+            raise ActionError("name the copies to join: files, their paths on this machine")
+        try:
+            return "\n".join(join(ctx.ports["ledger"].path, files))
+        except LedgerError as e:
+            raise ActionError(str(e)) from e
 
 
 class PlansSettle(McpAction):

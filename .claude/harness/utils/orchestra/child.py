@@ -27,8 +27,8 @@ BLOCK = re.compile(re.escape(CARD_OPEN) + r"\n(?P<body>\{.*\})\n" + re.escape(CA
 def parse(text: str) -> Optional[ChildRole]:
     """The role a brief gives: its first words name the child and the plan, and its card block (one JSON object) says
     the same child and plan, with the parent's session, the branch, the card, the behaviour ids, the plan branch it
-    starts from (start, "" for the unit's base), and its issue, ticket file and draft pull request (record, {} when
-    the brief names none).
+    starts from (start, "" for the unit's base), and its issue, ticket file, draft pull request and order fields
+    (record, {} when the brief names none; orders: utils/orchestra/orders.py).
 
     Args:
         text: a prompt.
@@ -54,7 +54,7 @@ def parse(text: str) -> Optional[ChildRole]:
             or unit["path"].startswith("/") or not isinstance(unit["verify"], list):
         return None
     start = body.get("start") if isinstance(body.get("start"), str) else ""
-    record = {k: body[k] for k in ("issue", "ticket", "pr") if isinstance(body.get(k), dict)}
+    record = {k: body[k] for k in ("issue", "ticket", "pr", "orders") if isinstance(body.get(k), dict)}
     return {"name": name, "plan": plan, "draft": str(body.get("draft", "")), "parent": str(body["parent"]),
             "branch": body["branch"], "card": card, "unit": unit, "start": start, "record": record,
             "behaviours": [behaviour_id(plan, name, n) for n in range(1, len(card.get("ac", [])) + 1)]}

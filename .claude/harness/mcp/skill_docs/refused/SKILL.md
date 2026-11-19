@@ -68,6 +68,8 @@ expectedHeadSha. `merge.no_head`: name expectedHeadSha, the full head sha. `merg
 | `has started already`, `one session is one child` | the crew has it | `run("orchestra", "status", {})` |
 | `child.no_keyboard`: a step that would ask a person | this session is a child: nobody answers, so it is refused | do not retry it; go on, and name it under notChecked in `handback` |
 | `child.ask_user`, `child.merge`, `child.push_other`; `a child session never ...` | this session is a child: nobody answers it, only the orchestrator merges | `run("orchestra", "question", {"question"})`, or name it under notChecked in `handback` |
+| `child.waiting` | this child handed back or asked and waits for the orchestrator's signed order | stop; a valid order in your notifications reopens the work |
+| `child.stopped` | the orchestrator's stop order ended this child | `run("ledger", "export", {"reason": "stop"})`, upload it, end |
 | `this session is no child` | take, push, question and handback are a child's | a parent uses spawn and started |
 | `has not passed a check this round` | accept needs a green check after the last send-back | `run("orchestra", "check", {"name"})` |
 | `holds no receipt`, `not handed back since it was sent back`, `tip ... is not its receipt` | the branch does not hold a fresh receipt as its last commit | wait for the child's "handed back", or `reject` it |

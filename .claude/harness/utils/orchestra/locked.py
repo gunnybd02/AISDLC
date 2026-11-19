@@ -177,7 +177,7 @@ def clear(root: Path, paths: list[str]) -> tuple[list[str], list[str]]:
 
 def plan_prs(port: PlanStore, sid: str, github: Callable[..., Any]) -> tuple[list[str], bool]:
     """The pull request of the plan branch into the base, one per locked unit: opened the first time, then read. Only
-    the user merges it (the merge gate, utils/forge/merges.py; form 2 later).
+    the user merges it, after form 2 (utils/orchestra/ending.py) and through the merge gate (utils/forge/merges.py).
 
     Args:
         port: the ledger port.
@@ -195,8 +195,7 @@ def plan_prs(port: PlanStore, sid: str, github: Callable[..., Any]) -> tuple[lis
     root = top(plan.get("root") or "") if plan else None
     units, lines, done, opened = [dict(u) for u in held.get("units", [])], [], True, False
     for unit in units:
-        url = unit.get("repo") or (git(root, "config", "--get", "remote.origin.url").strip() if root else "")
-        slug, pr = repo_of(url), unit.get("pr") or {}
+        slug, pr = slug_of(unit, root or ""), unit.get("pr") or {}
         try:
             if not pr:
                 made = github("POST", f"repos/{slug}/pulls", {
@@ -212,12 +211,26 @@ def plan_prs(port: PlanStore, sid: str, github: Callable[..., Any]) -> tuple[lis
             lines.append(f"The plan pull request #{pr['number']} is merged into {unit['base']}.")
         else:
             done = False
-            lines.append(f"Plan pull request #{pr['number']} ({pr.get('url')}): {held['branch']} into {unit['base']}. "
-                         "Merge it with the merge tool and its expectedHeadSha: the harness refuses it with the form "
-                         "question until the user allows it; then run('orchestra', 'land', {}) again.")
+            lines.append(f"Plan pull request #{pr['number']} ({pr.get('url')}): {held['branch']} into {unit['base']}, "
+                         "not merged yet: it merges only after form 2 (utils/orchestra/ending.py).")
     if opened:
         port.write(lambda con, rec: tickets.save(con, {**tickets.latest(con, sid), LOCK: {**held, "units": units}}))
     return lines, done
+
+
+def slug_of(unit: dict[str, Any], root: str) -> str:
+    """The owner/name on GitHub of a locked unit: its repo URL, else the origin of the plan's clone.
+
+    Args:
+        unit: a unit of the lock {repo, ...}.
+        root: the plan's root ("" when unknown).
+
+    Returns:
+        "owner/name", or "" when neither is known.
+    """
+    repo = top(root) if root else None
+    url = unit.get("repo") or (git(repo, "config", "--get", "remote.origin.url").strip() if repo else "")
+    return repo_of(url) if url else ""
 
 
 def locked_files(ticket: Optional[Ticket]) -> dict[str, str]:

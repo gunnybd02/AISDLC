@@ -5,9 +5,13 @@ a child's keyboard, and only the orchestrator merges:
 - child.merge: git merge, pull or rebase; the orchestrator merges the child's branch on accept;
 - child.push_other: a git push to any branch but its own (orch/p<plan>/<name>);
 - child.no_keyboard: every call of a child, a stand-in for the person who is not there: it counts only when the call
-  would ask (gear/decide/arbiter.py IN_PLACE_OF_ASK), and then the child is told to go on instead of waiting.
+  would ask (gear/decide/arbiter.py IN_PLACE_OF_ASK), and then the child is told to go on instead of waiting;
+- child.waiting: after its handback or a question a child changes nothing (an edit, a commit, a push, a step, another
+  handback or question) until a valid order of its parent arrives (utils/orchestra/orders.py);
+- child.stopped: after a stop order only its ledger export, its upload and reading pass.
 The port's child_role (() -> the session's ChildRole or None) says whether the session is a child; it is read for every
-call before it runs (one read of the session's ticket)."""
+call before it runs (one read of the session's ticket); child_wait (() -> "", "waiting" or "stopped") says whether it
+waits for an order or was stopped (orders.wait_of)."""
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -17,6 +21,10 @@ from harness.utils.contracts import RULE_ACTIONS, Event, Translator
 from harness.utils.shapes import Facts
 
 MERGES = ("merge", "pull", "rebase")
+EDITS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
+RUN = "mcp__harness__run"
+CHANGES = ("plan.step_done", "git.commit", "git.push", "orchestra.push", "orchestra.handback", "orchestra.question")
+STOPPED_FREE = ("ledger.export",)  # the one write a stopped child still makes
 
 
 def pushed_branches(args: list[str], own: str) -> list[str]:
@@ -56,10 +64,35 @@ def what_of(event: Event) -> str:
     return f"{event.tool} {word}".strip()
 
 
+def change_of(event: Event, git_actions: list[dict[str, Any]], stopped: bool = False) -> str:
+    """What a call would change that a waiting child may not: an edit, a commit or push, a harness step; for a stopped
+    child also any shell command and any harness write but the ledger export.
+
+    Args:
+        event: the call before it runs.
+        git_actions: the git commands its shell line runs (gear/translate/git.py).
+        stopped: the child was stopped.
+
+    Returns:
+        A short name of the change, or "" when the call changes nothing it guards.
+    """
+    if event.tool in EDITS:
+        return what_of(event)
+    if event.tool == RUN:
+        action = f"{event.input.get('block')}.{event.input.get('action')}"
+        if action in CHANGES or (stopped and event.input.get("effect") == "write" and action not in STOPPED_FREE):
+            return f"run {action}"
+        return ""
+    moved = [a["sub"] for a in git_actions if a.get("sub") in ("commit", "push")]
+    if moved:
+        return f"git {moved[0]}"
+    return what_of(event) if stopped and event.tool in ("Bash", "PowerShell") else ""
+
+
 class ChildCalls(Translator):
     """The rule actions of a child's call before it runs: ask_user, or call (child.no_keyboard) with each merge and
     push_other."""
-    READS = ("child_role", "git_actions")
+    READS = ("child_role", "git_actions", "child_wait")
     VOCABULARY = ("kind", "what")
 
     def translate(self, event: Event, facts: Optional[Facts] = None) -> Facts:
@@ -76,6 +109,10 @@ class ChildCalls(Translator):
         if event.tool == "AskUserQuestion":
             return {RULE_ACTIONS: [act("ask_user", f"the child {role['name']} asked the user")]}
         out = [act("call", what_of(event))]
+        wait = facts["child_wait"]() if callable(facts.get("child_wait")) else ""
+        change = change_of(event, facts.get("git_actions") or [], stopped=wait == "stopped") if wait else ""
+        if change:
+            out.append(act(wait, change))
         for action in [a for a in facts.get("git_actions") or [] if a.get("sub") in MERGES + ("push",)]:
             if action["sub"] in MERGES:
                 out.append(act("merge", f"git {action['sub']} in the child {role['name']}"))

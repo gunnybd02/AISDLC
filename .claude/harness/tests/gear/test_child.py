@@ -80,5 +80,55 @@ class ChildGuardTest(unittest.TestCase):
         self.assertEqual({r["detail"] for r in kept}, {"Bash cd", "Bash git"})
 
 
+class ChildWaitTest(unittest.TestCase):
+    """Part 6: after its handback or a question a child changes nothing until a valid order; after stop it only
+    exports and uploads (child.waiting, child.stopped)."""
+    setUp, judge = ChildGuardTest.setUp, ChildGuardTest.judge  # the same child c1 and session s2, not its tests
+
+    def mark(self, **keys):
+        from harness.utils.plan import tickets
+        self.port.write(lambda con, rec: tickets.save(con, {**tickets.latest(con, "c1"), **keys}))
+
+    def kinds(self, tool, tool_input):
+        return self.judge(tool, tool_input)[1]
+
+    def test_a_child_that_handed_back_changes_nothing_until_an_order(self):
+        from harness.utils.contracts import now
+        from harness.utils.orchestra import orders
+        edit = ("Write", {"file_path": str(self.repo / "app" / "orders.py"), "content": "X = 2\n"})
+        push = ("mcp__harness__run", {"block": "orchestra", "action": "push", "effect": "write"})
+        self.assertNotIn("child.waiting", self.kinds(*edit))
+        self.mark(handback={"sha": "a" * 40, "at": now()})
+        for tool, given in (edit, push, ("Bash", {"command": "git commit -am x", "description": SAID}),
+                            ("mcp__harness__run", {"block": "orchestra", "action": "handback", "effect": "write"})):
+            with self.subTest(tool=tool):
+                decision, kinds = self.judge(tool, given)
+                self.assertEqual(decision, "refuse")
+                self.assertIn("child.waiting", kinds)
+        for tool, given in (("Read", {"file_path": str(self.repo / "a.py")}),
+                            ("mcp__harness__run", {"block": "ledger", "action": "export", "effect": "write"})):
+            self.assertNotIn("child.waiting", self.kinds(tool, given))
+        self.mark(**{orders.TAKEN: {"round": 1, "kind": "fix", "at": now() + 1}})  # a valid order after it
+        self.assertNotIn("child.waiting", self.kinds(*edit))
+        self.mark(asks=[{"n": 1, "text": "q", "at": now() + 5}])  # a question after the order: it waits again
+        self.assertIn("child.waiting", self.kinds(*edit))
+        self.assertNotIn("child.waiting", self.judge(*edit[:1], edit[1], sid="s2")[1])  # no child
+
+    def test_a_stopped_child_only_exports_and_uploads(self):
+        from harness.utils.contracts import now
+        from harness.utils.orchestra import orders
+        self.mark(**{orders.TAKEN: {"round": 2, "kind": "stop", "at": now()}})
+        for tool, given in (("Write", {"file_path": str(self.repo / "a.py"), "content": "X\n"}),
+                            ("Bash", {"command": "ls", "description": SAID}),
+                            ("mcp__harness__run", {"block": "orchestra", "action": "take", "effect": "write"})):
+            with self.subTest(tool=tool):
+                self.assertIn("child.stopped", self.kinds(tool, given))
+        for tool, given in (("mcp__harness__run", {"block": "ledger", "action": "export", "effect": "write"}),
+                            ("mcp__Google_Drive__create_file", {"title": "x.db.gz"}),
+                            ("Read", {"file_path": str(self.repo / "a.py")})):
+            with self.subTest(tool=tool):
+                self.assertNotIn("child.stopped", self.kinds(tool, given))
+
+
 if __name__ == "__main__":
     unittest.main()

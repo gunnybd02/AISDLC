@@ -1,6 +1,8 @@
 # 05 - Orchestra mode, part 3 of 4 (sections 14 to 21)
 
 > The user's spec, continued from `05-orchestra-2.md`. How this cloud harness differs: `05b-orchestra-cloud.md`.
+> Replaced in the cloud by `system.md` (PRs 61 to 81): 15.1 (the reason goes as a signed fix order), 15.2 and 16 (land
+> into the plan branch, then form 2, never "without any form"), 17 (land, form 2, archive), 20.2 (signed orders).
 
 ## 14. Checking a child
 

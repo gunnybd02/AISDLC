@@ -33,7 +33,7 @@ from harness.utils.plan import grants, stop, tickets
 from harness.utils.plan.verify import dirty
 from harness.utils.plan.files import key, relative
 from harness.utils.ledger import store, writes
-from harness.utils.orchestra import child
+from harness.utils.orchestra import child, orders
 from harness.utils.ledger.recorder import Recorder
 from harness.utils.shell.after import writes_after
 from harness.utils.shapes import ApprovedPlan, Behaviour, Facts, Grant, PlanStore, Receipt, Ticket
@@ -352,7 +352,8 @@ class PlanState(Port):
         stop_outside (plan -> files the session changed that the plan does not name), banned, store_owed (() -> the
         unsaved work of the store), child_role
         (() -> the session's ChildRole when it is a child of a delegated plan, else None), merge_pass (code -> whether
-        the user's pass for that merge is unused: utils/forge/merges.py); after a shell line checked
+        the user's pass for that merge is unused: utils/forge/merges.py), child_wait (() -> "", "waiting" or "stopped":
+        utils/orchestra/orders.wait_of); after a shell line checked
         after it ran (auto mode), after_writes (the files it changed) and after_unseen (repositories it could not
         read again)."""
         plan = self.port.approved(event.session)
@@ -363,7 +364,8 @@ class PlanState(Port):
                  "stop_outside": lambda plan: stop.outside(plan, self.port.written(event.session)),
                  "store_owed": lambda: store.owed(self.port) if store.folder() else [],
                  "child_role": lambda: child.role_of(self.port.ticket(event.session)) if event.session else None,
-                 "merge_pass": lambda code: merges.held(self.port, code)}
+                 "merge_pass": lambda code: merges.held(self.port, code),
+                 "child_wait": lambda: orders.wait_of(self.port.ticket(event.session)) if event.session else ""}
         if event.kind == "PostToolUse" and event.call and event.tool in writes.SHELLS:
             shots = self.port.read(lambda con: writes.before_of(con, event.call))
             if shots is not None:
