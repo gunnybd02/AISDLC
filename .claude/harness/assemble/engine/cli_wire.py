@@ -75,6 +75,7 @@ def parser() -> argparse.ArgumentParser:
     check = doors.add_parser("ci", exit_on_error=False)
     check.add_argument("--base", default="")
     check.add_argument("--head", default="")
+    check.add_argument("--sha", default="")
     check.add_argument("--in", dest="folder")
     cli_tool.add_parser(doors)
     return top
@@ -85,7 +86,8 @@ def ci_door(args: argparse.Namespace) -> tuple[int, str]:
 
     Args:
         args: the parsed command line of the door ci: --base and --head (else GitHub Actions' GITHUB_BASE_REF and
-            GITHUB_HEAD_REF), --in the clone (else the current folder).
+            GITHUB_HEAD_REF), --sha the commit under test (else the head's tip on origin), --in the clone (else the
+            current folder).
 
     Returns:
         (exit code, text): 0 when every rule passed, 1 when one failed. In GitHub Actions it also writes code=yes or
@@ -100,10 +102,10 @@ def ci_door(args: argparse.Namespace) -> tuple[int, str]:
         raise Refused("ci needs --base and --head (in GitHub Actions: GITHUB_BASE_REF and GITHUB_HEAD_REF)")
     folder = os.path.abspath(args.folder or ".")
     try:
-        ok, text = ci.report(folder, base, head, github_call)
+        ok, text = ci.report(folder, base, head, github_call, args.sha)
     except GitError as e:
         raise Refused(f"git cannot read the clone: {str(e)[-300:]}") from e
-    code = ci.has_code(folder, base, head)  # the workflow's test steps run only when it is yes
+    code = ci.has_code(folder, base, head, args.sha)  # the workflow's test steps run only when it is yes
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
             out.write(f"code={'yes' if code else 'no'}\n")

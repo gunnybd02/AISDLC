@@ -98,7 +98,7 @@ def record_of(repo: str, first: dict[str, Any], name: str) -> dict[str, Any]:
     return record if isinstance(record, dict) and record.get("format") == RECORD_FORMAT else {}
 
 
-def check(repo: str, base: str, head: str, github: Callable[..., Any]) -> list[Result]:
+def check(repo: str, base: str, head: str, github: Callable[..., Any], sha: str = "") -> list[Result]:
     """Run every rule of RULES on the branch head over base.
 
     Args:
@@ -106,6 +106,8 @@ def check(repo: str, base: str, head: str, github: Callable[..., Any]) -> list[R
         base: the base branch's name (the pull request's base).
         head: the child's branch's name (the pull request's head).
         github: call(method, path, fields?) -> the JSON answer (utils/git/github.call).
+        sha: the commit under test (the pull request's head of this run); "" for the branch's tip on origin. Live run
+            5: a job read the tip after a later push, not the commit it tested.
 
     Returns:
         One (rule, passed, why) per rule, in the order of RULES.
@@ -115,10 +117,11 @@ def check(repo: str, base: str, head: str, github: Callable[..., Any]) -> list[R
         return fill([("branch", False, f"{head} is no branch of a child (orch/p<plan>/<name>)")],
                     "the head is no branch of a child")
     name, rel, opened = found["name"], RECORD.format(name=found["name"]), START.format(name=found["name"])
-    record = record_of(repo, {"sha": ref_of(repo, head), "files": [rel]}, name)  # the record at the tip
+    tip = sha or ref_of(repo, head)
+    record = record_of(repo, {"sha": tip, "files": [rel]}, name)  # the record at the commit under test
     if not record:
         try:
-            only_start = [c["files"] for c in commits(repo, ref_of(repo, base), ref_of(repo, head))] == [[opened]]
+            only_start = [c["files"] for c in commits(repo, ref_of(repo, base), tip)] == [[opened]]
         except GitError:
             only_start = False
         if only_start:  # the parent's start commit alone: the draft pull request is open, the child not yet
@@ -132,7 +135,7 @@ def check(repo: str, base: str, head: str, github: Callable[..., Any]) -> list[R
     out.append(base_rule(base, block))
     start = block.get("start") or base  # the plan branch the child's branch starts from
     try:
-        log = commits(repo, ref_of(repo, start), ref_of(repo, head))
+        log = commits(repo, ref_of(repo, start), tip)
     except GitError as e:
         return fill(out, f"git cannot read {head} over {start}: {str(e)[-200:]}")
     body = log[1:] if log and log[0]["files"] == [opened] else log  # after the parent's start commit
@@ -151,7 +154,7 @@ def check(repo: str, base: str, head: str, github: Callable[..., Any]) -> list[R
                 f"these commits do not start {prefix!r}: {', '.join(wrong)}"))
     marked = [f"{c['sha'][:12]} ({', '.join(marks_in(c['message']))})" for c in log if marks_in(c["message"])]
     out.append(("marks", not marked, "no AI mark" if not marked else f"AI marks in {'; '.join(marked)}"))
-    out += files_rules(repo, ref_of(repo, start), ref_of(repo, head), name, block)
+    out += files_rules(repo, ref_of(repo, start), tip, name, block)
     order = {rule: n for n, rule in enumerate(RULES)}
     return sorted(out, key=lambda r: order[r[0]])
 
@@ -245,7 +248,7 @@ def fill(done: list[Result], why: str) -> list[Result]:
     return [seen.get(rule, (rule, False, f"not checked: {why}")) for rule in RULES]
 
 
-def has_code(repo: str, base: str, head: str) -> bool:
+def has_code(repo: str, base: str, head: str, sha: str = "") -> bool:
     """Whether the child's branch holds work of its own over base: a commit that is neither the parent's start commit
     nor the registration alone. Until then the workflow skips the child's tests, which are red before any code (live
     run 2: the draft was red when it opened); harness ci itself runs every rule each time.
@@ -254,6 +257,7 @@ def has_code(repo: str, base: str, head: str) -> bool:
         repo: the clone.
         base: the base branch's name.
         head: the child's branch's name.
+        sha: the commit under test; "" for the branch's tip on origin.
 
     Returns:
         True when such a commit is on the branch, or when that cannot be told (the tests then run).
@@ -263,13 +267,13 @@ def has_code(repo: str, base: str, head: str) -> bool:
         return True
     alone = ([START.format(name=found["name"])], [RECORD.format(name=found["name"])])
     try:
-        log = commits(repo, ref_of(repo, base), ref_of(repo, head))
+        log = commits(repo, ref_of(repo, base), sha or ref_of(repo, head))
     except GitError:
         return True
     return any(c["files"] not in alone for c in log)
 
 
-def report(repo: str, base: str, head: str, github: Callable[..., Any]) -> tuple[bool, str]:
+def report(repo: str, base: str, head: str, github: Callable[..., Any], sha: str = "") -> tuple[bool, str]:
     """Run the rules and write the text harness ci prints.
 
     Args:
@@ -277,11 +281,12 @@ def report(repo: str, base: str, head: str, github: Callable[..., Any]) -> tuple
         base: the base branch's name.
         head: the child's branch's name.
         github: the GitHub call.
+        sha: the commit under test; "" for the branch's tip on origin.
 
     Returns:
         (all passed, the text: a head line, one line per rule, the result).
     """
-    results = check(repo, base, head, github)
+    results = check(repo, base, head, github, sha)
     failed = [rule for rule, ok, _ in results if not ok]
     if all(why == WAITING for _, _, why in results):
         return True, "\n".join([f"harness ci: {head} into {base}", f"WAIT: {WAITING}.",

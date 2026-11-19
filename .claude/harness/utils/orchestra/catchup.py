@@ -3,16 +3,20 @@ and answer push a note commit (.harness/notes/<name>/) on the child's branch as 
 (orders.py); the child's copy of the branch lacks that commit, and a child may not pull. So its harness does it: at a
 valid fix or answer (caught_up, from orders.arrived) and before each push (work.push), it takes in exactly the commits
 that change only the child's notes folder: a fast-forward, or the child's own unpushed commits replayed on top. Any
-other commit on origin is refused and nothing changes."""
+other commit on origin is refused and nothing changes. Each move it makes is kept in the child's ticket (MOVES:
+from, to), so step_done takes it as the harness's own and not as a foreign change (live run 5)."""
 from __future__ import annotations
 
 from typing import Any
 
-from harness.utils.git.facts import top
+from harness.utils.contracts import now
+from harness.utils.git.facts import head, top
 from harness.utils.git.run import GitError, git, run_git
 from harness.utils.orchestra.brief import NOTES
 from harness.utils.plan import tickets
 from harness.utils.shapes import PlanStore
+
+MOVES = "caughtUp"  # the child's ticket: [{from, to, at}], each move catch_up made (utils/plan/steps.py follows them)
 
 
 class CatchUpError(ValueError):
@@ -32,10 +36,38 @@ def caught_up(port: PlanStore, sid: str, role: dict[str, Any]) -> list[str]:
     if not repo:
         return []
     try:
-        took = catch_up(repo, role["branch"], role["name"])
+        took = taken(port, sid, repo, role["branch"], role["name"])
     except CatchUpError as e:
         return [f"Your branch could not take in the orchestrator's notes: {e}"]
     return [took] if took else []
+
+
+def taken(port: PlanStore, sid: str, repo: str, branch: str, name: str) -> str:
+    """catch_up, and the move it made kept in the child's ticket (MOVES), so the next step_done accepts it.
+
+    Args:
+        port: the ledger port.
+        sid: the child's session.
+        repo: the child's clone.
+        branch: its branch.
+        name: the child's name.
+
+    Returns:
+        What catch_up gave.
+
+    Raises:
+        CatchUpError: as catch_up.
+    """
+    before = head(repo)
+    took = catch_up(repo, branch, name)
+    after = head(repo)
+    if before and after and before != after:
+        def keep(con: Any, rec: Any) -> None:
+            fresh = tickets.latest(con, sid)
+            tickets.save(con, {**fresh, MOVES: list(fresh.get(MOVES) or []) + [{"from": before, "to": after,
+                                                                                 "at": now()}]})
+        port.write(keep)
+    return took
 
 
 def catch_up(repo: str, branch: str, name: str) -> str:

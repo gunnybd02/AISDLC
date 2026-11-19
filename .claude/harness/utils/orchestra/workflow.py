@@ -72,9 +72,10 @@ def text(plan: int, children: list[tuple[Card, dict[str, Any]]], source: dict[st
              f"      - name: Get the harness at {sha[:12]}", "        run: |",
              f"          git clone --quiet {url} \"$RUNNER_TEMP/harness\"",
              f"          git -C \"$RUNNER_TEMP/harness\" checkout --quiet {sha}",
-             "      - name: harness ci", "        id: ci", "        env:", "          GH_TOKEN: ${{ github.token }}", "        run: |",
+             "      - name: harness ci", "        id: ci", "        env:", "          GH_TOKEN: ${{ github.token }}",
+             "        run: |",
              "          python \"$RUNNER_TEMP/harness/.claude/harness/entry/cli.py\" ci --base \"$GITHUB_BASE_REF\" "
-             "--head \"$GITHUB_HEAD_REF\""]
+             "--head \"$GITHUB_HEAD_REF\" --sha \"${{ github.event.pull_request.head.sha }}\""]
     for card, spec in children:
         runs, folder = commands(card, spec), str(spec.get("path") or ".").strip("/") or "."
         for n, line in enumerate(runs, 1):
