@@ -1,0 +1,72 @@
+{
+ "at": 1795079485484,
+ "base": "61dba14885dfff95ad076f2a24175feb070cff9d",
+ "behaviours": {
+  "p25.hello.ac1": {
+   "status": "active",
+   "tests": [
+    "orch-probe/test_hello_ac.py"
+   ],
+   "what": "AC1: hello(\"Ann\") returns \"Hello, Ann\""
+  },
+  "p25.hello.ac2": {
+   "status": "active",
+   "tests": [
+    "orch-probe/test_hello_ac.py"
+   ],
+   "what": "AC2: hello(\"\") raises ValueError"
+  }
+ },
+ "branch": "orch/p25/hello",
+ "cardPlan": 1,
+ "commits": [
+  {
+   "files": [
+    "orch-probe/hello.py"
+   ],
+   "sha": "b348764904587c143c1d36dfc50088a1dc0a9b7c"
+  }
+ ],
+ "draft": "pd-mwnbrnum-ad374d",
+ "name": "hello",
+ "parent": "330e9430-888c-5a3d-888b-9df46a0b1e0c",
+ "plan": 25,
+ "refused": [],
+ "report": {
+  "added": [],
+  "changed": [
+   "orch-probe/hello.py: new hello(name) returns \"Hello, <name>\" and raises ValueError on an empty name"
+  ],
+  "checked": [
+   "harness verify green: orch-probe/test_hello_ac.py, 2 tests (AC1, AC2) pass"
+  ],
+  "faults": [],
+  "notChecked": [
+   "Non-string input (None, numbers) is not specified by the card; None raises ValueError, other values are formatted as-is",
+   "Whitespace-only names are accepted"
+  ],
+  "risks": [
+   "None"
+  ],
+  "testsChanged": []
+ },
+ "session": "fea3f13b-da14-5c41-a5f1-cf6f9781e403",
+ "uncommitted": [],
+ "unit": {
+  "base": "main",
+  "name": "probe",
+  "path": ".",
+  "repo": "https://github.com/gunnybd02/AISDLC",
+  "verify": [
+   "{python}",
+   "-m",
+   "unittest",
+   "discover",
+   "-s",
+   "orch-probe",
+   "-t",
+   "orch-probe"
+  ]
+ },
+ "verify": "ok"
+}
