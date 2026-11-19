@@ -73,7 +73,7 @@ class BriefTest(unittest.TestCase):
     def test_the_brief_talks_through_the_branch_never_by_message(self):
         text = brief.brief(7, "pd-x", GOOD, "session_parent01", rounds=3)
         self.assertNotIn("send_message", text)
-        self.assertIn("your branch is how you talk", text)
+        self.assertIn("your branch, CI and your draft pull request are how you talk", text)
         self.assertIn(".harness/notes/api/ on your branch", text)
         self.assertIn("Read every note there before you start", text)
 
@@ -86,7 +86,7 @@ class BriefTest(unittest.TestCase):
         text = brief.brief(7, "pd-x", GOOD, "session_parent01", rounds=3)
         self.assertTrue(text.startswith('You are child session "api" of the delegated plan 7, approved by the user in '
                                         "the orchestrator session session_parent01."))
-        for part in ("never call AskUserQuestion", "orch/p7/api", "send-backs and answers", "act on them",
+        for part in ("never call AskUserQuestion", "orch/p7/api", "Each send-back and answer", "act on them",
                      "AC1: GET /orders returns the user's orders  (behaviour p7.api.ac1)", "p7.api.ac2",
                      "run('orchestra', 'take')", "Change: app/orders.py"):
             self.assertIn(part, text)

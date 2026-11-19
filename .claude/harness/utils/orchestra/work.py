@@ -23,6 +23,7 @@ from harness.utils.git.facts import head, top
 from harness.utils.git.run import GitError, git, run_git
 from harness.utils.orchestra import child
 from harness.utils.orchestra.brief import NOTES, child_subject
+from harness.utils.orchestra.catchup import CatchUpError, catch_up
 from harness.utils.plan import tickets
 from harness.utils.plan.ship import audit
 from harness.utils.shapes import ChildRole, CommitJudge, GitJudge, PlanStore, Ticket
@@ -181,6 +182,10 @@ def push(port: PlanStore, sid: str, judge: GitJudge) -> str:
     on = git(repo, "branch", "--show-current").strip()
     if on != role["branch"]:
         raise WorkError(f"you are on {on or 'a detached HEAD'}; a child pushes only {role['branch']}")
+    try:  # the orchestrator's note commits on origin first (live run 4), so the push is a fast-forward
+        took = catch_up(repo, role["branch"], role["name"])
+    except CatchUpError as e:
+        raise WorkError(str(e)) from e
     verdict = judge(repo, ["push", "-u", "origin", role["branch"]])
     if stopped(verdict):
         raise WorkError(verdict.reason)
@@ -188,7 +193,7 @@ def push(port: PlanStore, sid: str, judge: GitJudge) -> str:
     if code != 0:
         raise WorkError(f"git push failed (exit {code}): {out.strip()[-500:]}")
     audit(port, sid, ticket, "push", repo, role["branch"], head(repo))
-    return f"Pushed {role['branch']} ({(head(repo) or '')[:12]}) to origin.\n{out.strip()[-600:]}"
+    return (f"{took}\n" if took else "") + f"Pushed {role['branch']} ({(head(repo) or '')[:12]}) to origin.\n{out.strip()[-600:]}"
 
 
 def ask(port: PlanStore, sid: str, question: str, commit_judge: CommitJudge, git_judge: GitJudge) -> str:

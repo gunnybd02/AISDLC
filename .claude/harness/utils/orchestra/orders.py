@@ -292,6 +292,7 @@ def arrived(port: PlanStore, event: Any) -> list[str]:
     held, issue = of_role(role), (role.get("record") or {}).get("issue") or {}
     number, sha = int(issue.get("number") or NO_ISSUE), str(issue.get("sha") or NO_SHA)
     lines: list[str] = []
+    opened: list[str] = []
 
     def write(con: Any, rec: Any) -> None:
         fresh = tickets.latest(con, event.session)
@@ -308,11 +309,16 @@ def arrived(port: PlanStore, event: Any) -> list[str]:
                 continue
             last = o["round"]
             fresh = {**fresh, TAKEN: {"round": last, "kind": o["kind"], "at": now()}}
-            if o["kind"] != "stop" and fresh.get("phase") == "deliver" and tickets.approved_plan(fresh):
-                fresh = tickets.back_to_execute(fresh)
+            if o["kind"] != "stop":
+                opened.append(o["kind"])
+                if fresh.get("phase") == "deliver" and tickets.approved_plan(fresh):
+                    fresh = tickets.back_to_execute(fresh)
             lines.append(said_of(o))
         tickets.save(con, fresh)
     port.write(write)
+    if opened:  # a valid fix or answer: the note it names comes into the tree at once
+        from harness.utils.orchestra.catchup import caught_up
+        lines += caught_up(port, event.session, role)
     return lines
 
 

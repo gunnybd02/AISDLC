@@ -185,5 +185,69 @@ class ArriveTest(unittest.TestCase):
         self.assertEqual(self.read(self.order(2), sid="s9"), [])  # no child: nothing is read
 
 
+class CatchUpTest(unittest.TestCase):
+    """Live run 4: the parent's note commit on the child's branch made the child's push fail, and a child may not pull.
+    Its harness takes in exactly the orchestrator's note commits (utils/orchestra/catchup.py)."""
+    PARENT = ArriveTest.PARENT
+    setUp, read, order = ArriveTest.setUp, ArriveTest.read, ArriveTest.order
+
+    def push(self):
+        from harness.utils.orchestra import work
+        return work.push(self.port, "c1", lambda repo, args: Verdict("allow"))
+
+    def parent_commits(self, rel, text):
+        """The parent pushes one commit on the child's branch on origin, from a clone of its own."""
+        from harness.tests import tree
+        clone = tree(self, {})
+        git(clone, "clone", "-q", git(self.repo, "remote", "get-url", "origin").strip(), ".")
+        git(clone, "config", "user.name", "p")
+        git(clone, "config", "user.email", "p@p")
+        git(clone, "switch", "-q", "orch/p7/api")
+        (clone / rel).parent.mkdir(parents=True, exist_ok=True)
+        (clone / rel).write_text(text, encoding="utf-8")
+        git(clone, "add", "-A")
+        git(clone, "commit", "-q", "-m", f"parent: {rel}")
+        git(clone, "push", "-q", "origin", "orch/p7/api")
+
+    def child_commits(self, rel, text):
+        (self.repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (self.repo / rel).write_text(text, encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", f"child: {rel}")
+
+    def test_a_child_pushes_its_commit_on_top_of_the_orchestrator_note(self):
+        """s1.orders.catch-up"""
+        self.push()
+        self.parent_commits(".harness/notes/api/sendback-1.md", "add a docstring\n")
+        self.child_commits("app/orders.py", "ORDERS = []\n")
+        out = self.push()
+        self.assertIn("took in the orchestrator's note commit(s)", out)
+        self.assertIn("replayed your 1 commit(s) on top of them", out)
+        log = git(self.repo, "log", "--format=%s", "-2", "origin/orch/p7/api").split("\n")
+        self.assertEqual(log[:2], ["child: app/orders.py", "parent: .harness/notes/api/sendback-1.md"])
+        self.parent_commits(".harness/notes/api/answer-1.md", "use 400\n")
+        self.assertIn("(a fast-forward)", self.push())  # nothing of its own on top: a fast-forward
+
+    def test_a_remote_commit_outside_the_notes_is_refused_and_nothing_changes(self):
+        """s1.orders.catch-up-refuses"""
+        from harness.utils.orchestra import catchup, work
+        self.push()
+        self.parent_commits("a.py", "X = 99\n")
+        before = git(self.repo, "rev-parse", "HEAD")
+        with self.assertRaisesRegex(work.WorkError, "not the orchestrator's notes"):
+            self.push()
+        self.assertEqual(git(self.repo, "rev-parse", "HEAD"), before)
+        self.assertEqual(catchup.catch_up(str(self.repo), "orch/p7/none", "api"), "")  # not on origin: nothing
+
+    def test_a_valid_fix_order_brings_the_note_into_the_tree(self):
+        """s1.orders.order-catches-up"""
+        self.push()
+        self.parent_commits(".harness/notes/api/sendback-1.md", "add a docstring\n")
+        notes = self.read(self.order(1))
+        self.assertTrue(any("order fix (round 1) is valid" in n for n in notes))
+        self.assertTrue(any("took in the orchestrator's note commit(s)" in n for n in notes))
+        self.assertEqual((self.repo / ".harness" / "notes" / "api" / "sendback-1.md").read_text(), "add a docstring\n")
+
+
 if __name__ == "__main__":
     unittest.main()
