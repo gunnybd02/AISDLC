@@ -29,7 +29,8 @@ purpose, and what is still open. Checked on 2026-11-17 by reading the code and r
 | One owner per concept; no copies | Yes since this plan | **owners net** (section 2) |
 | Policy is data | Rule rows for hook calls; the orchestra limits and banned words in the plan (section 3) | arbiter load; plan checks |
 | The ledger: version and fingerprint on open, one upgrade door, hash chains, a fault never blocks | Yes | `docs/12-ledger.md`, the doctor's ledger line |
-| Approval only by the form's exact "Approve" | Yes | plan tests |
+| Approval only by the user's forms (`system.md` section 10): form 1's exact "Approve" starts; form 2's "Allow" ends a plan with a plan branch; a merge needs the "Allow" of its own form (the merge gate) | Yes | plan tests, `tests/utils/test_ending.py`, `tests/gear/test_merge.py` |
+| A child acts on its parent only through a signed order (HMAC with its own key), checked by its own hook | Yes (PR 81) | `utils/orchestra/orders.py`, rows `child.waiting` and `child.stopped` |
 
 ## 2. The owners net (`harness/nets/owners_net.py`)
 
@@ -59,7 +60,7 @@ raise it.
 | Limit | Default | What it bounds | Read by |
 |---|---|---|---|
 | `children` | 3 | children of a delegated plan running at once | spawn, started, status |
-| `rounds` | 3 | send-backs of one child before the user decides | reject, and the brief that tells the child |
+| `rounds` | 3 | send-backs of one child before the user decides | reject, and the brief that tells the child (its card block carries it with its order key) |
 
 `utils/plan/item_checks.LIMITS` is the one place the defaults live; the MCP server hands them to the actions as the
 `limits` port, and the actions lower them by the plan in force (`run_limits`).
@@ -80,4 +81,6 @@ not a policy) and `DEAD_AFTER` (6 hours: a guess of when a session no longer run
   through rule rows. Many are input checks; which are policy is not yet sorted.
 
 Closed on 2026-11-17 (PR 51): the hook's failure policy, gear faults as verdicts, the english net, the whole imports
-rule, and the fitness tests. Closed by PR 52: pipelines stand alone; by PR 53: a unit's pipeline comes from the config; by PR 54: the git rules are when rows; by PR 55: every command check is a when row.
+rule, and the fitness tests. Closed by PR 52: pipelines stand alone; by PR 53: a unit's pipeline came from the config
+(since PR 61: from the plan's repos); by PR 54: the git rules are when rows; by PR 55: every command check is a when
+row; by PR 80: every merge needs the user's Allow; by PR 81: orders, form 2 and the join (`system.md` parts 6 to 8).

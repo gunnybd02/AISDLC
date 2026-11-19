@@ -89,8 +89,10 @@ When only the user can decide, ask the user first. `run("orchestra", "digest", {
 1. `run("orchestra", "check", {"name"})`: the receipt on its branch, then the locked acceptance tests: unchanged on
    its branch (a changed one is red, named), and run here with its unit's command. A card without `acTests` is
    checked the old way: one behaviour per AC, and its own tests run again.
-2. Not green: `run("orchestra", "reject", {"name", "why"})` with the check's words, then send the text it gives with
-   `send_message`. Three rounds at most; the fourth is the user's call (`forget`, or what the user says).
+2. Not green: `run("orchestra", "reject", {"name", "why"})` with the check's words. It pushes the note and gives the
+   signed order (fix, its round): send it with `send_message` as given, to the child's running session; only if that
+   session ended, spawn opens a fresh one. `answer` works the same. Three rounds at most; the fourth is the user's call
+   (`forget`, or what the user says).
 3. Green: `run("orchestra", "accept", {"name"})` opens one pull request into the plan branch (into the unit's base
    when nothing is locked) and takes the receipt off the branch (the ledger keeps it). Nothing is merged yet.
 4. A child that will not come back: `run("orchestra", "forget", {"name", "why"})`. A session the user wants back:
@@ -105,9 +107,13 @@ When every child has ended (accepted, forgotten or released): `run("orchestra", 
   again. Or send the child back (`reject`), then check and accept it again: its pull request stays the same.
 - After the merges, each unit's tests run on the merged plan branch (on the base when nothing is locked). Red: fix
   it through a new plan.
-- **The plan pull request.** With locked tests, land then opens one pull request from `plan/p<plan>` into the base
-  and waits. Merge it with the merge tool and its expectedHeadSha: the harness refuses it with the form question
-  (`merge.no_pass`); ask it, merge on the user's Allow, and land again: only then is the plan delivered.
+- **Stop orders.** Once every child's pull request is in the plan branch, land gives each child its signed stop
+  order: send each with `send_message`. The child uploads its ledger copy and ends.
+- **Form 2.** With locked tests, land opens one pull request from `plan/p<plan>` into the base and gives form 2: merge
+  it at its head, delete the children's branches and the plan branch, archive every child session. Ask it exactly. On
+  Allow merge each plan pull request with the merge tool and its expectedHeadSha (the gate lets exactly it through),
+  then land again: it deletes the branches (one GitHub keeps is named for the user), gives each `archive_session`
+  call, and closes the plan delivered. Deny changes nothing.
 - Your own files: commit them with `step_done` (before or after the merges), then land again.
 - **The children's databases.** With a store folder set (`HARNESS_DRIVE_FOLDER`), the plan is done only when every
   child that ended has its database in the store. Each child uploads its own at handback (named
@@ -118,6 +124,7 @@ When every child has ended (accepted, forgotten or released): `run("orchestra", 
 - Green and nothing left: the plan is delivered. Delete the check-in, and save your own ledger as the answer says.
 
 ## 6. Remove the sessions, then report
+With a plan branch, form 2 did this: make the archive calls land gave. Without one:
 1. `run("orchestra", "remove", {})` gives one checklist. Ask it exactly as given; the user ticks. A question of one
    child also offers "Keep all" (a question needs two choices); it archives nothing, and remove asks again later.
 2. `run("orchestra", "remove", {})` again: it removes exactly the ticked children whose databases are in the store

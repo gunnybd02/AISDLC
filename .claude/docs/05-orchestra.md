@@ -3,6 +3,8 @@
 > The user's spec, saved as pasted on 2026-11-16, in four files (this one: sections 1 to 7; then
 > `05-orchestra-2.md` 8-13, `05-orchestra-3.md` 14-21, `05-orchestra-4.md` 22). It describes orchestra mode on one PC.
 > How this cloud harness builds it, and what it changes, is in `05b-orchestra-cloud.md`.
+> Replaced in the cloud by `system.md` (PRs 61 to 81): section 4's merge at accept (accept makes the draft PR ready;
+> land merges into the plan branch, then form 2), section 7's `inbox` (signed orders), 7.1's purge (form 2 archives).
 
 This document explains orchestra mode completely, for a reader who has never opened the code. Every rule, limit, state,
 message and ordering decision is spelled out here. Nothing is left to "see the source".

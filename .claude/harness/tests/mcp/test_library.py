@@ -183,5 +183,28 @@ class SkillsTest(unittest.TestCase):
         self.assertEqual(lib.get("a").description, "d")
 
 
+class OrdersDocsTest(unittest.TestCase):
+    def test_no_text_tells_a_child_to_send_message_and_the_skills_name_orders_and_form_2(self):
+        """s8.docs.orders: a child that sends a message is refused by auto mode; the parent sends signed orders."""
+        import json
+        from pathlib import Path
+        from harness.tests import CLAUDE_DIR
+        harness = Path(CLAUDE_DIR) / "harness"
+        for name in ("actions.json", "place.json", "base.json", "git.json"):
+            for row in json.loads((harness / "gear" / "rules" / name).read_text(encoding="utf-8"))["rules"]:
+                code = row.get("code") or row.get("finding")
+                if str(code).startswith("child."):
+                    self.assertNotIn("send_message", row["why"], code)
+        work = (harness / "mcp" / "skill_docs" / "work" / "SKILL.md").read_text(encoding="utf-8")
+        child = work[work.index("**A child session**"):work.index("## 3. Build each step")]
+        self.assertEqual(child.count("send_message"), 1)
+        self.assertIn("Never `send_message` (auto mode refuses it)", child)
+        self.assertIn("signed order", child)
+        orchestrate = (harness / "mcp" / "skill_docs" / "orchestrate" / "SKILL.md").read_text(encoding="utf-8")
+        for words in ("signed order", "Form 2", "Stop orders"):
+            self.assertIn(words, orchestrate)
+        self.assertIn("form 2", work)
+
+
 if __name__ == "__main__":
     unittest.main()

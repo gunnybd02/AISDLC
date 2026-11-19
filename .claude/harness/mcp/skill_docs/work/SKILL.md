@@ -87,10 +87,12 @@ then write the acceptance tests (`acTests`) and `run("orchestra", "lock", {})` p
 `run("orchestra", "started", {"name", "sid"})` records it (3 run at most; `run("orchestra", "status", {})`). While it
 runs no other plan opens in the session; revise it instead. When a child says "handed back":
 `run("orchestra", "check", {"name"})` (its receipt, the locked tests unchanged and run here), then `accept` (one pull
-request into the plan branch) or `reject` with why (3 rounds; send the text it gives with `send_message`). A question:
-`answer`. When every child has ended: `run("orchestra", "land", {})` merges the pull requests into the plan branch; a
-conflict stops it with the two ways on (resolve it on the child's branch, or reject); green opens one pull request of
-the plan branch into the base, which the user merges; then land again closes the plan delivered.
+request into the plan branch) or `reject` with why (3 rounds). A question: `answer`. Both push a note and give the
+signed order (fix or answer) for the child's running session: send it with `send_message` as given. When every child
+has ended: `run("orchestra", "land", {})` merges the pull requests into the plan branch; a conflict stops it with the
+two ways on (resolve it on the child's branch, or reject); green gives each child a signed stop order, opens one pull
+request of the plan branch into the base, and asks form 2 (merge it, delete the branches, archive the child sessions).
+On the user's Allow merge it with the merge tool, land again: it deletes the branches, gives the archive calls, closes.
 
 **A child session** (its first prompt is a brief: `You are child session ...`): nobody is at its keyboard.
 `run("orchestra", "take", {})` first. When the brief names an issue and a ticket file, take registers you before any
@@ -105,8 +107,10 @@ Then the loop of part 3, and
 `run("orchestra", "push", {})` after every step. A question: `run("orchestra", "question", {"question"})`. Last:
 `run("orchestra", "handback", {"changed", "checked", "notChecked", "risks", "testsChanged"})`. Both are pushed, and
 the harness posts each as a comment on your draft pull request: that is how your words reach the orchestrator, whom
-the CI result of your push wakes. Never `send_message` (auto mode refuses it), then stop. Never AskUserQuestion, a
-plan of its own, a merge or a close.
+the CI result of your push wakes. Never `send_message` (auto mode refuses it), then stop: you wait, and the harness
+lets you change nothing until a signed order of the orchestrator arrives in your notifications (ReadNotifications).
+A valid fix or answer opens one more round; stop: export and upload your ledger, then end. An order that does not
+check out is ignored. Never AskUserQuestion, a plan of its own, a merge or a close.
 
 ## 3. Build each step
 1. Edit only the files the plan names; any other file is refused.
