@@ -331,3 +331,22 @@ def said_of(order: dict[str, Any]) -> str:
     return (f"The orchestrator's order {order['kind']} (round {order['round']}) is valid: your card plan is open for "
             f"one more round.{words} Read the {what} note in .harness/notes/ on your branch, do it inside your card, "
             "verify, push, and hand back again.")
+
+
+def wait_of(ticket: Any) -> str:
+    """Whether a child waits for an order or was stopped: "stopped" after a valid stop; "waiting" when its handback or
+    its last question is newer than the last valid order it took; else "".
+
+    Args:
+        ticket: the child's ticket.
+
+    Returns:
+        "", "waiting" or "stopped".
+    """
+    ticket = ticket or {}
+    taken = ticket.get(TAKEN) or {}
+    if taken.get("kind") == "stop":
+        return "stopped"
+    since = max([int((ticket.get("handback") or {}).get("at") or 0)]
+                + [int(a.get("at") or 0) for a in ticket.get("asks") or [] if isinstance(a, dict)])
+    return "waiting" if since and since > int(taken.get("at") or 0) else ""
