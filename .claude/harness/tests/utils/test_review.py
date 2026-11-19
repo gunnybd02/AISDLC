@@ -179,6 +179,25 @@ class LockedCheckTest(LockedScenario):
         self.assertEqual(unit["workflow"], hashlib.sha256(flow.encode("utf-8")).hexdigest())
         self.assertIn("the CI workflow .github/workflows/harness-ci.yml pins the harness at aaaaaaaaaaaa", self.locked_text)
 
+    def test_accept_makes_the_draft_ready_and_names_the_issue_in_its_commit(self):
+        """s3.draft.ready and s3.commit.receipt: no new pull request; the receipt commit starts "#41 hello: "."""
+        from harness.utils.orchestra import issues
+        from harness.utils.plan import tickets as plan_tickets
+        self.port.write(lambda con, rec: plan_tickets.save(con, {**plan_tickets.latest(con, "s1"), issues.ISSUES: {
+            "children": {"hello": {"repo": "o/r", "number": 41, "url": f"{URL}/issues/41", "sha": "a" * 64}}}}))
+        calls = []
+        self.hand_back()
+        self.assertIn("Green", self.check())
+        text = review.accept(self.port, "s1", "hello", LOCKED_UNITS,
+                             lambda method, path, fields=None: calls.append((method, path, dict(fields or {}))) or {})
+        self.assertIn(f"pull request #5 ({URL}/pull/5) from orch/p{self.plan}/hello into plan/p{self.plan}", text)
+        (method, path, fields), = calls
+        self.assertEqual((method, path), ("POST", "graphql"))
+        self.assertIn('markPullRequestReadyForReview(input: {pullRequestId: "PR_kw5"})', fields["query"])
+        self.assertEqual(self.port.ticket("s1")["crew"]["hello"]["pr"]["number"], 5)
+        self.assertEqual(git(self.origin, "log", "-1", "--format=%s", f"orch/p{self.plan}/hello").strip(),
+                         "#41 hello: Keep the receipt of hello out of work")
+
     def test_the_check_refuses_a_changed_workflow(self):
         """s2.check.workflow: a child branch whose workflow is not the locked one is not green."""
         self.hand_back(flow="name: nothing\n")

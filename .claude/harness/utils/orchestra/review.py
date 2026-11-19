@@ -21,6 +21,7 @@ from harness.utils.git.run import GitError, git
 from harness.utils.orchestra import crew, locked
 from harness.utils.orchestra.brief import NOTES, branch, subject
 from harness.utils.orchestra.card import card_of, unit_spec
+from harness.utils.orchestra.draft import ready
 from harness.utils.orchestra.fetch import TAIL, FetchError, checkout, drop_receipt, put_note, rerun
 from harness.utils.orchestra.issues import ISSUES
 from harness.utils.orchestra.work import RECEIPTS, find_receipt
@@ -234,15 +235,15 @@ def accept(port: PlanStore, sid: str, name: str, units: dict[str, Any], github: 
                      + [f"- AC{n}: {a}" for n, a in enumerate(card["ac"], 1)]
                      + ["", f"The receipt is {RECEIPTS}/{name}.json on {ref}."])
     held = entry.get("pr") or {}
-    try:
-        pr = {"number": held["number"], "html_url": held.get("url")} if held.get("number") else github(
-            "POST", f"repos/{repo_of(url)}/pulls", {"head": ref, "base": into,
-                                                    "title": f"{name}: {card['goal']}"[:200], "body": body})
+    try:  # its draft pull request (opened at spawn, draft.py) becomes ready; else one is opened now
+        pr = {"number": held["number"], "html_url": held.get("url")} if held.get("number") else ready(
+            ticket, name, github) or github("POST", f"repos/{repo_of(url)}/pulls", {
+                "head": ref, "base": into, "title": f"{name}: {card['goal']}"[:200], "body": body})
     except GitHubError as e:
-        raise ReviewError(f"the pull request was not opened: {e}") from e
+        raise ReviewError(f"the pull request was not opened or made ready: {e}") from e
     set_entry(port, sid, name, card, {"state": crew.ACCEPTED, "pr": {"number": pr.get("number"),
               "url": pr.get("html_url"), "repo": repo_of(url), "base": into}}, crew.ACCEPTED)
-    kept = drop_receipt(unit, repo, ref, name)
+    kept = drop_receipt(unit, repo, ref, name, issue_number(ticket, name))
     return (f"{name} accepted: pull request #{pr.get('number')} ({pr.get('html_url')}) from {ref} into "
             f"{into}. {kept} Nothing is merged yet: when every child is accepted, run('orchestra', "
             "'land', {}) merges the pull requests.")
