@@ -1,5 +1,5 @@
 {
- "at": 1795087328873,
+ "at": 1795087446611,
  "base": "a94a31178c6eda0f996d842011e49cc0e724e6e9",
  "behaviours": {
   "p29.hello.ac1": {
@@ -25,6 +25,12 @@
     "orch-probe/hello.py"
    ],
    "sha": "28fa352d5ad77bb2cb0c80c4a4e4c53a39adf2ae"
+  },
+  {
+   "files": [
+    "orch-probe/hello.py"
+   ],
+   "sha": "c86af4efc0acab4fbb077e22ff29e8dd0e1b916f"
   }
  ],
  "draft": "pd-mwnffxab-0383ec",
@@ -35,17 +41,18 @@
  "report": {
   "added": [],
   "changed": [
-   "orch-probe/hello.py: new hello(name) returns \"Hello, <name>\" and raises ValueError on an empty name"
+   "orch-probe/hello.py: module docstring now names AC1 (hello(\"Ann\") returns \"Hello, Ann\") and AC2 (hello(\"\") raises ValueError); code unchanged"
   ],
   "checked": [
-   "harness verify green: the locked orch-probe/test_hello_ac.py passes (AC1, AC2)"
+   "harness verify green on the final file: locked orch-probe/test_hello_ac.py passes (AC1, AC2)"
   ],
   "faults": [],
   "notChecked": [
-   "Non-string input (None, numbers) and whitespace-only names: not in the ACs"
+   "Non-string input and whitespace-only names: not in the ACs"
   ],
   "risks": [
-   "A whitespace-only name like \" \" is accepted as a name"
+   "A whitespace-only name is accepted",
+   "Harness fault seen: step_done refused after the harness's own handback commit; committed via run('git','commit') per answer 1"
   ],
   "testsChanged": []
  },
