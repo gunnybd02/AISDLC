@@ -1,0 +1,71 @@
+{
+ "at": 1795059940190,
+ "base": "dfac50032a094ddd5c9bec08251d5dfb48c64217",
+ "behaviours": {
+  "p19.hello.ac1": {
+   "status": "active",
+   "tests": [
+    "orch-probe/test_hello_ac.py"
+   ],
+   "what": "AC1: hello(\"Ann\") returns \"Hello, Ann\""
+  },
+  "p19.hello.ac2": {
+   "status": "active",
+   "tests": [
+    "orch-probe/test_hello_ac.py"
+   ],
+   "what": "AC2: hello(\"\") raises ValueError"
+  }
+ },
+ "branch": "orch/p19/hello",
+ "cardPlan": 1,
+ "commits": [
+  {
+   "files": [
+    "orch-probe/hello.py"
+   ],
+   "sha": "d4a9782345af591933654e16d034dead414b8f17"
+  }
+ ],
+ "draft": "pd-mwn07txm-b27128",
+ "name": "hello",
+ "parent": "330e9430-888c-5a3d-888b-9df46a0b1e0c",
+ "plan": 19,
+ "refused": [],
+ "report": {
+  "added": [],
+  "changed": [
+   "orch-probe/hello.py: new hello(name) returns \"Hello, <name>\" and raises ValueError on an empty name"
+  ],
+  "checked": [
+   "harness verify green: the locked orch-probe/test_hello_ac.py, 2 tests (AC1, AC2) pass"
+  ],
+  "faults": [],
+  "notChecked": [
+   "Non-string input (e.g. None or numbers) is not specified; None raises ValueError, other values are formatted as given"
+  ],
+  "risks": [
+   "None known"
+  ],
+  "testsChanged": []
+ },
+ "session": "212ff36f-ca3d-5e42-96ca-ef3750886721",
+ "uncommitted": [],
+ "unit": {
+  "base": "main",
+  "name": "probe",
+  "path": ".",
+  "repo": "https://github.com/gunnybd02/AISDLC",
+  "verify": [
+   "{python}",
+   "-m",
+   "unittest",
+   "discover",
+   "-s",
+   "orch-probe",
+   "-t",
+   "orch-probe"
+  ]
+ },
+ "verify": "ok"
+}
