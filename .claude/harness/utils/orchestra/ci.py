@@ -245,6 +245,30 @@ def fill(done: list[Result], why: str) -> list[Result]:
     return [seen.get(rule, (rule, False, f"not checked: {why}")) for rule in RULES]
 
 
+def has_code(repo: str, base: str, head: str) -> bool:
+    """Whether the child's branch holds work of its own over base: a commit that is neither the parent's start commit
+    nor the registration alone. Until then the workflow skips the child's tests, which are red before any code (live
+    run 2: the draft was red when it opened); harness ci itself runs every rule each time.
+
+    Args:
+        repo: the clone.
+        base: the base branch's name.
+        head: the child's branch's name.
+
+    Returns:
+        True when such a commit is on the branch, or when that cannot be told (the tests then run).
+    """
+    found = HEAD.match(head)
+    if not found:
+        return True
+    alone = ([START.format(name=found["name"])], [RECORD.format(name=found["name"])])
+    try:
+        log = commits(repo, ref_of(repo, base), ref_of(repo, head))
+    except GitError:
+        return True
+    return any(c["files"] not in alone for c in log)
+
+
 def report(repo: str, base: str, head: str, github: Callable[..., Any]) -> tuple[bool, str]:
     """Run the rules and write the text harness ci prints.
 

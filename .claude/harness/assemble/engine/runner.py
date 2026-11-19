@@ -191,6 +191,7 @@ class Act:
             notes += store.placed(self.port, event)  # a Drive tool showed the store's db or tickets folder
             notes += register.ticket_seen(self.port, event)  # a child's ticket, checked now and not kept
             notes += draft.watch_seen(self.port, event)  # the parent watches a child's draft pull request
+            notes += doorbell.rung(self.port, event)  # a GitHub notification read: the doorbell reads the CI result
             from harness.assemble.engine.cli_live import after_merge  # cli_live imports build, which imports this
             notes += after_merge(Path(self.port.path).parent.parent, event)  # the harness's main merged: put it in force
             plan = facts.get("plan")

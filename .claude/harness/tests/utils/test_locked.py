@@ -61,12 +61,32 @@ class LockTest(unittest.TestCase):
         self.assertEqual(git(self.origin, "rev-parse", f"{ref}~1"), git(self.origin, "rev-parse", "work"))  # from base
         held = self.port.ticket("s1")[locked.LOCK]
         self.assertEqual(held["branch"], ref)
-        self.assertEqual(locked.locked_files(self.port.ticket("s1")),
-                         {"orch-probe/test_hello_ac.py": content_hash(str(self.repo / "orch-probe" / "test_hello_ac.py"))})
+        copy = tree(self, {"t.py": AC}) / "t.py"  # the same text: the parent's own copy is gone (clear)
+        self.assertEqual(locked.locked_files(self.port.ticket("s1")), {"orch-probe/test_hello_ac.py": content_hash(str(copy))})
         self.assertEqual(locked.unlocked(self.port.ticket("s1"), CARD), [])
         self.write_test(AC + "\n# more\n")
         Lock().run(self.ctx, {})  # before any child starts, a second lock moves the plan branch on
         self.assertIn("# more", git(self.origin, "show", f"{ref}:orch-probe/test_hello_ac.py"))
+
+    def test_lock_deletes_the_untracked_copy_of_a_locked_test(self):
+        """s2.lock.local-copies-gone: the plan branch holds the test; the parent's tree no longer does."""
+        self.write_test()
+        out = Lock().run(self.ctx, {})
+        self.assertFalse((self.repo / "orch-probe" / "test_hello_ac.py").exists())
+        self.assertEqual(git(self.origin, "show", f"plan/p{self.plan}:orch-probe/test_hello_ac.py"), AC)
+        self.assertIn(f"Your tree keeps no copy of orch-probe/test_hello_ac.py: plan/p{self.plan} holds it", out)
+        self.assertEqual(git(self.repo, "status", "--porcelain"), "")
+
+    def test_lock_keeps_a_tracked_test_and_names_it(self):
+        """s2.lock.tracked-kept: a test the repository tracks stays in the tree, unchanged."""
+        self.write_test()
+        git(self.repo, "add", "orch-probe/test_hello_ac.py")
+        git(self.repo, "commit", "-q", "-m", "the test, tracked")
+        out = Lock().run(self.ctx, {})
+        self.assertEqual((self.repo / "orch-probe" / "test_hello_ac.py").read_text(encoding="utf-8"), AC)
+        self.assertIn("Kept in your tree, as the repository tracks it: orch-probe/test_hello_ac.py.", out)
+        self.assertNotIn("keeps no copy", out)
+        self.assertEqual(locked.clear(self.repo, ["orch-probe/none.py"]), (["orch-probe/none.py"], []))  # gone already
 
     def test_a_missing_acceptance_test_stops_the_lock(self):
         """s2.lock.missing"""

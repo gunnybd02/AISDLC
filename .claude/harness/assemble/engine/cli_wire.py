@@ -88,7 +88,8 @@ def ci_door(args: argparse.Namespace) -> tuple[int, str]:
             GITHUB_HEAD_REF), --in the clone (else the current folder).
 
     Returns:
-        (exit code, text): 0 when every rule passed, 1 when one failed.
+        (exit code, text): 0 when every rule passed, 1 when one failed. In GitHub Actions it also writes code=yes or
+        code=no to GITHUB_OUTPUT (ci.has_code), which the workflow's test steps read.
 
     Raises:
         Refused: no base or head, or git cannot read the clone.
@@ -97,10 +98,16 @@ def ci_door(args: argparse.Namespace) -> tuple[int, str]:
     head = args.head or os.environ.get("GITHUB_HEAD_REF", "")
     if not base or not head:
         raise Refused("ci needs --base and --head (in GitHub Actions: GITHUB_BASE_REF and GITHUB_HEAD_REF)")
+    folder = os.path.abspath(args.folder or ".")
     try:
-        ok, text = ci.report(os.path.abspath(args.folder or "."), base, head, github_call)
+        ok, text = ci.report(folder, base, head, github_call)
     except GitError as e:
         raise Refused(f"git cannot read the clone: {str(e)[-300:]}") from e
+    code = ci.has_code(folder, base, head)  # the workflow's test steps run only when it is yes
+    if os.environ.get("GITHUB_OUTPUT"):
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+            out.write(f"code={'yes' if code else 'no'}\n")
+    text += "\nTests: " + ("they run." if code else "they wait: no commit past the start and the registration yet.")
     return (0 if ok else 1), text
 
 

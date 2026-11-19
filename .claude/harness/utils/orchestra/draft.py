@@ -36,6 +36,7 @@ START = ".harness/notes/{name}/start.md"
 WATCH = "mcp__claude-code-remote__subscribe_pr_activity"
 OTHER = re.compile(r"already\s+watch|another\s+(?:claude\s+)?(?:session|agent)", re.I)  # the events go elsewhere
 READY = "mutation {{ markPullRequestReadyForReview(input: {{pullRequestId: \"{node}\"}}) {{ pullRequest {{ isDraft }} }} }}"
+READY_ROUTE = "repos/{repo}/pulls/{number}/ccr/ready_for_review"  # the cloud proxy's route when it refuses GraphQL
 MARK = "<!-- harness-comment {meta} -->"  # the last line of a comment the harness of a child posts
 SAID = "child.said"  # pl_notes of the child: target = the comment's URL, key = its kind, text = {id, sha256}
 
@@ -152,8 +153,9 @@ def unwatched(ticket: Ticket, name: str) -> str:
 
 
 def ready(ticket: Ticket, name: str, github: Callable[..., Any]) -> Optional[dict[str, Any]]:
-    """Turn the child's draft into a pull request ready for review (GitHub's GraphQL markPullRequestReadyForReview):
-    the one pull request accept keeps and land merges.
+    """Turn the child's draft into a pull request ready for review: the one pull request accept keeps and land merges.
+    GitHub's GraphQL markPullRequestReadyForReview first; when it is refused, READY_ROUTE (the cloud proxy refuses
+    GraphQL with 403 and names that route: live run 2).
 
     Args:
         ticket: the parent's ticket.
@@ -164,13 +166,18 @@ def ready(ticket: Ticket, name: str, github: Callable[..., Any]) -> Optional[dic
         {number, html_url} of the pull request; None when the child has no draft.
 
     Raises:
-        GitHubError: GitHub refuses.
+        GitHubError: GitHub refuses both (the error of the route), or GraphQL when the draft names no repo and number.
     """
     held = (ticket.get(DRAFTS) or {}).get(name)
     if not held:
         return None
     if held.get("node"):
-        github("POST", "graphql", {"query": READY.format(node=held["node"])})
+        try:
+            github("POST", "graphql", {"query": READY.format(node=held["node"])})
+        except GitHubError:
+            if not (held.get("repo") and held.get("number")):
+                raise
+            github("POST", READY_ROUTE.format(repo=held["repo"], number=held["number"]), {})
     return {"number": held.get("number"), "html_url": held.get("url")}
 
 

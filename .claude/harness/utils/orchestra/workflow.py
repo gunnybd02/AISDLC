@@ -2,7 +2,8 @@
 section 6), one per repository of the plan: WORKFLOW. GitHub runs it on each push to a pull request of a child
 (orch/p<plan>/<name>) into the plan branch (plan/p<plan>). It gets the harness at one pinned commit (the harness's
 repository is public: no secret), runs harness ci (utils/orchestra/ci.py) with the job's read-only token, then the
-test command of the child's unit in its folder ({python} is the job's Python; {test}: once per locked test). The
+test command of the child's unit in its folder ({python} is the job's Python; {test}: once per locked test), only once
+harness ci says the branch has code (its output code=yes: ci.has_code), so a draft is not red before any code. The
 rules come from the pinned harness, never from the child's branch; the file is locked like the tests, so a child
 that changes it is refused (its scope, harness ci, and the parent's check)."""
 from __future__ import annotations
@@ -71,14 +72,15 @@ def text(plan: int, children: list[tuple[Card, dict[str, Any]]], source: dict[st
              f"      - name: Get the harness at {sha[:12]}", "        run: |",
              f"          git clone --quiet {url} \"$RUNNER_TEMP/harness\"",
              f"          git -C \"$RUNNER_TEMP/harness\" checkout --quiet {sha}",
-             "      - name: harness ci", "        env:", "          GH_TOKEN: ${{ github.token }}", "        run: |",
+             "      - name: harness ci", "        id: ci", "        env:", "          GH_TOKEN: ${{ github.token }}", "        run: |",
              "          python \"$RUNNER_TEMP/harness/.claude/harness/entry/cli.py\" ci --base \"$GITHUB_BASE_REF\" "
              "--head \"$GITHUB_HEAD_REF\""]
     for card, spec in children:
         runs, folder = commands(card, spec), str(spec.get("path") or ".").strip("/") or "."
         for n, line in enumerate(runs, 1):
             lines += [f"      - name: tests of {card['name']}" + (f" ({n})" if len(runs) > 1 else ""),
-                      f"        if: ${{{{ !cancelled() && github.head_ref == '{prefix}{card['name']}' }}}}"]
+                      f"        if: ${{{{ !cancelled() && github.head_ref == '{prefix}{card['name']}' && "
+                      "steps.ci.outputs.code == 'yes' }}"]
             lines += [f"        working-directory: {folder}"] if folder != "." else []
             lines += ["        run: |", f"          {line}"]
     return "\n".join(lines) + "\n"

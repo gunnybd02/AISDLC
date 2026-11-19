@@ -120,6 +120,22 @@ class CiTest(unittest.TestCase):
         self.assertEqual(self.failed(), {})
         self.assertIn("registers api for issue #41", self.results()["registered"][1])
 
+    def test_has_code_once_a_commit_follows_the_start_and_the_registration(self):
+        """s5.ci.has-code: false for the start and the registration alone, true with a later commit."""
+        record = (self.repo / ".harness" / "register" / "api.json").read_text(encoding="utf-8")
+        self.assertTrue(ci.has_code(str(self.repo), "plan/p7", "orch/p7/api"))  # code and handback on it
+        git(self.repo, "switch", "-q", "plan/p7")
+        git(self.repo, "branch", "-q", "-D", "orch/p7/api")
+        git(self.repo, "switch", "-q", "-c", "orch/p7/api")
+        self.assertFalse(ci.has_code(str(self.repo), "plan/p7", "orch/p7/api"))  # nothing over the base
+        self.commit({".harness/notes/api/start.md": "# Start of api\n"}, "#41 api: start")
+        self.commit({".harness/register/api.json": record}, "#41 api: register (issue x, ticket y)")
+        self.assertFalse(ci.has_code(str(self.repo), "plan/p7", "orch/p7/api"))
+        self.commit({"app/orders.py": "ORDERS = []\n"}, "#41 api: List orders")
+        self.assertTrue(ci.has_code(str(self.repo), "plan/p7", "orch/p7/api"))
+        self.assertTrue(ci.has_code(str(self.repo), "plan/p7", "feature"))  # no child branch: the tests run
+        self.assertTrue(ci.has_code(str(self.repo), "no-such-base", "orch/p7/api"))  # not readable: they run
+
 
 if __name__ == "__main__":
     unittest.main()

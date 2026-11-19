@@ -134,13 +134,41 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 1)
         lines = out.splitlines()
         self.assertEqual(lines[0], "harness ci: feature into work")
-        self.assertEqual([line.split(":")[0] for line in lines[1:-1]], [f"FAIL {rule}" for rule in ci.RULES])
-        self.assertTrue(lines[-1].startswith("Result: RED, 9 rule(s) failed"))
+        self.assertEqual([line.split(":")[0] for line in lines[1:-2]], [f"FAIL {rule}" for rule in ci.RULES])
+        self.assertTrue(lines[-2].startswith("Result: RED, 9 rule(s) failed"))
+        self.assertEqual(lines[-1], "Tests: they run.")  # no child branch: nothing says they wait
         self.assertEqual(list(home.iterdir()), [])
         with unittest.mock.patch.dict(os.environ, {"GITHUB_BASE_REF": "", "GITHUB_HEAD_REF": ""}):
             code, out = run_cli(["ci", "--in", str(self.repo)], home)
         self.assertEqual((code, out), (1, "refused: ci needs --base and --head (in GitHub Actions: GITHUB_BASE_REF and "
                                           "GITHUB_HEAD_REF)"))
+
+    def test_ci_tells_the_workflow_whether_the_branch_has_code(self):
+        """s5.ci.code-output: code=no for the start and the registration alone, code=yes once a commit follows."""
+        import subprocess
+        from harness.tests import tree
+
+        def commit(rel, text, message):
+            (self.repo / rel).parent.mkdir(parents=True, exist_ok=True)
+            (self.repo / rel).write_text(text, encoding="utf-8")
+            for words in (["add", "-A"], ["commit", "-q", "-m", message]):
+                subprocess.run(["git", "-C", str(self.repo), *words], check=True, capture_output=True)
+        base = subprocess.run(["git", "-C", str(self.repo), "branch", "--show-current"], check=True,
+                              capture_output=True, text=True).stdout.strip()
+        subprocess.run(["git", "-C", str(self.repo), "switch", "-q", "-c", "orch/p7/api"], check=True)
+        commit(".harness/notes/api/start.md", "# Start of api\n", "#41 api: start")
+        commit(".harness/register/api.json", "{}\n", "#41 api: register")
+        home, out = tree(self, {}), tree(self, {"out.txt": ""}) / "out.txt"
+        for want in ("no", "yes"):
+            with unittest.mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(out)}):
+                _, text = run_cli(["ci", "--base", base, "--head", "orch/p7/api", "--in", str(self.repo)], home)
+            self.assertEqual(out.read_text(encoding="utf-8").splitlines()[-1], f"code={want}")
+            self.assertEqual(text.splitlines()[-1], "Tests: they run." if want == "yes" else
+                             "Tests: they wait: no commit past the start and the registration yet.")
+            if want == "no":
+                commit("app/orders.py", "ORDERS = []\n", "#41 api: List orders")
+        self.assertEqual(out.read_text(encoding="utf-8"), "code=no\ncode=yes\n")
+        self.assertEqual(list(home.iterdir()), [])
 
     def test_the_entry_runs_from_a_terminal(self):
         code, out, _ = run(entry_of(self.claude_dir, "cli"), args=("--session", "s1", "behaviors", "list"))
