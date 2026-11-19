@@ -136,7 +136,7 @@ another plan there (`GATE: plan ... was not opened`). A revision of the running 
 
 | Action | Effect | What it does |
 |---|---|---|
-| `spawn {name, model?}` | read | The brief and the `create_session` call (title `Orchestra p<plan>: <name>`, tags `orchestra`, `orchestra:p<plan>`, the repository's origin as `source_url`). Refused with no approved delegated plan, a name that is no child, a child that has started (not forgotten), 3 children running, or a card that names a session to adopt (adoption comes later). |
+| `spawn {name, model?}` | read | The brief and the `create_session` call (title `Orchestra p<plan>: <name>`, tags `orchestra`, `orchestra:p<plan>`, the repository's origin as `source_url`, `model` Sonnet `claude-sonnet-5-5` unless named; the model gate refuses a call with no model, and asks the user's form for another model). Refused with no approved delegated plan, a name that is no child, a child that has started (not forgotten), 3 children running, or a card that names a session to adopt (adoption comes later). |
 | `started {name, sid, model?}` | write | Checks all of that again in the transaction, and that the id is `session_...`, not this session, and no other child's; writes the crew entry (running, sid, rounds 0, `reportSid` the parent) and a `running` story row. |
 | `status` | read | `Plan N: x of y accepted; r of 3 may run`, then `name | unit | state | session` per child. |
 

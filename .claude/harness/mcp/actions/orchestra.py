@@ -4,8 +4,9 @@ says). The user approved the plan with its children once, in the form; these act
 - lock: the acceptance tests the cards name (acTests), written by the parent, committed and pushed on the plan branch
   plan/p<n>, their hashes kept (utils/orchestra/locked.py); spawn needs it for a card with acTests.
 - tickets: one GitHub issue per child with a machine block and its hash, and the ticket file (utils/orchestra/issues.py).
-- spawn {name, model?}: the brief of a child and the create_session call that opens it. Harness code cannot open a
-  cloud session; the model does, then gives the new session id back with started.
+- spawn {name, model?}: the brief of a child and the create_session call that opens it, on Sonnet unless a model is
+  named (another model asks the user's form: utils/forge/sessions.py). Harness code cannot open a cloud session; the
+  model does, then gives the new session id back with started.
 - started {name, sid, model?}: the child's session is open; from now on it runs (the cap is 3).
 - status: the children of the delegated plan in force and their states.
 
@@ -139,8 +140,9 @@ class Spawn(McpAction):
                                 "the call by hand.")
         return (f"{watch}Child {card['name']} of plan {plan}: open it with mcp__claude-code-remote__create_session and these "
                 f"arguments, then record it at once: run('orchestra', 'started', {{name: '{card['name']}', sid: "
-                f"<the new session id>}}). Until then it does not count as running. Each child is a cloud session "
-                f"and costs as much as one.{where}\n" + json.dumps(call, ensure_ascii=False, indent=1))
+                f"<the new session id>, model: '{call['model']}'}}). Until then it does not count as running. Each "
+                f"child is a cloud session and costs as much as one on its model.{where}\n"
+                + json.dumps(call, ensure_ascii=False, indent=1))
 
     @staticmethod
     def recorded(port: PlanStore, ticket: Ticket, name: str) -> tuple[dict[str, Any], dict[str, Any]]:

@@ -61,13 +61,16 @@ upload its answer gives, into the store's `tickets` folder (first find or make t
 reads Drive's answer and records it. For a plan with locked tests, spawn waits for the child's issue and, with a store
 folder, for the uploaded ticket file; the brief then names the issue and the ticket file.
 
-For each card: `run("orchestra", "spawn", {"name"})` gives the brief and the exact `create_session` call. With
-locked tests, spawn first pushes a start commit on the child's branch (`#N <name>: start`) and opens its draft pull
-request into the plan branch, once; its answer begins with the watch call,
+For each card: `run("orchestra", "spawn", {"name"})` gives the brief and the exact `create_session` call, on
+Sonnet (`claude-sonnet-5-5`) unless `model` is named; another model is refused until the user allows that call in
+a form (`session.no_pass`, the `refused` skill). With locked tests, spawn first pushes a start commit on the child's
+branch (`#N <name>: start`) and opens its draft pull request into the plan branch, once; its answer begins with the
+watch call,
 `mcp__claude-code-remote__subscribe_pr_activity {owner, repo, pullNumber}`. Make that call first: the harness
 records the watch from its answer, and started waits for it, so a CI result of the child's first push wakes you.
 Then make the `create_session` call, and at once `run("orchestra", "started", {"name", "sid": "<the new session
-id>"})`. After the first child, set the one check-in its answer gives (a child that dies silently wakes nobody).
+id>", "model"})`. After the first child, set the one check-in its answer gives (a child that dies silently wakes
+nobody).
 Accept later makes that draft ready; it is the one pull request land merges.
 
 ## 3. Wait for the doorbell

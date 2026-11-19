@@ -115,6 +115,11 @@ class BriefTest(unittest.TestCase):
                                 "orchestra:p7"], "source_url": "https://github.com/o/r", "model": "m1"})
         self.assertNotIn("source_url", brief.create_call(7, GOOD, "b", ""))
 
+    def test_a_child_opens_on_sonnet_unless_a_model_is_named(self):
+        """s2.spawn.sonnet-default: no model named gives the default; a named model stays (its form comes later)."""
+        self.assertEqual(brief.create_call(7, GOOD, "b", "")["model"], "claude-sonnet-5-5")
+        self.assertEqual(brief.create_call(7, GOOD, "b", "", "claude-opus-5-5")["model"], "claude-opus-5-5")
+
     def test_the_source_url_has_no_user_part_and_no_loopback(self):
         repo = git_repo(self, {"a.py": "X = 1\n"})
         subprocess.run(["git", "-C", str(repo), "remote", "add", "origin", "https://tok:x@github.com/o/r"], check=True)

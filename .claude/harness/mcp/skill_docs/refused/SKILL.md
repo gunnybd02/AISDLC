@@ -59,6 +59,12 @@ brackets with AskUserQuestion (options Allow, Deny), then call the merge tool ag
 expectedHeadSha. `merge.no_head`: name expectedHeadSha, the full head sha. `merge.shell`: `gh pr merge` or a
 `gh api` merge goes around the form: use the merge tool. One Allow is one merge.
 
+## Sessions
+`session.no_model`: a `create_session` call names its model; with none it copies this session's costly model. Set
+`model` to `claude-sonnet-5-5`, the default. `session.no_pass`: another model needs the user's Allow for exactly that
+call: ask the question in brackets with AskUserQuestion (options Allow, Deny), then call `create_session` again, once,
+with the same model, title and prompt. On Deny, use Sonnet. One Allow is one session.
+
 ## Orchestra
 | Answer | Meaning | Move |
 |---|---|---|
