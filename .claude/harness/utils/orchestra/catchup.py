@@ -1,0 +1,86 @@
+"""Catch-up: a running child takes in the orchestrator's note commits on its branch (live run 4). The parent's reject
+and answer push a note commit (.harness/notes/<name>/) on the child's branch as the record, and send the signed order
+(orders.py); the child's copy of the branch lacks that commit, and a child may not pull. So its harness does it: at a
+valid fix or answer (caught_up, from orders.arrived) and before each push (work.push), it takes in exactly the commits
+that change only the child's notes folder: a fast-forward, or the child's own unpushed commits replayed on top. Any
+other commit on origin is refused and nothing changes."""
+from __future__ import annotations
+
+from typing import Any
+
+from harness.utils.git.facts import top
+from harness.utils.git.run import GitError, git, run_git
+from harness.utils.orchestra.brief import NOTES
+from harness.utils.plan import tickets
+from harness.utils.shapes import PlanStore
+
+
+class CatchUpError(ValueError):
+    """The child's branch cannot take in what origin holds: a commit that is not the orchestrator's note, or its own
+    commits could not be replayed on the notes. Nothing was changed."""
+
+
+def caught_up(port: PlanStore, sid: str, role: dict[str, Any]) -> list[str]:
+    """After a valid fix or answer: the child's branch takes in the orchestrator's note commits at once (catch_up), so
+    the note it is told to read is in its tree.
+
+    Returns:
+        The line catch_up gave, or why it could not; [] when there was nothing to take in.
+    """
+    plan = tickets.approved_plan(port.ticket(sid))
+    repo = top(plan["root"]) if plan else None
+    if not repo:
+        return []
+    try:
+        took = catch_up(repo, role["branch"], role["name"])
+    except CatchUpError as e:
+        return [f"Your branch could not take in the orchestrator's notes: {e}"]
+    return [took] if took else []
+
+
+def catch_up(repo: str, branch: str, name: str) -> str:
+    """Take in the commits origin holds on the child's branch that the child does not have, when each changes only
+    the child's notes folder (NOTES/<name>/: the orchestrator's send-backs and answers): a fast-forward, or the child's
+    own unpushed commits replayed on top of them. Live run 4: a push refused for want of the note commit left the
+    child stuck, as a child may not pull.
+
+    Args:
+        repo: the child's clone.
+        branch: its branch (orch/p<plan>/<name>).
+        name: the child's name.
+
+    Returns:
+        What was taken in, or "" when origin holds nothing new (or the branch is not on origin yet).
+
+    Raises:
+        CatchUpError: a commit on origin changes another file, or the replay stops; nothing was changed.
+    """
+    code, _ = run_git(repo, ["fetch", "-q", "origin", branch])
+    if code != 0:
+        return ""
+    try:
+        extra = git(repo, "rev-list", "--reverse", "HEAD..FETCH_HEAD").split()
+        folder = f"{NOTES}/{name}/"
+        foreign = [sha[:12] for sha in extra if any(not f.startswith(folder) for f in git(
+            repo, "diff-tree", "--no-commit-id", "--name-only", "-r", sha).split())]
+        ahead = git(repo, "rev-list", "FETCH_HEAD..HEAD").split()
+    except GitError as e:
+        raise CatchUpError(f"git cannot read {branch} against origin: {str(e)[-200:]}") from e
+    if not extra:
+        return ""
+    if foreign:
+        raise CatchUpError(f"origin's {branch} holds commits that are not the orchestrator's notes ({', '.join(foreign)}); "
+                           "nothing was changed: hand back and name it, or ask the orchestrator")
+    shas = ", ".join(sha[:12] for sha in extra)
+    if not ahead:
+        code, out = run_git(repo, ["merge", "-q", "--ff-only", "FETCH_HEAD"])
+        if code != 0:
+            raise CatchUpError(f"the fast-forward to the orchestrator's notes failed: {out.strip()[-200:]}")
+        return f"Your branch took in the orchestrator's note commit(s) {shas} (a fast-forward)."
+    code, out = run_git(repo, ["rebase", "-q", "FETCH_HEAD"])
+    if code != 0:
+        run_git(repo, ["rebase", "--abort"])
+        raise CatchUpError(f"your commits could not be replayed on the orchestrator's notes: {out.strip()[-200:]}; "
+                           "nothing was changed")
+    return (f"Your branch took in the orchestrator's note commit(s) {shas} and replayed your {len(ahead)} commit(s) "
+            "on top of them.")
