@@ -184,9 +184,10 @@ The rules have one owner: the rows of the floor pipeline. CI runs the same rows 
 
 | Direction | How |
 |---|---|
-| Child to parent | a push; CI runs; the CI event wakes the parent that watches the PR (the doorbell) |
-| Parent to child | a signed order by `send_message`: `fix`, `answer` or `stop` |
-| Content | a question and the receipt are commits on the child's branch; PR comments are only a readable log |
+| Child to parent | a push; CI runs; the CI result wakes the parent that watches the draft PR. The hook names `orchestra.doorbell`, which reads GitHub itself: the CI result, the failed rules, new comments, the tip (`utils/orchestra/doorbell.py`) |
+| Child's words | its question and its handback, posted by its harness as comments on its draft PR (`draft.say`, with a `<!-- harness-comment -->` marker), next to the commits on its branch; never `send_message`, which auto mode refuses |
+| Parent to child | a signed order by `send_message`: `fix`, `answer` or `stop` (part 6; today a note on the branch and a fresh session) |
+| Record | each CI result (`ci.result`) and each comment (`child.comment`: from the child or a GitHub login, to the parent) is one ledger row |
 | Safety net | one timer check-in (about 50 minutes, then about every 4 hours), for a child that dies silently |
 
 **An order:** `orch <plan> | child <name> | issue #N <sha> | round <n> | kind <k> | mac <hmac>`. The child's
@@ -232,6 +233,16 @@ Probe of 2026-11-18 (draft PR 59, child session `session_01EXL6xZRuaNnqoVipxBhuk
 
 Earlier (2026-11-17): a cloud child cannot message its parent (`05b-orchestra-cloud.md` section 2b).
 
+Probes of 2026-11-19 (children A, B, C, each asked to `send_message` its parent once, in auto mode):
+
+| Probe | Child set up with | Result |
+|---|---|---|
+| A | defaults, as `spawn` makes it | refused by Claude Code's auto mode check: `[Unsanctioned Communication]` |
+| B | `send_message` in `extra_allowed_tools` of `create_session` | refused the same way |
+| C | the repo's `.claude/settings.json` with `permissions.allow` for `send_message` (a probe branch, never merged) | refused the same way |
+
+The harness had no part in any refusal. So a child speaks through comments on its draft PR and pushes.
+
 ## 13. The build, from today
 
 1. Remove `project.json` and `config.py`; read protected branches from the forge; the plan carries the rest.
@@ -251,7 +262,9 @@ Earlier (2026-11-17): a cloud child cannot message its parent (`05b-orchestra-cl
    Piece 2 done: PR 68 (`lock` writes the CI workflow on the plan branch, pinned to the harness's main commit, and
    the parent's check refuses a changed one). Piece 3 done: PR 69 (spawn opens a draft pull request per child after a
    start commit and gives the watch call; the hook records the watch and started waits for it; accept makes the draft
-   ready). Next: piece 4 (the doorbell: act on each CI result).
+   ready). Piece 4 done: PR 70 (the brief names the draft; question and handback become PR comments posted by the
+   child's harness; `orchestra.doorbell` reads CI, failed rules and comments, records them, names the next step; a
+   GitHub wake-up points to it).
 6. Orders: signed one-way messages, checked at the notifications door, each unlocking one action.
 7. End: every PR merged stops the children; form 2; archive; ledgers to `db/`; join.
 8. Docs and the user's specs (13, 05) brought in line.
@@ -264,3 +277,5 @@ Earlier (2026-11-17): a cloud child cannot message its parent (`05b-orchestra-cl
 - Visibility does not matter, as long as the user's account can reach the repository.
 - The ticket file is a CSV kept as a file in Drive `tickets/`; ledgers go to `db/`.
 - Parent to child: signed one-way orders; child to parent: through git and CI only.
+- 2026-11-19: a child's words go as comments on its draft PR, posted by its harness (probes A, B, C: auto mode
+  refuses child-to-parent messages).

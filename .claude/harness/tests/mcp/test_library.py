@@ -139,6 +139,20 @@ class SkillsTest(unittest.TestCase):
                      "started waits for it", "Accept later makes that draft ready"):
             self.assertIn(part, text)
 
+    def test_the_skills_say_a_child_speaks_in_pr_comments_and_the_doorbell_reads_them(self):
+        """s4.docs.doorbell: the orchestrate skill names the doorbell and its next steps; the work skill says question
+        and handback become comments on the draft, never send_message."""
+        lib = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs")
+        orchestrate = " ".join(lib.get("orchestrate").text.split())
+        for part in ('`run("orchestra", "doorbell", {})`', "A child cannot message you (auto mode refuses it)",
+                     "| CI is RED with failed rules | `reject` with those rules |",
+                     "| it handed back and CI is green | `check`, then `accept` |"):
+            self.assertIn(part, orchestrate)
+        work = " ".join(lib.get("work").text.split())
+        for part in ("the harness posts each as a comment on your draft pull request",
+                     "Never `send_message` (auto mode refuses it)"):
+            self.assertIn(part, work)
+
     def test_the_store_skill_says_copies_are_gzipped(self):
         """s2.docs.gzip: a person can open a copy."""
         text = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs").get("store").text

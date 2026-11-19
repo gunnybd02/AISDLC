@@ -70,10 +70,20 @@ Then make the `create_session` call, and at once `run("orchestra", "started", {"
 id>"})`. After the first child, set the one check-in its answer gives (a child that dies silently wakes nobody).
 Accept later makes that draft ready; it is the one pull request land merges.
 
-## 3. Wait
-Do not poll. Each child messages you once: "handed back <branch> <sha>". A question comes as a message too: answer
-with `run("orchestra", "answer", {"name", "text"})` and send the text it gives with `send_message`. When only the user
-can decide, ask the user first. `run("orchestra", "digest", {})` shows every child in one line each.
+## 3. Wait for the doorbell
+Do not poll. A child cannot message you (auto mode refuses it). It pushes, and its harness posts its question or its
+handback as a comment on its draft pull request; the push runs CI, and the CI result wakes you. Then run
+`run("orchestra", "doorbell", {})`: the harness reads each child's draft on GitHub itself (the CI result, the failed
+rules, new comments, the tip), records them, and names the next step:
+
+| The doorbell says | Do |
+|---|---|
+| wait (CI runs, tests red while it works, no receipt yet) | nothing; the next result wakes you |
+| CI is RED with failed rules | `reject` with those rules |
+| it asked a question | `answer` (its comment holds the question) |
+| it handed back and CI is green | `check`, then `accept` |
+
+When only the user can decide, ask the user first. `run("orchestra", "digest", {})` shows every child in one line.
 
 ## 4. Check, then accept or send back
 1. `run("orchestra", "check", {"name"})`: the receipt on its branch, then the locked acceptance tests: unchanged on
