@@ -5,16 +5,13 @@ branch, kept in the ticket (DRAFTS). The parent watches it (mcp__claude-code-rem
 result on any push of the child wakes it: the hook records that watch from the tool's answer (watch_seen), and
 started waits for it (unwatched). The child's registration is the first commit after the start commit; harness ci
 (utils/orchestra/ci.py) skips the start commit, and a branch holding only it is waiting. accept turns the draft into
-the pull request land merges (ready). A child cannot message its parent (auto mode refuses it, probes of 2026-11-19):
-its harness posts its question and its handback as comments on the draft (say), with MARK for the parent's doorbell
-(utils/orchestra/doorbell.py), and the push that goes with them runs CI, whose result wakes the parent."""
+the pull request land merges (ready). The talk of parent and child is comments on the draft (utils/orchestra/talk.py);
+the push that goes with them runs CI, whose result wakes the parent."""
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import sqlite3
-import time
 from collections.abc import Callable
 from typing import Any, Optional
 
@@ -23,7 +20,6 @@ from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError, repo_of
 from harness.utils.git.run import git
 from harness.utils.ledger.recorder import Recorder
-from harness.utils.ledger.store import note
 from harness.utils.orchestra.brief import branch, subject
 from harness.utils.orchestra.fetch import FetchError, put_files
 from harness.utils.orchestra.issues import ISSUES
@@ -37,8 +33,6 @@ WATCH = "mcp__claude-code-remote__subscribe_pr_activity"
 OTHER = re.compile(r"already\s+watch|another\s+(?:claude\s+)?(?:session|agent)", re.I)  # the events go elsewhere
 READY = "mutation {{ markPullRequestReadyForReview(input: {{pullRequestId: \"{node}\"}}) {{ pullRequest {{ isDraft }} }} }}"
 READY_ROUTE = "repos/{repo}/pulls/{number}/ccr/ready_for_review"  # the cloud proxy's route when it refuses GraphQL
-MARK = "<!-- harness-comment {meta} -->"  # the last line of a comment the harness of a child posts
-SAID = "child.said"  # pl_notes of the child: target = the comment's URL, key = its kind, text = {id, sha256}
 
 
 class DraftError(ValueError):
@@ -179,36 +173,6 @@ def ready(ticket: Ticket, name: str, github: Callable[..., Any]) -> Optional[dic
                 raise
             github("POST", READY_ROUTE.format(repo=held["repo"], number=held["number"]), {})
     return {"number": held.get("number"), "html_url": held.get("url")}
-
-
-def say(port: PlanStore, sid: str, kind: str, lines: list[str], github: Callable[..., Any]) -> str:
-    """Post the words of a child on its draft pull request as one comment ending with MARK, and record it.
-
-    Args:
-        port: the ledger port.
-        sid: the child's session.
-        kind: "question" or "handback".
-        lines: the words, one paragraph each.
-        github: call(method, path, fields?) -> the JSON answer.
-
-    Returns:
-        A sentence for the answer; "" for a child whose brief names no draft.
-    """
-    role = (port.ticket(sid) or {}).get("child") or {}
-    pr = (role.get("record") or {}).get("pr") or {}
-    if not pr.get("number"):
-        return ""
-    meta = json.dumps({"kind": kind, "child": role.get("name"), "plan": role.get("plan")}, sort_keys=True)
-    body = "\n\n".join([f"**{kind.capitalize()} of {role.get('name')}** (plan {role.get('plan')})", *lines,
-                        MARK.format(meta=meta)])
-    try:
-        made = github("POST", f"repos/{pr['repo']}/issues/{pr['number']}/comments", {"body": body})
-    except GitHubError as e:
-        return f"The comment was not posted on #{pr['number']} ({str(e)[-200:]}); your push carries the words anyway."
-    kept = json.dumps({"id": made.get("id"), "sha256": hashlib.sha256(body.encode("utf-8")).hexdigest()})
-    port.write(lambda con, rec: note(con, SAID, str(made.get("html_url") or pr.get("url")), kind, kept, sid,
-                                     int(time.time() * 1000)))
-    return f"It is posted on your draft pull request #{pr['number']} as a comment, for the orchestrator."
 
 
 def watch_call(entry: dict[str, Any]) -> dict[str, Any]:

@@ -1,10 +1,10 @@
 """Doorbell: what the parent does when a CI result on a child's draft pull request wakes it (docs/system.md section 8;
 Sessions part 5, piece 4). A child cannot message its parent (auto mode refuses it); it pushes, and its harness posts
-its question or handback as a comment on its draft (utils/orchestra/draft.say). The harness reads GitHub itself, never
+its question or handback as a comment on its draft (utils/orchestra/talk.py). The harness reads GitHub itself, never
 the wake-up's text: for each child with a draft, the head commit of its pull request, the CHECK run on it, the FAIL
 lines of that job's log when it failed, the new comments, and the files of the head commit. It records each CI result
-(RESULT, once per commit and result) and each new comment (COMMENT, once: from the child, or the GitHub login, to the
-parent) and names the next step:
+(RESULT, once per commit and result) and each new comment (COMMENT, once: from the child or the orchestrator when a
+harness posted it, else the GitHub login) and names the next step:
 
 - no result yet, or CI running: wait;
 - a rule of harness ci failed: send the child back with those rules;
@@ -30,7 +30,8 @@ from harness.utils.ledger.mask import mask
 from harness.utils.ledger.store import note
 from harness.utils.orchestra import crew
 from harness.utils.orchestra.brief import NOTES
-from harness.utils.orchestra.draft import DRAFTS, MARK
+from harness.utils.orchestra import talk
+from harness.utils.orchestra.draft import DRAFTS
 from harness.utils.orchestra.work import RECEIPTS
 from harness.utils.shapes import PlanStore
 
@@ -40,7 +41,6 @@ STAMP = re.compile(r"^\S+Z\s")  # the time GitHub puts before each line of a job
 EVENT = re.compile(r"source=[\"']?github|external-event", re.I)
 NOTIFICATIONS = "ReadNotifications"  # in the cloud a CI result is a notification the model reads with this tool
 MOST = 2000  # characters of a comment the ledger keeps
-MARKED = MARK.split("{")[0].strip()  # "<!-- harness-comment": a comment the harness of a child posted
 
 
 def ring(port: PlanStore, sid: str, github: Callable[..., Any], log: Optional[Callable[..., str]] = None) -> str:
@@ -142,8 +142,8 @@ def fails(base: str, run: dict[str, Any], log: Callable[..., str]) -> list[str]:
 
 
 def heard(port: PlanStore, sid: str, name: str, entry: dict[str, Any], comments: list[dict[str, Any]]) -> list[str]:
-    """Record each comment not recorded before (COMMENT, target its id): from the child when its harness posted it
-    (MARK names the child), else from the GitHub login; to the parent.
+    """Record each comment not recorded before (COMMENT, target its id): from the child when its harness posted it,
+    from the orchestrator when the parent's harness did (talk.read), else from the GitHub login.
 
     Args:
         port: the ledger port.
@@ -157,11 +157,12 @@ def heard(port: PlanStore, sid: str, name: str, entry: dict[str, Any], comments:
     """
     out = []
     for c in comments:
-        body = str(c.get("body") or "")
-        ours = MARKED in body and f'"child": "{name}"' in body
-        sender = name if ours else f"@{(c.get('user') or {}).get('login', '?')}"
-        kept = {"from": sender, "fromSession": entry.get("sid") if ours else None, "to": sid, "url": c.get("html_url"),
-                "body": mask(body)[:MOST]}
+        body, meta = str(c.get("body") or ""), talk.read(c) or {}
+        ours = meta.get("child") == name and meta.get("from") == talk.CHILD
+        mine = meta.get("child") == name and meta.get("from") == talk.PARENT  # never the child's words
+        sender = name if ours else talk.PARENT if mine else f"@{(c.get('user') or {}).get('login', '?')}"
+        kept = {"from": sender, "fromSession": entry.get("sid") if ours else sid if mine else None,
+                "to": entry.get("sid") if mine else sid, "url": c.get("html_url"), "body": mask(body)[:MOST]}
         if keep(port, sid, COMMENT, str(c.get("id")), name, kept):
             first = " ".join(body.split("<!--")[0].split())[:300]
             out.append(f"from {sender}: {first}")

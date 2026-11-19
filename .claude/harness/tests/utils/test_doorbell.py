@@ -6,7 +6,8 @@ import unittest
 
 from harness.assemble.engine.ports import LedgerPort
 from harness.utils.orchestra import doorbell
-from harness.utils.orchestra.draft import DRAFTS, MARK
+from harness.utils.orchestra.draft import DRAFTS
+from harness.utils.orchestra.talk import MARK
 from harness.utils.plan import tickets
 from harness.tests.e2e import copy_tree
 
@@ -101,6 +102,16 @@ class DoorbellTest(unittest.TestCase):
         self.assertEqual((said["@someone"]["fromSession"], said["@someone"]["to"]), (None, "s1"))
         self.ring(FakeGitHub(run("in_progress", None)))  # a new state of the same commit is a new row
         self.assertEqual(len(self.port.rows("SELECT 1 AS x FROM pl_notes WHERE kind = 'ci.result'")), 2)
+
+    def test_a_comment_of_the_orchestrator_is_never_the_childs(self):
+        """s1.talk.from-parent: the parent's own answer is recorded from the orchestrator to the child."""
+        answer = ("**Answer of the orchestrator** (plan 7)\n\nUse 409.\n\n" + MARK.format(meta=json.dumps(
+            {"child": "api", "from": "orchestrator", "kind": "answer", "plan": 7}, sort_keys=True)))
+        text = self.ring(FakeGitHub(run(conclusion="success"), ["app/orders.py"], [
+            {"id": 21, "body": answer, "html_url": "https://github.com/o/r/pull/5#c21", "user": {"login": "bot"}}]))
+        self.assertIn("  New comment: from orchestrator: **Answer of the orchestrator** (plan 7) Use 409.", text)
+        kept = json.loads(self.port.rows("SELECT text FROM pl_notes WHERE kind = 'child.comment'")[0]["text"])
+        self.assertEqual((kept["from"], kept["fromSession"], kept["to"]), ("orchestrator", "s1", "session_child0001"))
 
     def test_a_github_wake_up_of_a_parent_with_drafts_names_the_doorbell(self):
         """s3.doorbell.rung: the hook adds the line at a GitHub event; another prompt, or a session with no draft,

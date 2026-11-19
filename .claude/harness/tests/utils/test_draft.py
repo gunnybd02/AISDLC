@@ -6,7 +6,7 @@ import unittest
 
 from harness.mcp.actions.orchestra import Spawn, Tickets
 from harness.utils.contracts import ActionContext
-from harness.utils.orchestra import draft
+from harness.utils.orchestra import draft, talk
 from harness.utils.plan import tickets as plan_tickets
 from harness.tests import tree
 from harness.tests.utils.test_review import LOCKED_UNITS, LockedScenario, git
@@ -188,13 +188,14 @@ class SayTest(unittest.TestCase):
         self.assertEqual((m1, p1, p2), ("POST", "repos/o/r/issues/5/comments", "repos/o/r/issues/5/comments"))
         self.assertEqual(f1["body"].split("\n\n")[:2], ["**Question of api** (plan 7)",
                                                          "Which status code for a closed account?"])
-        self.assertTrue(f1["body"].endswith('<!-- harness-comment {"child": "api", "kind": "question", "plan": 7} -->'))
+        self.assertTrue(f1["body"].endswith(
+            '<!-- harness-comment {"child": "api", "from": "child", "kind": "question", "plan": 7} -->'))
         self.assertIn("Changed: app/orders.py lists orders\n\nChecked: tests pass\n\nNot checked: none\n\n"
                       "Risks: paging is not done", f2["body"])
-        rows = self.port.rows("SELECT key, target, text FROM pl_notes WHERE kind = 'child.said' ORDER BY rowid")
+        rows = self.port.rows("SELECT key, target, text FROM pl_notes WHERE kind = 'talk.said' ORDER BY rowid")
         self.assertEqual([r["key"] for r in rows], ["question", "handback"])
         self.assertEqual(json.loads(rows[0]["text"])["id"], 901)
-        self.assertEqual(draft.say(self.port, "c2", "question", ["x"], self.github), "")  # no draft: nothing posted
+        self.assertEqual(talk.say(self.port, "c2", "question", ["x"], self.github), "")  # no draft: nothing posted
         self.assertEqual(len(self.calls), 2)
 
 

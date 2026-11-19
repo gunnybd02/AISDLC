@@ -31,7 +31,7 @@ from harness.utils.git.facts import top
 from harness.utils.git.run import GitError, git
 from harness.utils.ledger import store
 from harness.utils.orchestra import brief as briefs
-from harness.utils.orchestra import crew, issues, locked, orders, register, work
+from harness.utils.orchestra import crew, issues, locked, orders, register, talk, work
 from harness.utils.orchestra import draft as drafts  # draft is also the desk id of a plan here
 from harness.utils.orchestra.card import in_force, plan_units, unit_spec
 from harness.utils.plan.item_checks import run_limits
@@ -324,14 +324,14 @@ class Question(McpAction):
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Commit the question as a note on the child's branch and push it (utils/orchestra/work.ask), then post it on
-        the child's draft pull request (utils/orchestra/draft.say). ActionError for a session that is no child, a
+        the child's draft pull request (utils/orchestra/talk.say). ActionError for a session that is no child, a
         question empty or longer than 400 characters, no card plan, another branch, or a rule that stops the commit or
         the push."""
         sid, port = session_of(ctx), ctx.ports["plans"]
 
         def go() -> str:
             text = work.ask(port, sid, args["question"], ctx.ports["commit_judge"], ctx.ports["git_judge"])
-            return f"{drafts.say(port, sid, 'question', [str(args['question'])], ctx.ports['github'])} {text}".strip()
+            return f"{talk.say(port, sid, 'question', [str(args['question'])], ctx.ports['github'])} {text}".strip()
         return answered(CHILD_ERRORS, go)
 
 
@@ -350,7 +350,7 @@ class Handback(McpAction):
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Write, commit and push the child's receipt (utils/orchestra/work.handback), then post its report on the
-        child's draft pull request (utils/orchestra/draft.say). ActionError for a bad report, a session that is no
+        child's draft pull request (utils/orchestra/talk.say). ActionError for a bad report, a session that is no
         child, no card plan, another branch, or a rule that stops the commit or the push."""
         sid, port = session_of(ctx), ctx.ports["plans"]
 
@@ -360,5 +360,5 @@ class Handback(McpAction):
             lines = [f"{label}: " + ("; ".join(str(x) for x in args.get(key) or []) or "none")
                      for label, key in (("Changed", "changed"), ("Checked", "checked"),
                                         ("Not checked", "notChecked"), ("Risks", "risks"))]
-            return f"{drafts.say(port, sid, 'handback', lines, ctx.ports['github'])} {text}".strip()
+            return f"{talk.say(port, sid, 'handback', lines, ctx.ports['github'])} {text}".strip()
         return answered(CHILD_ERRORS, go)
