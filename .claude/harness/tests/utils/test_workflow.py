@@ -33,14 +33,24 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(harness["run"].splitlines(), [
             'git clone --quiet https://github.com/gunnybd02/AISDLC "$RUNNER_TEMP/harness"',
             'git -C "$RUNNER_TEMP/harness" checkout --quiet 1a72c5c17b459e9527827cf5afc173f90a887da8'])
-        self.assertEqual(ci["env"], {"GH_TOKEN": "${{ github.token }}"})
+        self.assertEqual((ci["id"], ci["env"]), ("ci", {"GH_TOKEN": "${{ github.token }}"}))
         self.assertEqual(ci["run"].strip(), 'python "$RUNNER_TEMP/harness/.claude/harness/entry/cli.py" ci --base '
                                             '"$GITHUB_BASE_REF" --head "$GITHUB_HEAD_REF"')
         self.assertEqual([(t["name"], t.get("working-directory"), t["run"].strip()) for t in tests], [
             ("tests of api", "services/api", "python -m unittest"),
             ("tests of web (1)", None, "python tests/test_a_ac.py"),
             ("tests of web (2)", None, "python 'tests/test b_ac.py'")])  # docs names no command: no step
-        self.assertEqual(tests[0]["if"], "${{ !cancelled() && github.head_ref == 'orch/p7/api' }}")
+        self.assertEqual(tests[0]["if"], "${{ !cancelled() && github.head_ref == 'orch/p7/api' && "
+                                         "steps.ci.outputs.code == 'yes' }}")
+
+    def test_each_test_step_waits_until_harness_ci_says_the_branch_has_code(self):
+        """s5.workflow.tests-wait: the ci step has the id ci; every test step runs only when its code output is yes."""
+        lines = workflow.text(7, [API, WEB, DOCS], SOURCE).splitlines()
+        self.assertEqual(lines[lines.index("      - name: harness ci") + 1], "        id: ci")
+        steps = [n for n, line in enumerate(lines) if line.startswith("      - name: tests of ")]
+        self.assertEqual(len(steps), 3)
+        for n in steps:
+            self.assertTrue(lines[n + 1].endswith("&& steps.ci.outputs.code == 'yes' }}"), lines[n + 1])
 
     def test_only_a_public_url_and_a_full_commit_are_pinned(self):
         for source in ({"url": "https://user:" + "x@github.com/o/h", "sha": SOURCE["sha"]},  # credentials in it

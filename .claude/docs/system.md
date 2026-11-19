@@ -249,6 +249,12 @@ the doorbell ("wait") all worked for real. The child stopped at registration: Dr
 held no content ("(file sent separately)") and said "saved to <path>" of a `tool-results` folder. The hook now reads
 that file, checks it and deletes it (PR 73).
 
+Live run p19 (2026-11-19, issue 74, draft PR 75): the child registered (all 9 rules PASS in Actions), wrote the code
+and handed back by a comment; CI and the check were green. Accept stopped: the cloud proxy refuses GraphQL (403), so
+the draft was not made ready. PR 76 fixes it and the four other findings: `ready` falls back to the proxy's
+`pulls/<n>/ccr/ready_for_review`; lock deletes the parent's untracked test copies; the brief names the parent's cloud
+id; the doorbell line follows `ReadNotifications`; CI runs the tests only once the branch has code.
+
 ## 13. The build, from today
 
 1. Remove `project.json` and `config.py`; read protected branches from the forge; the plan carries the rest.
