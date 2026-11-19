@@ -21,6 +21,7 @@ from harness.utils.git.facts import blob, head, top
 from harness.utils.git.gitlab import GitLabError, open_mr, project_of
 from harness.utils.git.marks import banned_in, marks_in
 from harness.utils.git.run import GitError, git, run_git
+from harness.utils.orchestra.brief import child_subject
 from harness.utils.plan.files import allows
 from harness.utils.plan.stop import is_code
 from harness.utils.plan import tickets
@@ -79,6 +80,7 @@ def git_commit(port: PlanStore, sid: str, files: list[str], message: Optional[st
     if not text:
         raise ShipError("the message is empty")
     ticket, plan = in_force(port, sid)
+    text = child_subject(ticket.get("child") or {}, text)  # a child's commit names its issue, as step_done's (run 6)
     repo = top(plan["root"])
     if not repo:
         raise ShipError(f"the plan's root {plan['root']} is not in a git repository")

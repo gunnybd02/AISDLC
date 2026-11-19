@@ -269,6 +269,34 @@ class CatchUpTest(unittest.TestCase):
         (self.repo / "app" / "orders.py").write_text('"""Orders."""\nORDERS = []\n', encoding="utf-8")
         self.assertNotIn("the repository moved", self.step())
 
+    def handed_back(self):
+        """The child's harness commits its receipt and keeps it on the ticket, as work.handback does."""
+        from harness.utils.contracts import now
+        self.child_commits(".harness/handback/api.json", "{}\n")
+        sha = git(self.repo, "rev-parse", "HEAD").strip()
+        self.port.write(lambda con, rec: plan_tickets.save(con, {**plan_tickets.latest(con, "c1"),
+                                                                 "handback": {"sha": sha, "at": now()}}))
+        self.push()
+
+    def test_after_a_handback_and_a_catch_up_step_done_goes_on(self):
+        """s1.catchup.harness-commits: live run 6 refused here: the handback commit was no recorded move."""
+        self.push()
+        self.handed_back()
+        self.parent_commits(".harness/notes/api/sendback-1.md", "add a docstring\n")
+        self.read(self.order(1))
+        (self.repo / "app").mkdir(exist_ok=True)
+        (self.repo / "app" / "orders.py").write_text('"""Orders."""\nORDERS = []\n', encoding="utf-8")
+        self.assertNotIn("the repository moved", self.step())
+
+    def test_a_commit_the_harness_did_not_make_is_still_refused_after_a_handback(self):
+        """s1.catchup.still-foreign"""
+        self.push()
+        self.handed_back()
+        self.parent_commits(".harness/notes/api/sendback-1.md", "add a docstring\n")
+        self.read(self.order(1))
+        self.child_commits("a.py", "X = 3\n")
+        self.assertIn("the repository moved", self.step())
+
     def test_a_move_the_harness_did_not_make_is_still_refused(self):
         """s1.catchup.foreign-move"""
         self.push()
@@ -276,6 +304,36 @@ class CatchUpTest(unittest.TestCase):
         self.read(self.order(1))
         self.child_commits("a.py", "X = 2\n")  # a commit outside the harness
         self.assertIn("the repository moved", self.step())
+
+
+class ChildCommitTest(unittest.TestCase):
+    """Live run 6: the git.commit door wrote no "#N name: " prefix in a child, so harness ci failed its subjects rule."""
+
+    def test_a_git_commit_of_a_child_names_its_issue_once(self):
+        """s2.ship.child-subject"""
+        from harness.assemble.engine.ports import LedgerPort
+        from harness.utils.orchestra import brief, work
+        from harness.utils.plan.ship import git_commit
+        from harness.tests.e2e import copy_tree, git_repo
+        from harness.tests.utils.test_work import CARD
+        port, repo = LedgerPort(copy_tree(self)), git_repo(self, {"a.py": "X = 1\n"})
+        card = {**CARD, "change": ["docs/notes.md"], "tests": []}
+        Act(port).run(Event("UserPromptSubmit", "", {"prompt": brief.brief(7, "pd-x", card, "s-p", rounds=3)}, "c1",
+                            str(repo)), {}, Verdict("allow"))
+        work.take(port, "c1", str(repo))
+
+        def numbered(con, rec):
+            fresh = plan_tickets.latest(con, "c1")
+            role = {**fresh["child"], "record": {"issue": {"number": 41}}}
+            plan_tickets.save(con, {**fresh, "child": role})
+        port.write(numbered)
+        allow = lambda repo, paths, text: Verdict("allow")  # noqa: E731
+        for message, n in (("Write the notes", 1), ("#41 api: Write more notes", 2)):
+            (repo / "docs").mkdir(exist_ok=True)
+            (repo / "docs" / "notes.md").write_text("notes\n" * n, encoding="utf-8")
+            git_commit(port, "c1", ["docs/notes.md"], message, allow)
+            self.assertEqual(git(repo, "log", "-1", "--format=%s").strip(),
+                             "#41 api: " + message.removeprefix("#41 api: "))
 
 
 if __name__ == "__main__":

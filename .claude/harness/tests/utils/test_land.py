@@ -114,6 +114,27 @@ class LockedLandTest(LockedScenario):
             self.assertIn(f'{{"session_id": "{sid}"}}', text)
         self.assertEqual(self.port.ticket("s1")["state"], "closed")
 
+    def test_land_ends_with_no_step_of_the_parent_when_its_only_files_are_the_locked_tests(self):
+        """s3.land.locked-not-own: live run 6 waited for the parent's own files: the locked test lock had shipped."""
+        self.assertEqual(land.own_files({"plan": {"files": ["orch-probe/test_hello_ac.py", "notes.md"], "children": [
+            {"name": "hello", "change": ["orch-probe/hello.py"], "acTests": ["orch-probe/test_hello_ac.py"]}]}}),
+            ["notes.md"])
+        github = PlanGitHub(self.origin, tree(self, {}), {5: (f"orch/p{self.plan}/hello", f"plan/p{self.plan}")})
+        self.hand_back()
+        review.check(self.port, "s1", "hello", LOCKED_UNITS, [])
+        review.accept(self.port, "s1", "hello", LOCKED_UNITS, github)
+        ticket = self.port.ticket("s1")
+        only = {**ticket["plan"], "files": ["orch-probe/test_hello_ac.py"]}  # the run plan: only the locked test
+        self.port.write(lambda con, rec: tickets.save(con, {**ticket, "plan": only}))
+        q = re.search(r"exactly:\n(.+)\nOptions", land.land(self.port, "s1", LOCKED_UNITS, [], github)).group(1)
+        Act(self.port).run(Event("PostToolUse", "AskUserQuestion", {"questions": [{"question": q}]}, "s1", "/w"),
+                           {"answers": {q: "Allow"}}, Verdict("allow"))
+        github.merge(6)
+        text = land.land(self.port, "s1", LOCKED_UNITS, [], github)
+        self.assertNotIn("waits for your own files", text)
+        self.assertIn("is delivered", text)
+        self.assertNotEqual(self.port.ticket("s1").get("phase"), "deliver")  # no step_done of the parent was needed
+
 
 class LandTest(Scenario):
     def accepted(self, github):
