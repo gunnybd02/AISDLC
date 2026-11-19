@@ -20,8 +20,12 @@ import re
 import secrets
 from typing import Any
 
+from harness.utils.contracts import now
+from harness.utils.ledger.store import note
+from harness.utils.orchestra.crew import delegated
+from harness.utils.orchestra.issues import ISSUES
 from harness.utils.plan import tickets
-from harness.utils.shapes import PlanStore
+from harness.utils.shapes import PlanStore, Ticket
 
 KINDS = ("fix", "answer", "stop")
 END = "end of order"
@@ -29,6 +33,9 @@ LINE = re.compile(r"orch (?P<plan>\d+) \| child (?P<name>[a-z0-9][a-z0-9-]{0,39}
                   r"(?P<sha>[0-9a-f]{12}) \| round (?P<round>\d+) \| kind (?P<kind>[a-z]+) \| mac (?P<mac>[0-9a-f]{32})")
 MOST = 4000  # characters of a body
 KEYS = "orderKeys"  # the parent's ticket: {child name: its key}, made at its first spawn and kept
+SENT = "ordersSent"  # the parent's ticket: {child name: the round of the last order the hook saw sent}
+SEND = "mcp__claude-code-remote__send_message"  # the tool that carries an order down; any server ending __send_message
+NO_ISSUE, NO_SHA = 0, "0" * 12  # the issue fields of a child without an issue
 
 
 def new_key() -> str:
@@ -163,3 +170,82 @@ def check(order: dict[str, Any], plan: int, name: str, issue: int, sha: str, key
     if not hmac.compare_digest(want, str(order.get("mac"))):
         return "its mac is wrong: the order was changed or not signed with this child's key"
     return ""
+
+
+def target_of(ticket: Ticket, name: str) -> dict[str, Any]:
+    """What an order to a child needs from the parent's ticket: plan, name, issue, sha, key, its session, the next round.
+
+    Args:
+        ticket: the parent's ticket.
+        name: the child's name.
+
+    Returns:
+        {plan, name, issue, sha, key, sid, round}; {} when the child has no key or no session (it was spawned before
+        orders, or never started).
+    """
+    plan = delegated(ticket)
+    key = (ticket.get(KEYS) or {}).get(name)
+    sid = ((ticket.get("crew") or {}).get(name) or {}).get("sid")
+    if plan is None or not key or not sid:
+        return {}
+    issue = ((ticket.get(ISSUES) or {}).get("children") or {}).get(name) or {}
+    return {"plan": plan["id"], "name": name, "issue": int(issue.get("number") or NO_ISSUE),
+            "sha": str(issue.get("sha") or NO_SHA)[:12], "key": key, "sid": sid,
+            "round": int((ticket.get(SENT) or {}).get(name, 0)) + 1}
+
+
+def give(port: PlanStore, sid: str, name: str, kind: str, body: str = "") -> str:
+    """The call that sends a child its next signed order, as words for the parent's model; the round counts only once
+    the hook saw it sent (sent_seen).
+
+    Args:
+        port: the ledger port.
+        sid: the parent's session.
+        name: the child's name.
+        kind: fix, answer or stop.
+        body: the reason, the answer, or "" for stop.
+
+    Returns:
+        The sentence with the send_message call; "" when the child takes no orders (target_of is empty).
+    """
+    held = target_of(port.ticket(sid) or {}, name)
+    if not held:
+        return ""
+    message = text(held["key"], held["plan"], name, held["issue"], held["sha"], held["round"], kind, body)
+    call = {"session_id": held["sid"], "message": message}
+    return (f"Send {name} its signed order ({kind}, round {held['round']}) now, as it is: {SEND} "
+            f"{json.dumps(call, ensure_ascii=False)}. Its harness checks it and lets it go on; it sends nothing back. "
+            "Only if its session has ended, spawn opens a fresh session that reads the note instead.")
+
+
+def sent_seen(port: PlanStore, event: Any) -> list[str]:
+    """At the answer of a send_message in a parent: each order it carried to a child of its plan is recorded
+    (order.sent) and its round kept, so the next order has the next round.
+
+    Args:
+        port: the ledger port.
+        event: the PostToolUse hook call of any tool.
+
+    Returns:
+        One line per order recorded; [] for any other call.
+    """
+    if event.kind != "PostToolUse" or not str(event.tool or "").endswith(SEND[SEND.rindex("__"):]) or not event.session:
+        return []
+    ticket = port.ticket(event.session) or {}
+    plan = delegated(ticket)
+    message = str((event.input or {}).get("message") or "")
+    found = [o for o in parse(message) if plan is not None and o["plan"] == plan["id"]
+             and o["name"] in (ticket.get(KEYS) or {})]
+    if not found:
+        return []
+
+    def write(con: Any, rec: Any) -> None:
+        fresh = tickets.latest(con, event.session)
+        sent = dict(fresh.get(SENT) or {})
+        for o in found:
+            sent[o["name"]] = max(int(sent.get(o["name"], 0)), o["round"])
+            note(con, "order.sent", o["name"], o["round"], json.dumps(
+                {"kind": o["kind"], "to": (event.input or {}).get("session_id"), "mac": o["mac"]}), event.session, now())
+        tickets.save(con, {**fresh, SENT: sent})
+    port.write(write)
+    return [f"The harness recorded order {o['kind']} round {o['round']} to {o['name']}." for o in found]
