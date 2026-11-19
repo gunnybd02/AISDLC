@@ -248,6 +248,35 @@ class CatchUpTest(unittest.TestCase):
         self.assertTrue(any("took in the orchestrator's note commit(s)" in n for n in notes))
         self.assertEqual((self.repo / ".harness" / "notes" / "api" / "sendback-1.md").read_text(), "add a docstring\n")
 
+    def step(self):
+        """step_done of the child; its refusal, or "" when it went on."""
+        from harness.utils.plan.steps import StepError, step_done
+        try:
+            step_done(self.port, "c1", "Add a docstring")
+        except StepError as e:
+            return str(e)
+        return ""
+
+    def test_after_a_catch_up_step_done_takes_the_move_as_the_harnesss_own(self):
+        """s1.catchup.step-after: live run 5 refused here: the repository moved since the plan's last commit."""
+        from harness.utils.orchestra.catchup import MOVES
+        self.push()
+        self.parent_commits(".harness/notes/api/sendback-1.md", "add a docstring\n")
+        self.read(self.order(1))
+        (move,) = self.port.ticket("c1")[MOVES]
+        self.assertEqual(move["to"], git(self.repo, "rev-parse", "HEAD").strip())
+        (self.repo / "app").mkdir(exist_ok=True)
+        (self.repo / "app" / "orders.py").write_text('"""Orders."""\nORDERS = []\n', encoding="utf-8")
+        self.assertNotIn("the repository moved", self.step())
+
+    def test_a_move_the_harness_did_not_make_is_still_refused(self):
+        """s1.catchup.foreign-move"""
+        self.push()
+        self.parent_commits(".harness/notes/api/sendback-1.md", "add a docstring\n")
+        self.read(self.order(1))
+        self.child_commits("a.py", "X = 2\n")  # a commit outside the harness
+        self.assertIn("the repository moved", self.step())
+
 
 if __name__ == "__main__":
     unittest.main()
