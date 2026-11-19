@@ -102,6 +102,21 @@ class DoorbellTest(unittest.TestCase):
         self.ring(FakeGitHub(run("in_progress", None)))  # a new state of the same commit is a new row
         self.assertEqual(len(self.port.rows("SELECT 1 AS x FROM pl_notes WHERE kind = 'ci.result'")), 2)
 
+    def test_a_github_wake_up_of_a_parent_with_drafts_names_the_doorbell(self):
+        """s3.doorbell.rung: the hook adds the line at a GitHub event; another prompt, or a session with no draft,
+        gets none."""
+        from harness.assemble.engine.runner import Act
+        from harness.utils.contracts import Event, Verdict
+
+        def prompt(text, sid="s1"):
+            return Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": text}, sid, "/w"), {}, Verdict("allow"))
+        wake = ('<wake reason="external-event"><event source="github" kind="check_run" pr="5">harness-ci completed: '
+                'failure</event></wake>')
+        line = "A GitHub event woke you: run('orchestra', 'doorbell', {})."
+        self.assertTrue(any(n.startswith(line) for n in prompt(wake)))
+        self.assertFalse(any(n.startswith(line) for n in prompt("go on with the plan")))
+        self.assertFalse(any(n.startswith(line) for n in prompt(wake, sid="s9")))  # no draft in that session
+
     def test_no_draft_and_an_ended_child(self):
         self.port.write(lambda con, rec: tickets.save(con, {**tickets.latest(con, "s1"),
                                                              "crew": {"api": {"sid": "x", "state": "accepted"}}}))
