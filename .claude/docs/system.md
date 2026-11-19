@@ -137,11 +137,17 @@ no child may change them (its harness and CI refuse it). A child's job is to mak
 
 **The registration** (`.harness/register/<name>.json`, format `harness-register/1`): the issue, its block's hash, the
 ticket file's hash and the plan's hash. The child's harness writes it at `take`, after the issue and the ticket row
-match, as the first commit of the branch (`#N <name>: register (...)`), and pushes it. The ledger keeps it as a row,
-and the card plan's approval names its commit.
+match, as the child's first commit (`#N <name>: register (...)`), and pushes it. The ledger keeps it as a row, and
+the card plan's approval names its commit.
 
-**The commit format**: every commit on a child's branch starts `#N <name>: `, written by the harness (steps, questions,
-handback, the parent's send-backs and answers).
+**The draft pull request** (`utils/orchestra/draft.py`): at spawn the parent's harness makes the child's branch from
+the plan branch with one start commit (`.harness/notes/<name>/start.md`, `#N <name>: start`: GitHub opens no pull
+request without a commit) and opens one draft pull request into the plan branch. The parent watches it
+(`subscribe_pr_activity`); the hook records the watch and `started` waits for it. `harness ci` skips the start commit
+(a branch with only it is WAITING, exit 0). Accept makes the draft ready; it is the one pull request land merges.
+
+**The commit format**: every commit on a child's branch starts `#N <name>: `, written by the harness (the parent's
+start, steps, questions, handback, the parent's send-backs and answers, the receipt taken off).
 
 **The ticket CSV**, `tickets/<plan>__<sha>.csv` on Drive, one row per child, written by the harness at form 1 (the
 model only uploads it by reference):
@@ -243,7 +249,9 @@ Earlier (2026-11-17): a cloud child cannot message its parent (`05b-orchestra-cl
    format `harness-issue/1`; the registration as the first commit of the branch, named by the card plan's approval;
    commits start `#N <name>: `; a child adds files only inside its scope; `cli ci` checks it all from the branch).
    Piece 2 done: PR 68 (`lock` writes the CI workflow on the plan branch, pinned to the harness's main commit, and
-   the parent's check refuses a changed one). Next: piece 3 (draft PR and watch), 4 (the doorbell).
+   the parent's check refuses a changed one). Piece 3 done: PR 69 (spawn opens a draft pull request per child after a
+   start commit and gives the watch call; the hook records the watch and started waits for it; accept makes the draft
+   ready). Next: piece 4 (the doorbell: act on each CI result).
 6. Orders: signed one-way messages, checked at the notifications door, each unlocking one action.
 7. End: every PR merged stops the children; form 2; archive; ledgers to `db/`; join.
 8. Docs and the user's specs (13, 05) brought in line.
