@@ -98,6 +98,35 @@ class RegisterTest(unittest.TestCase):
         self.assertNotIn("41_issue_api", kept)
         self.assertEqual(len(self.drive(self.text)), 1)  # a plain text answer is read too
 
+    def test_a_ticket_drive_saved_to_a_file_is_checked_and_the_file_deleted(self):
+        """s1.register.saved: the answer shape of the live run of 2026-11-19: no content, a saved file named; only a
+        file of a tool-results folder under SAVED_ROOT is read, and the ticket's is deleted after the check."""
+        from unittest import mock
+        root = tree(self, {})
+        results = root / "-home-user-AISDLC" / "15f7421a" / "tool-results"
+        results.mkdir(parents=True)
+        saved, other = results / "mcp-caaed075-blob-1.csv", results / "mcp-caaed075-blob-2.csv"
+        saved.write_text(self.text, encoding="utf-8")
+        other.write_text("a,b\n1,2\n", encoding="utf-8")
+        outside = root / "elsewhere.csv"
+        outside.write_text(self.text, encoding="utf-8")
+
+        def answer(path):
+            return [{"type": "text", "text": f"[Resource from caaed075 at googledrive://file/1x] Binary content "
+                                             f"(text/csv, {len(self.text)} bytes) saved to {path}"},
+                    {"type": "text", "text": json.dumps({"id": "1x", "title": self.made["title"], "mimeType": "text/csv",
+                                                         "content": "(file sent separately)"})}]
+        with mock.patch.object(register, "SAVED_ROOT", root):
+            self.assertEqual(self.drive(answer(outside)), [])  # not in a tool-results folder: never read
+            self.assertEqual(self.drive(answer(other)), [])  # another file: not the ticket, left alone
+            self.assertEqual(self.drive(answer(root / "gone" / "tool-results" / "x.csv")), [])  # no such file
+            notes = self.drive(answer(saved))
+        self.assertTrue(outside.exists() and other.exists())
+        self.assertIn("(the file Drive's answer was saved to, now deleted): its row matches your brief", notes[0])
+        self.assertFalse(saved.exists())
+        result = register.ticket_result(self.port, "c1", self.made["title"])
+        self.assertEqual((result["problems"], result["sha256"]), ([], self.made["sha256"]))
+
     def test_a_row_that_differs_from_the_brief_is_refused_with_the_field(self):
         _, _, other, _ = records({**CARD, "acTests": ["tests/other_ac.py"]})
         plan_sha, problems = register.row_problems(self.role, other)

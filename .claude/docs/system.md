@@ -243,6 +243,12 @@ Probes of 2026-11-19 (children A, B, C, each asked to `send_message` its parent 
 
 The harness had no part in any refusal. So a child speaks through comments on its draft PR and pushes.
 
+Live run p17 (2026-11-19, issue 71, draft PR 72): lock with the CI workflow, the issue, the ticket CSV in Drive
+`tickets/`, the draft PR and its watch, the first Actions run (`harness ci` WAITING, tests red before any code) and
+the doorbell ("wait") all worked for real. The child stopped at registration: Drive's `download_file_content` answer
+held no content ("(file sent separately)") and said "saved to <path>" of a `tool-results` folder. The hook now reads
+that file, checks it and deletes it (PR 73).
+
 ## 13. The build, from today
 
 1. Remove `project.json` and `config.py`; read protected branches from the forge; the plan carries the rest.

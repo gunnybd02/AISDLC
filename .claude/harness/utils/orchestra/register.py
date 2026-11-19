@@ -5,7 +5,9 @@ sha256, utils/orchestra/issues.py) and its row of the ticket file on Drive (the 
 The ticket is checked by harness code at the moment Drive answers its download (ticket_seen, run by the hook): the
 content whose sha256 is the brief's is read, this child's row is compared with the brief, and only the result and
 the hashes are kept (pl_notes of kind child.ticket), never the file. The model only makes the Drive calls; the answer
-of the download stays in its conversation, which no harness can take back. take then reads the issue itself and, when
+of the download stays in its conversation, which no harness can take back. Claude Code may keep the content out of
+the answer: it saves it to a file of a tool-results folder and the answer says "saved to <path>" (live run of
+2026-11-19). The hook reads such a file (saved_files, under SAVED_ROOT only), checks it the same way, and deletes it. take then reads the issue itself and, when
 both agree, keeps the registration in the ledger (pl_notes of kind child.registered) and commits it as the record
 RECORD, the first commit of the child's branch (on_branch), before the card plan opens: its approval names that
 commit, and harness ci (utils/orchestra/ci.py) sees on the branch that registration came before any code."""
@@ -17,6 +19,7 @@ import csv
 import hashlib
 import io
 import json
+import re
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -36,6 +39,9 @@ from harness.utils.shapes import ChildRole, CommitJudge, PlanStore
 
 RESULT = "child.ticket"  # pl_notes: target = the ticket file, key = ok or refused, text = {sha256, planSha, problems}
 RECORD, RECORD_FORMAT = ".harness/register/{name}.json", "harness-register/1"
+SAVED = re.compile(r"saved to (/[^\s\"'<>]+)")  # Claude Code kept a tool's answer out of the conversation
+SAVED_ROOT = Path.home() / ".claude" / "projects"  # its tool-results folders are under here
+MOST_SAVED = 1_000_000  # bytes of a saved file read
 
 
 def expected(role: ChildRole) -> dict[str, Any]:
@@ -154,7 +160,9 @@ def ticket_seen(port: PlanStore, event: Event) -> list[str]:
     want = ((role.get("record") or {}).get("ticket")) or {}
     if not want.get("sha256"):
         return []
-    for data in contents(event.response):
+    found = [(data, None) for data in contents(event.response)]
+    found += [(path.read_bytes()[:MOST_SAVED], path) for path in saved_files(event.response)]
+    for data, path in found:
         if hashlib.sha256(data).hexdigest() != want["sha256"]:
             continue
         plan_sha, problems = row_problems(role, data.decode("utf-8", "replace"))
@@ -162,11 +170,36 @@ def ticket_seen(port: PlanStore, event: Event) -> list[str]:
         key = "refused" if problems else "ok"
         port.write(lambda con, rec: note(con, RESULT, str(want.get("title", "")), key, json.dumps(result),
                                          event.session, int(time.time() * 1000)))
-        return [f"The harness checked the ticket {want.get('title')}: "
+        if path is not None:
+            path.unlink(missing_ok=True)  # the harness keeps no copy: the file Claude Code saved goes too
+        return [f"The harness checked the ticket {want.get('title')}" + (" (the file Drive's answer was saved to, now "
+                                                                         "deleted)" if path is not None else "") + ": "
                 + ("its row matches your brief; run('orchestra', 'take') again." if not problems else
                    "it does NOT match your brief: " + "; ".join(problems) + ". run('orchestra', 'take') again; it "
                    "records why and stops you.")]
     return []
+
+
+def saved_files(answer: Any) -> list[Path]:
+    """The files a tool's answer says Claude Code saved it to ("saved to <path>"): only existing files of a
+    tool-results folder under SAVED_ROOT; any other path is never read.
+
+    Args:
+        answer: the tool's response.
+
+    Returns:
+        The files, once each.
+    """
+    root, out = SAVED_ROOT.resolve(), []
+    for data in contents(answer):
+        for m in SAVED.finditer(data.decode("utf-8", "replace")):
+            try:
+                real = Path(m.group(1).rstrip(".,;)")).resolve(strict=True)
+            except (OSError, RuntimeError):
+                continue
+            if real.is_file() and real.parent.name == "tool-results" and root in real.parents and real not in out:
+                out.append(real)
+    return out
 
 
 class RegisterError(ValueError):
