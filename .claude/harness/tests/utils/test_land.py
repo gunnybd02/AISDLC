@@ -58,7 +58,7 @@ class LockedLandTest(LockedScenario):
         self.assertIn(f"Merged #5 of hello into plan/p{self.plan}", text)
         self.assertIn(f"on the merged plan/p{self.plan}: green", text)
         self.assertIn(f"Plan pull request #6 ({URL}/pull/6): plan/p{self.plan} into work", text)
-        self.assertIn("Ask the user to merge it", text)
+        self.assertIn("the harness refuses it with the form question until the user allows it", text)
         self.assertEqual(self.port.ticket("s1")["state"], "open")
         self.assertNotIn("orch-probe/hello.py", git(self.origin, "ls-tree", "-r", "--name-only", "work"))
         self.assertIn("Plan pull request #6", land.land(self.port, "s1", LOCKED_UNITS, [], github))  # still waits

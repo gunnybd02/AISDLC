@@ -21,13 +21,12 @@ from pathlib import Path
 from typing import Any
 
 from harness.assemble.engine.live_mcp import healthy
+from harness.utils.forge.merges import merged  # the one owner of the merge tool's name and answer
 from harness.utils.gateway.release import (ALLOW_LABEL, NO_LABEL, anchor, bad, build, current, publish, release_dir,
                                            stamp)
 from harness.utils.git.asks import take
 from harness.utils.git.pull import PullError, clone_root, fast_forward
 from harness.utils.git.run import GitError, git
-
-MERGE_TOOL = "__merge_pull_request"  # the GitHub merge tool, whatever its server is named (mcp__github__, mcp__<id>__)
 from harness.utils.shapes import PlanStore
 
 
@@ -148,25 +147,6 @@ def slug(url: str) -> str:
         return ""
     name = parts[-1][:-4] if parts[-1].endswith(".git") else parts[-1]
     return f"{parts[-2]}/{name}".lower()
-
-
-def merged(event: Any) -> str:
-    """The "owner/name" a merge tool's answer says was merged; "" for any other call or a merge that failed.
-
-    Args:
-        event: a hook call (PostToolUse of a merge tool: input owner, repo; its response).
-
-    Returns:
-        "owner/name" in lower case, or "".
-    """
-    if event.kind != "PostToolUse" or not str(event.tool or "").endswith(MERGE_TOOL):
-        return ""
-    text = event.response if isinstance(event.response, str) else json.dumps(event.response)
-    flat = (text or "").replace(" ", "").lower()
-    if '"merged":true' not in flat and "successfullymerged" not in flat:
-        return ""
-    owner, repo = str(event.input.get("owner") or ""), str(event.input.get("repo") or "")
-    return f"{owner}/{repo}".lower() if owner and repo else ""
 
 
 def after_merge(home: str | Path, event: Any) -> list[str]:

@@ -106,8 +106,8 @@ When every child has ended (accepted, forgotten or released): `run("orchestra", 
 - After the merges, each unit's tests run on the merged plan branch (on the base when nothing is locked). Red: fix
   it through a new plan.
 - **The plan pull request.** With locked tests, land then opens one pull request from `plan/p<plan>` into the base
-  and waits. Ask the user to merge it (a merge form, Allow or Deny), merge it on Allow, and land again: only then is
-  the plan delivered.
+  and waits. Merge it with the merge tool and its expectedHeadSha: the harness refuses it with the form question
+  (`merge.no_pass`); ask it, merge on the user's Allow, and land again: only then is the plan delivered.
 - Your own files: commit them with `step_done` (before or after the merges), then land again.
 - **The children's databases.** With a store folder set (`HARNESS_DRIVE_FOLDER`), the plan is done only when every
   child that ended has its database in the store. Each child uploads its own at handback (named

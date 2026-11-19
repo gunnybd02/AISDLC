@@ -19,6 +19,7 @@ from harness.utils.plan.approval import approvals
 from harness.utils.plan.closing import close_answers, delivery
 from harness.utils.plan.life import accepts as drop_accepts
 from harness.utils.plan.ship import mr_accepts
+from harness.utils.forge import merges
 from harness.utils.gateway.release import accepts as release_accepts
 from harness.utils.orchestra import child, doorbell, draft, register, synced
 from harness.utils.orchestra.cleanup import removal_accepts
@@ -182,6 +183,8 @@ class Act:
             notes += close_answers(self.port, event.session, facts.get("answers") or {})
             notes += drop_accepts(self.port, facts.get("answers") or {})
             notes += mr_accepts(self.port, facts.get("answers") or {})
+            notes += merges.accepts(self.port, facts.get("answers") or {})  # the user allows one merge
+            notes += merges.used(self.port, event)  # a merge ran: its pass is used
             notes += release_accepts(self.port, facts.get("answers") or {})
             notes += removal_accepts(self.port, facts.get("answers") or {})  # a remove checklist the user ticked
             notes += synced.waiver_accepts(self.port, facts.get("answers") or {})  # a child closed without its copy

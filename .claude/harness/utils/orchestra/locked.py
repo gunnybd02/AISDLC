@@ -177,7 +177,7 @@ def clear(root: Path, paths: list[str]) -> tuple[list[str], list[str]]:
 
 def plan_prs(port: PlanStore, sid: str, github: Callable[..., Any]) -> tuple[list[str], bool]:
     """The pull request of the plan branch into the base, one per locked unit: opened the first time, then read. Only
-    the user merges it (the usual merge form; form 2 later).
+    the user merges it (the merge gate, utils/forge/merges.py; form 2 later).
 
     Args:
         port: the ledger port.
@@ -213,8 +213,8 @@ def plan_prs(port: PlanStore, sid: str, github: Callable[..., Any]) -> tuple[lis
         else:
             done = False
             lines.append(f"Plan pull request #{pr['number']} ({pr.get('url')}): {held['branch']} into {unit['base']}. "
-                         "Ask the user to merge it (a merge form, Allow or Deny), merge it on Allow, then run('orchestra', "
-                         "'land', {}) again.")
+                         "Merge it with the merge tool and its expectedHeadSha: the harness refuses it with the form "
+                         "question until the user allows it; then run('orchestra', 'land', {}) again.")
     if opened:
         port.write(lambda con, rec: tickets.save(con, {**tickets.latest(con, sid), LOCK: {**held, "units": units}}))
     return lines, done
