@@ -123,19 +123,19 @@ class Spawn(McpAction):
         fresh = ((ticket.get("crew") or {}).get(card["name"]) or {}).get("fresh") or {}
         start = (ticket.get(locked.LOCK) or {}).get("branch", "")  # with a lock, every child starts from the plan branch
         issue, made = self.recorded(ctx.ports["plans"], ticket, card["name"]) if start else ({}, {})
-        prompt = briefs.brief(plan, draft, card, sid, unit, fresh.get("note", ""), rounds=limits["rounds"], start=start,
-                              issue=issue, ticket_file=made)
-        call = briefs.create_call(plan, card, prompt, url, args.get("model", ""))
-        where = "" if url else (" The unit's repository has no URL another machine can clone: add source_url to "
-                                "the call by hand.")
-        watch = ""
-        if start:
+        watch, pr = "", None
+        if start:  # the draft comes first: the brief names it, and the child's comments go there
             try:
                 pr = drafts.open_draft(ctx.ports["plans"], sid, card, unit, ctx.ports["github"])
             except drafts.DraftError as e:
                 raise ActionError(str(e)) from e
             watch = (f"First watch its draft pull request #{pr['number']} ({pr['url']}), so a CI result of any push "
                      f"wakes you: {drafts.WATCH} {json.dumps(drafts.watch_call(pr))}. Then ")
+        prompt = briefs.brief(plan, draft, card, sid, unit, fresh.get("note", ""), rounds=limits["rounds"], start=start,
+                              issue=issue, ticket_file=made, pr=pr)
+        call = briefs.create_call(plan, card, prompt, url, args.get("model", ""))
+        where = "" if url else (" The unit's repository has no URL another machine can clone: add source_url to "
+                                "the call by hand.")
         return (f"{watch}Child {card['name']} of plan {plan}: open it with mcp__claude-code-remote__create_session and these "
                 f"arguments, then record it at once: run('orchestra', 'started', {{name: '{card['name']}', sid: "
                 f"<the new session id>}}). Until then it does not count as running. Each child is a cloud session "
@@ -317,15 +317,19 @@ class Question(McpAction):
     block, name, effect = "orchestra", "question", WRITE
     summary = "A child's question outside its card: a note on its branch, pushed; then the child stops"
     args_schema = {"type": "object", "properties": {"question": {"type": "string"}}, "required": ["question"]}
-    needs = ("plans", "session", "commit_judge", "git_judge")
+    needs = ("plans", "session", "commit_judge", "git_judge", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Commit the question as a note on the child's branch and push it (utils/orchestra/work.ask). ActionError for
-        a session that is no child, a question empty or longer than 400 characters, no card plan, another branch, or a
-        rule that stops the commit or the push."""
-        sid = session_of(ctx)
-        return answered(CHILD_ERRORS, lambda: work.ask(ctx.ports["plans"], sid, args["question"], ctx.ports["commit_judge"],
-                                           ctx.ports["git_judge"]))
+        """Commit the question as a note on the child's branch and push it (utils/orchestra/work.ask), then post it on
+        the child's draft pull request (utils/orchestra/draft.say). ActionError for a session that is no child, a
+        question empty or longer than 400 characters, no card plan, another branch, or a rule that stops the commit or
+        the push."""
+        sid, port = session_of(ctx), ctx.ports["plans"]
+
+        def go() -> str:
+            text = work.ask(port, sid, args["question"], ctx.ports["commit_judge"], ctx.ports["git_judge"])
+            return f"{drafts.say(port, sid, 'question', [str(args['question'])], ctx.ports['github'])} {text}".strip()
+        return answered(CHILD_ERRORS, go)
 
 
 class Handback(McpAction):
@@ -339,11 +343,19 @@ class Handback(McpAction):
                                                     "risks": points, "testsChanged": pairs, "added": pairs,
                                                     "faults": pairs},
                    "required": ["changed", "checked", "notChecked", "risks", "testsChanged"]}
-    needs = ("plans", "session", "commit_judge", "git_judge", "store")
+    needs = ("plans", "session", "commit_judge", "git_judge", "store", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Write, commit and push the child's receipt (utils/orchestra/work.handback). ActionError for a bad report, a
-        session that is no child, no card plan, another branch, or a rule that stops the commit or the push."""
-        sid = session_of(ctx)
-        return answered(CHILD_ERRORS, lambda: work.handback(ctx.ports["plans"], sid, args, ctx.ports["commit_judge"],
-                                               ctx.ports["git_judge"], bool(ctx.ports["store"]())))
+        """Write, commit and push the child's receipt (utils/orchestra/work.handback), then post its report on the
+        child's draft pull request (utils/orchestra/draft.say). ActionError for a bad report, a session that is no
+        child, no card plan, another branch, or a rule that stops the commit or the push."""
+        sid, port = session_of(ctx), ctx.ports["plans"]
+
+        def go() -> str:
+            text = work.handback(port, sid, args, ctx.ports["commit_judge"], ctx.ports["git_judge"],
+                                 bool(ctx.ports["store"]()))
+            lines = [f"{label}: " + ("; ".join(str(x) for x in args.get(key) or []) or "none")
+                     for label, key in (("Changed", "changed"), ("Checked", "checked"),
+                                        ("Not checked", "notChecked"), ("Risks", "risks"))]
+            return f"{drafts.say(port, sid, 'handback', lines, ctx.ports['github'])} {text}".strip()
+        return answered(CHILD_ERRORS, go)

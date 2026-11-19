@@ -102,9 +102,11 @@ file outside your card's change and tests). Every commit names #N by itself: it 
 `harness ci` checks the same rules again from your branch alone (`python3 <core>/anchor.py cli ci --base <plan branch>
 --head <your branch>`). "Registration failed": the reason is pushed on your branch for the orchestrator; stop at once.
 Then the loop of part 3, and
-`run("orchestra", "push", {})` after every step. A question: `run("orchestra", "question", {"question"})`, then
-send it with `send_message`. Last: `run("orchestra", "handback", {"changed", "checked", "notChecked", "risks",
-"testsChanged"})`, send the one line it gives, and stop. Never AskUserQuestion, a plan of its own, a merge or a close.
+`run("orchestra", "push", {})` after every step. A question: `run("orchestra", "question", {"question"})`. Last:
+`run("orchestra", "handback", {"changed", "checked", "notChecked", "risks", "testsChanged"})`. Both are pushed, and
+the harness posts each as a comment on your draft pull request: that is how your words reach the orchestrator, whom
+the CI result of your push wakes. Never `send_message` (auto mode refuses it), then stop. Never AskUserQuestion, a
+plan of its own, a merge or a close.
 
 ## 3. Build each step
 1. Edit only the files the plan names; any other file is refused.

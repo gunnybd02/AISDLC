@@ -20,7 +20,7 @@ from harness.utils.plan.closing import close_answers, delivery
 from harness.utils.plan.life import accepts as drop_accepts
 from harness.utils.plan.ship import mr_accepts
 from harness.utils.gateway.release import accepts as release_accepts
-from harness.utils.orchestra import child, draft, register, synced
+from harness.utils.orchestra import child, doorbell, draft, register, synced
 from harness.utils.orchestra.cleanup import removal_accepts
 from harness.utils.plan.request import FORM_ONLY
 from harness.utils.shapes import Facts
@@ -175,6 +175,7 @@ class Act:
                 role = self.port.write(lambda con, rec: child.bind(con, event.session, text))
                 if role:
                     notes.append(BOUND.format(name=role["name"], plan=role["plan"]))
+            notes += doorbell.rung(self.port, event)  # a CI result woke a parent: the doorbell reads it
         if event.kind == "PostToolUse":
             notes += approvals(self.port, event.session, facts.get("answers") or {})
             notes += accepts(self.port, facts.get("answers") or {})

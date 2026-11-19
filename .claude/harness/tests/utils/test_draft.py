@@ -98,6 +98,67 @@ class DraftTest(DraftScenario):
         self.assertIsInstance(self.port.ticket("s1")[draft.DRAFTS]["hello"]["watched"], int)
         self.assertIn("runs in session session_child0001", self.started())
 
+    def test_the_brief_and_the_record_of_the_child_name_its_draft(self):
+        """s1.child.pr: spawn opens the draft first; the brief says it, and the child's role keeps it."""
+        from harness.utils.orchestra import child
+        text = self.spawn()
+        prompt = json.loads(text[text.index("\n{") + 1:])["prompt"]
+        self.assertIn("Your draft pull request is #5 (https://github.com/o/r/pull/5)", prompt)
+        self.assertEqual(child.parse(prompt)["record"]["pr"],
+                         {"repo": "o/r", "number": 5, "url": "https://github.com/o/r/pull/5"})
+
+
+class SayTest(unittest.TestCase):
+    """A child whose brief names its draft: question and handback reach the parent as comments the harness posts."""
+    PR = {"repo": "o/r", "number": 5, "url": "https://github.com/o/r/pull/5"}
+    REPORT = {"changed": ["app/orders.py lists orders"], "checked": ["tests pass"], "notChecked": [],
+              "risks": ["paging is not done"], "testsChanged": []}
+
+    def setUp(self):
+        from harness.assemble.engine.ports import LedgerPort
+        from harness.assemble.engine.runner import Act
+        from harness.utils.contracts import Event, Verdict
+        from harness.utils.orchestra import brief, work
+        from harness.tests.e2e import copy_tree, git_repo
+        from harness.tests.utils.test_work import CARD
+        self.port, self.repo, origin = LedgerPort(copy_tree(self)), git_repo(self, {"a.py": "X = 1\n"}), tree(self, {})
+        git(origin, "init", "-q", "--bare")
+        git(self.repo, "remote", "add", "origin", str(origin))
+        self.calls = []
+        for sid, pr in (("c1", self.PR), ("c2", None)):
+            prompt = brief.brief(7, "pd-x", CARD, "session_p1", rounds=3, pr=pr)
+            Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": prompt}, sid, str(self.repo)), {},
+                               Verdict("allow"))
+        work.take(self.port, "c1", str(self.repo))
+
+    def github(self, method, path, fields=None):
+        self.calls.append((method, path, dict(fields or {})))
+        return {"id": 900 + len(self.calls), "html_url": f"https://github.com/o/r/pull/5#issuecomment-{len(self.calls)}"}
+
+    def ctx(self, sid="c1"):
+        allow = __import__("harness.utils.contracts", fromlist=["Verdict"]).Verdict("allow")
+        return ActionContext({"plans": self.port, "session": lambda: sid, "commit_judge": lambda *a: allow,
+                              "git_judge": lambda *a: allow, "store": lambda: "", "github": self.github})
+
+    def test_question_and_handback_are_posted_on_the_draft_and_recorded(self):
+        """s1.child.comment: each one comment with the harness marker; the child's ledger keeps its id and hash."""
+        from harness.mcp.actions.orchestra import Handback, Question
+        text = Question().run(self.ctx(), {"question": "Which status code for a closed account?"})
+        self.assertTrue(text.startswith("It is posted on your draft pull request #5 as a comment"))
+        Handback().run(self.ctx(), self.REPORT)
+        (m1, p1, f1), (m2, p2, f2) = self.calls
+        self.assertEqual((m1, p1, p2), ("POST", "repos/o/r/issues/5/comments", "repos/o/r/issues/5/comments"))
+        self.assertEqual(f1["body"].split("\n\n")[:2], ["**Question of api** (plan 7)",
+                                                         "Which status code for a closed account?"])
+        self.assertTrue(f1["body"].endswith('<!-- harness-comment {"child": "api", "kind": "question", "plan": 7} -->'))
+        self.assertIn("Changed: app/orders.py lists orders\n\nChecked: tests pass\n\nNot checked: none\n\n"
+                      "Risks: paging is not done", f2["body"])
+        rows = self.port.rows("SELECT key, target, text FROM pl_notes WHERE kind = 'child.said' ORDER BY rowid")
+        self.assertEqual([r["key"] for r in rows], ["question", "handback"])
+        self.assertEqual(json.loads(rows[0]["text"])["id"], 901)
+        self.assertEqual(draft.say(self.port, "c2", "question", ["x"], self.github), "")  # no draft: nothing posted
+        self.assertEqual(len(self.calls), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
