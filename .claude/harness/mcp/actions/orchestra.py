@@ -132,7 +132,7 @@ class Spawn(McpAction):
             watch = (f"First watch its draft pull request #{pr['number']} ({pr['url']}), so a CI result of any push "
                      f"wakes you: {drafts.WATCH} {json.dumps(drafts.watch_call(pr))}. Then ")
         prompt = briefs.brief(plan, draft, card, sid, unit, fresh.get("note", ""), rounds=limits["rounds"], start=start,
-                              issue=issue, ticket_file=made, pr=pr)
+                              issue=issue, ticket_file=made, pr=pr, cloud=briefs.cloud_id())
         call = briefs.create_call(plan, card, prompt, url, args.get("model", ""))
         where = "" if url else (" The unit's repository has no URL another machine can clone: add source_url to "
                                 "the call by hand.")

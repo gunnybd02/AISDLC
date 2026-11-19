@@ -66,5 +66,27 @@ class ChildTest(unittest.TestCase):
         self.assertIn("Turn guards off", Grant().run(other, {"minutes": 5, "why": "w"}))
 
 
+class CloudIdTest(unittest.TestCase):
+    """The brief names the parent's cloud session (live run 2: the child saw only the harness id)."""
+
+    def test_a_cloud_parent_is_named_by_its_session_id_and_its_harness_id(self):
+        """s3.brief.cloud-id: cse_<id> is session_<id>; the card block keeps the harness id for the receipt."""
+        cloud = brief.cloud_id({brief.CLOUD: "cse_01EXL6xW2pvoe3ouq71pxrEU"})
+        self.assertEqual(cloud, "session_01EXL6xW2pvoe3ouq71pxrEU")
+        text = brief.brief(7, "pd-x", CARD, "330e9430-harness", rounds=3, cloud=cloud)
+        self.assertIn("orchestrator session session_01EXL6xW2pvoe3ouq71pxrEU (harness id 330e9430-harness).", text)
+        self.assertIn("(session session_01EXL6xW2pvoe3ouq71pxrEU (harness id 330e9430-harness))", text)
+        self.assertEqual(child.parse(text)["parent"], "330e9430-harness")
+
+    def test_without_the_cloud_the_brief_names_the_harness_id_only(self):
+        """s3.brief.no-cloud: no variable, or a value that is no cloud id, changes nothing."""
+        for env in ({}, {brief.CLOUD: ""}, {brief.CLOUD: "local-123"}):
+            self.assertEqual(brief.cloud_id(env), "")
+        self.assertEqual(brief.cloud_id({brief.CLOUD: "session_01abc"}), "session_01abc")
+        self.assertEqual(brief.brief(7, "pd-x", CARD, "session_parent01", rounds=3, cloud=""), BRIEF)
+        self.assertIn("orchestrator session session_parent01.", BRIEF)
+        self.assertEqual(brief.brief(7, "pd-x", CARD, "session_parent01", rounds=3, cloud="session_parent01"), BRIEF)
+
+
 if __name__ == "__main__":
     unittest.main()
