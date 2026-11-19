@@ -1,0 +1,71 @@
+{
+ "at": 1795087328873,
+ "base": "a94a31178c6eda0f996d842011e49cc0e724e6e9",
+ "behaviours": {
+  "p29.hello.ac1": {
+   "status": "active",
+   "tests": [
+    "orch-probe/test_hello_ac.py"
+   ],
+   "what": "AC1: hello(\"Ann\") returns \"Hello, Ann\""
+  },
+  "p29.hello.ac2": {
+   "status": "active",
+   "tests": [
+    "orch-probe/test_hello_ac.py"
+   ],
+   "what": "AC2: hello(\"\") raises ValueError"
+  }
+ },
+ "branch": "orch/p29/hello",
+ "cardPlan": 1,
+ "commits": [
+  {
+   "files": [
+    "orch-probe/hello.py"
+   ],
+   "sha": "28fa352d5ad77bb2cb0c80c4a4e4c53a39adf2ae"
+  }
+ ],
+ "draft": "pd-mwnffxab-0383ec",
+ "name": "hello",
+ "parent": "330e9430-888c-5a3d-888b-9df46a0b1e0c",
+ "plan": 29,
+ "refused": [],
+ "report": {
+  "added": [],
+  "changed": [
+   "orch-probe/hello.py: new hello(name) returns \"Hello, <name>\" and raises ValueError on an empty name"
+  ],
+  "checked": [
+   "harness verify green: the locked orch-probe/test_hello_ac.py passes (AC1, AC2)"
+  ],
+  "faults": [],
+  "notChecked": [
+   "Non-string input (None, numbers) and whitespace-only names: not in the ACs"
+  ],
+  "risks": [
+   "A whitespace-only name like \" \" is accepted as a name"
+  ],
+  "testsChanged": []
+ },
+ "session": "e4ce8f9b-82ad-5d36-a899-d16a0ba645e6",
+ "uncommitted": [],
+ "unit": {
+  "base": "main",
+  "name": "probe",
+  "path": ".",
+  "repo": "https://github.com/gunnybd02/AISDLC",
+  "verify": [
+   "{python}",
+   "-m",
+   "unittest",
+   "discover",
+   "-s",
+   "orch-probe",
+   "-t",
+   "orch-probe"
+  ]
+ },
+ "verify": "ok"
+}
