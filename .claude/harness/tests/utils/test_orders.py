@@ -306,5 +306,35 @@ class CatchUpTest(unittest.TestCase):
         self.assertIn("the repository moved", self.step())
 
 
+class ChildCommitTest(unittest.TestCase):
+    """Live run 6: the git.commit door wrote no "#N name: " prefix in a child, so harness ci failed its subjects rule."""
+
+    def test_a_git_commit_of_a_child_names_its_issue_once(self):
+        """s2.ship.child-subject"""
+        from harness.assemble.engine.ports import LedgerPort
+        from harness.utils.orchestra import brief, work
+        from harness.utils.plan.ship import git_commit
+        from harness.tests.e2e import copy_tree, git_repo
+        from harness.tests.utils.test_work import CARD
+        port, repo = LedgerPort(copy_tree(self)), git_repo(self, {"a.py": "X = 1\n"})
+        card = {**CARD, "change": ["docs/notes.md"], "tests": []}
+        Act(port).run(Event("UserPromptSubmit", "", {"prompt": brief.brief(7, "pd-x", card, "s-p", rounds=3)}, "c1",
+                            str(repo)), {}, Verdict("allow"))
+        work.take(port, "c1", str(repo))
+
+        def numbered(con, rec):
+            fresh = plan_tickets.latest(con, "c1")
+            role = {**fresh["child"], "record": {"issue": {"number": 41}}}
+            plan_tickets.save(con, {**fresh, "child": role})
+        port.write(numbered)
+        allow = lambda repo, paths, text: Verdict("allow")  # noqa: E731
+        for message, n in (("Write the notes", 1), ("#41 api: Write more notes", 2)):
+            (repo / "docs").mkdir(exist_ok=True)
+            (repo / "docs" / "notes.md").write_text("notes\n" * n, encoding="utf-8")
+            git_commit(port, "c1", ["docs/notes.md"], message, allow)
+            self.assertEqual(git(repo, "log", "-1", "--format=%s").strip(),
+                             "#41 api: " + message.removeprefix("#41 api: "))
+
+
 if __name__ == "__main__":
     unittest.main()
