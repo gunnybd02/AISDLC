@@ -136,6 +136,19 @@ class CiTest(unittest.TestCase):
         self.assertTrue(ci.has_code(str(self.repo), "plan/p7", "feature"))  # no child branch: the tests run
         self.assertTrue(ci.has_code(str(self.repo), "no-such-base", "orch/p7/api"))  # not readable: they run
 
+    def test_check_and_has_code_judge_the_commit_under_test(self):
+        """s2.ci.commit-under-test: live run 5 ran the tests of the registration commit after code was pushed."""
+        registration = git(self.repo, "rev-parse", "HEAD~2").strip()  # under it: code, then the handback
+        self.assertTrue(ci.has_code(str(self.repo), "plan/p7", "orch/p7/api"))  # the tip has code
+        self.assertFalse(ci.has_code(str(self.repo), "plan/p7", "orch/p7/api", registration))
+        results = {rule: (ok, why) for rule, ok, why in ci.check(str(self.repo), "plan/p7", "orch/p7/api", self.github,
+                                                                  registration)}
+        self.assertEqual([rule for rule, (ok, _) in results.items() if not ok], [])
+        self.commit({"app/other.py": "1\n"}, "#41 api: out of scope")  # a later push on the tip
+        self.assertIn("scope", [r for r, ok, _ in ci.check(str(self.repo), "plan/p7", "orch/p7/api", self.github) if not ok])
+        ok, _ = ci.report(str(self.repo), "plan/p7", "orch/p7/api", self.github, registration)
+        self.assertTrue(ok)  # the commit under test is judged, not the later tip
+
 
 if __name__ == "__main__":
     unittest.main()

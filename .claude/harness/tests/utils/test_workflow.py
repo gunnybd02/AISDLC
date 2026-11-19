@@ -35,7 +35,8 @@ class WorkflowTest(unittest.TestCase):
             'git -C "$RUNNER_TEMP/harness" checkout --quiet 1a72c5c17b459e9527827cf5afc173f90a887da8'])
         self.assertEqual((ci["id"], ci["env"]), ("ci", {"GH_TOKEN": "${{ github.token }}"}))
         self.assertEqual(ci["run"].strip(), 'python "$RUNNER_TEMP/harness/.claude/harness/entry/cli.py" ci --base '
-                                            '"$GITHUB_BASE_REF" --head "$GITHUB_HEAD_REF"')
+                                            '"$GITHUB_BASE_REF" --head "$GITHUB_HEAD_REF" '
+                                            '--sha "${{ github.event.pull_request.head.sha }}"')
         self.assertEqual([(t["name"], t.get("working-directory"), t["run"].strip()) for t in tests], [
             ("tests of api", "services/api", "python -m unittest"),
             ("tests of web (1)", None, "python tests/test_a_ac.py"),
@@ -51,6 +52,11 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(len(steps), 3)
         for n in steps:
             self.assertTrue(lines[n + 1].endswith("&& steps.ci.outputs.code == 'yes' }}"), lines[n + 1])
+
+    def test_harness_ci_is_given_the_commit_under_test(self):
+        """s2.workflow.head-sha: the job passes the pull request's head sha (live run 5: the tip raced the test)."""
+        text = workflow.text(7, [API], SOURCE)
+        self.assertIn('--sha "${{ github.event.pull_request.head.sha }}"', text)
 
     def test_only_a_public_url_and_a_full_commit_are_pinned(self):
         for source in ({"url": "https://user:" + "x@github.com/o/h", "sha": SOURCE["sha"]},  # credentials in it
