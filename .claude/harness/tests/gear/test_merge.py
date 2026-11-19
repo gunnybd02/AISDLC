@@ -53,6 +53,21 @@ class MergeGateTest(unittest.TestCase):
         self.assertEqual(found(TOOLS[0], {"owner": "o"}), [("merge.no_head", "the pull request")])
         self.assertEqual(JUDGE.codes["merge.no_head"]["verdict"], "refuse")
 
+    def test_a_shell_merge_with_gh_is_refused(self):
+        """s3.merge.shell: gh pr merge and gh api on a pulls/<n>/merge path; other gh calls are free."""
+        for command in ("gh pr merge 76 --merge", "cd x && gh pr merge --squash", "gh api -X PUT repos/o/r/pulls/76/merge",
+                        "gh  api repos/o/r/pulls/76/merge -f merge_method=squash"):
+            with self.subTest(command=command):
+                hits = found("Bash", {"command": command})
+                self.assertEqual([k for k, _ in hits], ["merge.shell"])
+                self.assertTrue(hits[0][1].startswith("gh"))
+        for command in ("gh pr view 76", "gh api repos/o/r/pulls/76", "gh api repos/o/r/pulls/76/files",
+                        "echo merge", "gh pr list --search merge"):
+            with self.subTest(command=command):
+                self.assertEqual(found("Bash", {"command": command}), [])
+        self.assertEqual(found("PowerShell", {"command": "gh pr merge 76"})[0][0], "merge.shell")
+        self.assertEqual(JUDGE.codes["merge.shell"]["verdict"], "refuse")
+
 
 class MergeGateFlowTest(unittest.TestCase):
     """The hook's whole pipeline: refused, the user's Allow, then the merge runs once."""

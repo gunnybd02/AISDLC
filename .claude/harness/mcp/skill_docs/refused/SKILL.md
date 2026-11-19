@@ -56,7 +56,8 @@ the ledger store on Drive only grows (`guide("store", "skills")`). Uploading and
 ## Merges
 `merge.no_pass`: a pull request is merged only with the user's Allow for it at its head commit. Ask the question in
 brackets with AskUserQuestion (options Allow, Deny), then call the merge tool again, once, with the same
-expectedHeadSha. `merge.no_head`: name expectedHeadSha, the full head sha. One Allow is one merge.
+expectedHeadSha. `merge.no_head`: name expectedHeadSha, the full head sha. `merge.shell`: `gh pr merge` or a
+`gh api` merge goes around the form: use the merge tool. One Allow is one merge.
 
 ## Orchestra
 | Answer | Meaning | Move |
