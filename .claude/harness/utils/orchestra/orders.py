@@ -20,16 +20,55 @@ import re
 import secrets
 from typing import Any
 
+from harness.utils.plan import tickets
+from harness.utils.shapes import PlanStore
+
 KINDS = ("fix", "answer", "stop")
 END = "end of order"
 LINE = re.compile(r"orch (?P<plan>\d+) \| child (?P<name>[a-z0-9][a-z0-9-]{0,39}) \| issue #(?P<issue>\d+) "
                   r"(?P<sha>[0-9a-f]{12}) \| round (?P<round>\d+) \| kind (?P<kind>[a-z]+) \| mac (?P<mac>[0-9a-f]{32})")
 MOST = 4000  # characters of a body
+KEYS = "orderKeys"  # the parent's ticket: {child name: its key}, made at its first spawn and kept
 
 
 def new_key() -> str:
     """A fresh key for one child: 32 hex characters from the system's random source."""
     return secrets.token_hex(16)
+
+
+def key_for(port: PlanStore, sid: str, name: str) -> str:
+    """The order key of a child: made at its first spawn and kept in the parent's ticket, so a fresh session of the
+    same child gets the same key.
+
+    Args:
+        port: the ledger port.
+        sid: the parent's session.
+        name: the child's name.
+
+    Returns:
+        The key.
+    """
+    def write(con: Any, rec: Any) -> str:
+        ticket = tickets.latest(con, sid) or {}
+        held = dict(ticket.get(KEYS) or {})
+        if not held.get(name):
+            held[name] = new_key()
+            tickets.save(con, {**ticket, KEYS: held})
+        return held[name]
+    return port.write(write)
+
+
+def of_role(role: Any) -> dict[str, Any]:
+    """The order fields a child's brief gave it: {key, cloud (the parent's cloud session), rounds}; {} for none.
+
+    Args:
+        role: the child's role (utils/orchestra/child.parse).
+
+    Returns:
+        The fields, or {}.
+    """
+    held = ((role or {}).get("record") or {}).get("orders") or {}
+    return held if isinstance(held, dict) and held.get("key") else {}
 
 
 def plain(body: str) -> str:

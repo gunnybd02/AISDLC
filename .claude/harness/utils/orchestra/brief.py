@@ -81,7 +81,7 @@ def child_subject(role: dict[str, Any], what: str) -> str:
 
 def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[str, Any] | None = None,
                start: str = "", issue: dict[str, Any] | None = None, ticket_file: dict[str, Any] | None = None,
-               pr: dict[str, Any] | None = None) -> str:
+               pr: dict[str, Any] | None = None, orders: dict[str, Any] | None = None) -> str:
     """The card as the child's harness reads it: one JSON object between CARD_OPEN and CARD_CLOSE.
 
     Args:
@@ -95,6 +95,7 @@ def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[st
         issue: its issue {repo, number, url, sha} (utils/orchestra/issues.py); None for none.
         ticket_file: the plan's ticket file {title, sha256} in the store's tickets folder; None for none.
         pr: its draft pull request {repo, number, url} (utils/orchestra/draft.py); None for none.
+        orders: what it checks the parent's orders with, {key, cloud, rounds} (utils/orchestra/orders.py); None.
 
     Returns:
         The block, three lines.
@@ -105,7 +106,8 @@ def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[st
             **({"start": start} if start else {}),
             **({"issue": {k: issue.get(k) for k in ("repo", "number", "url", "sha")}} if issue else {}),
             **({"ticket": {k: ticket_file.get(k) for k in ("title", "sha256")}} if ticket_file else {}),
-            **({"pr": {k: pr.get(k) for k in ("repo", "number", "url")}} if pr else {})}
+            **({"pr": {k: pr.get(k) for k in ("repo", "number", "url")}} if pr else {}),
+            **({"orders": {k: orders.get(k) for k in ("key", "cloud", "rounds")}} if orders else {})}
     return "\n".join([CARD_OPEN, json.dumps(body, ensure_ascii=False, sort_keys=True), CARD_CLOSE])
 
 
@@ -124,7 +126,8 @@ def listed(label: str, paths: list[str]) -> str:
 
 def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, Any] | None = None,
           resume: str = "", *, rounds: int, start: str = "", issue: dict[str, Any] | None = None,
-          ticket_file: dict[str, Any] | None = None, pr: dict[str, Any] | None = None, cloud: str = "") -> str:
+          ticket_file: dict[str, Any] | None = None, pr: dict[str, Any] | None = None, cloud: str = "",
+          key: str = "") -> str:
     """The first prompt of a child: who it is, its work, how it is approved, that nobody is at its keyboard, its
     permissions, how it asks and hands back, its files and criteria, and the card block.
 
@@ -142,6 +145,7 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
         ticket_file: the plan's ticket file {title, sha256} in the store's tickets folder; None for none.
         pr: its draft pull request {repo, number, url}; None for none.
         cloud: the parent's cloud session id (cloud_id), named beside parent_sid; "" outside the cloud.
+        key: the child's order key (utils/orchestra/orders.key_for); "" for none.
 
     Returns:
         The brief, as the prompt of create_session.
@@ -201,7 +205,8 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
         "\n".join(x for x in (listed("Read", card.get("read", [])), listed("Change", card.get("change", [])),
                               listed("Tests", card.get("tests", []))) if x),
         f"{judged} It may send you back at most {rounds} times; then the user decides.\n" + "\n".join(acs),
-        card_block(plan, card, parent_sid, draft, spec, start, issue, ticket_file, pr),
+        card_block(plan, card, parent_sid, draft, spec, start, issue, ticket_file, pr,
+                   {"key": key, "cloud": cloud, "rounds": rounds} if key else None),
     ]
     return "\n\n".join(p for p in parts if p)
 
