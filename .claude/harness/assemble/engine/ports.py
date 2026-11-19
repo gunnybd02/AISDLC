@@ -27,6 +27,7 @@ from harness.assemble.engine.ticket_port import TicketPort
 from harness.utils.contracts import Event, Finding, Port
 from harness.utils.git.branches import DEFAULT_PROTECTED, current, is_protected
 from harness.utils.git.facts import top, unpushed_files
+from harness.utils.forge import merges
 from harness.utils.forge.protection import ask_github, protected_names
 from harness.utils.plan import grants, stop, tickets
 from harness.utils.plan.verify import dirty
@@ -350,7 +351,8 @@ class PlanState(Port):
         (plan -> code files no green verify saw, but those another writer changed), stop_foreign (plan -> those),
         stop_outside (plan -> files the session changed that the plan does not name), banned, store_owed (() -> the
         unsaved work of the store), child_role
-        (() -> the session's ChildRole when it is a child of a delegated plan, else None); after a shell line checked
+        (() -> the session's ChildRole when it is a child of a delegated plan, else None), merge_pass (code -> whether
+        the user's pass for that merge is unused: utils/forge/merges.py); after a shell line checked
         after it ran (auto mode), after_writes (the files it changed) and after_unseen (repositories it could not
         read again)."""
         plan = self.port.approved(event.session)
@@ -360,7 +362,8 @@ class PlanState(Port):
                  "stop_foreign": lambda plan: stop.foreign(self.port, plan, self.port.written(event.session)),
                  "stop_outside": lambda plan: stop.outside(plan, self.port.written(event.session)),
                  "store_owed": lambda: store.owed(self.port) if store.folder() else [],
-                 "child_role": lambda: child.role_of(self.port.ticket(event.session)) if event.session else None}
+                 "child_role": lambda: child.role_of(self.port.ticket(event.session)) if event.session else None,
+                 "merge_pass": lambda code: merges.held(self.port, code)}
         if event.kind == "PostToolUse" and event.call and event.tool in writes.SHELLS:
             shots = self.port.read(lambda con: writes.before_of(con, event.call))
             if shots is not None:

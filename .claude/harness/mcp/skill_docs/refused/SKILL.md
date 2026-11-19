@@ -53,6 +53,11 @@ or a wildcard, a loop, inline code that may write, a git that changes the work t
 `drive.remove`, `drive.move`: a Drive file would be trashed, moved or renamed. The user is asked each time, because
 the ledger store on Drive only grows (`guide("store", "skills")`). Uploading and reading are free.
 
+## Merges
+`merge.no_pass`: a pull request is merged only with the user's Allow for it at its head commit. Ask the question in
+brackets with AskUserQuestion (options Allow, Deny), then call the merge tool again, once, with the same
+expectedHeadSha. `merge.no_head`: name expectedHeadSha, the full head sha. One Allow is one merge.
+
 ## Orchestra
 | Answer | Meaning | Move |
 |---|---|---|
