@@ -131,6 +131,14 @@ class SkillsTest(unittest.TestCase):
                      "required check of the plan branch"):
             self.assertIn(part, text)
 
+    def test_the_orchestrate_skill_says_spawn_opens_a_draft_and_started_waits_for_the_watch(self):
+        """s4.docs.draft: the start commit, the draft pull request, the watch call first, and started waiting."""
+        text = " ".join(Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs").get("orchestrate").text.split())
+        for part in ("opens its draft pull request into the plan branch, once", "begins with the watch call",
+                     "`mcp__claude-code-remote__subscribe_pr_activity {owner, repo, pullNumber}`",
+                     "started waits for it", "Accept later makes that draft ready"):
+            self.assertIn(part, text)
+
     def test_the_store_skill_says_copies_are_gzipped(self):
         """s2.docs.gzip: a person can open a copy."""
         text = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs").get("store").text

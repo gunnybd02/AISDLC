@@ -135,8 +135,11 @@ class LockedScenario(Scenario):
         (self.repo / "orch-probe").mkdir()
         (self.repo / "orch-probe" / "test_hello_ac.py").write_text(AC_TEST, encoding="utf-8")
         self.locked_text = locked.lock(self.port, "s1", LOCKED_UNITS, HARNESS)
+        from harness.utils.plan import tickets as plan_tickets
+        self.port.write(lambda con, rec: plan_tickets.save(con, {**plan_tickets.latest(con, "s1"), "drafts": {
+            "hello": {"repo": "o/r", "number": 5, "url": f"{URL}/pull/5", "node": "PR_kw5", "watched": 1}}}))
         Started().run(ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3}}),
-                      {"name": "hello", "sid": "session_child0001"})
+                      {"name": "hello", "sid": "session_child0001"})  # its draft is open and watched, as spawn leaves it
 
     def hand_back(self, receipt=None, code=CODE, ac=AC_TEST, flow=None):
         """Push the child's branch, made from the plan branch: its code (and the acceptance test as given, and the CI
@@ -175,6 +178,25 @@ class LockedCheckTest(LockedScenario):
         unit, = self.port.ticket("s1")[locked.LOCK]["units"]
         self.assertEqual(unit["workflow"], hashlib.sha256(flow.encode("utf-8")).hexdigest())
         self.assertIn("the CI workflow .github/workflows/harness-ci.yml pins the harness at aaaaaaaaaaaa", self.locked_text)
+
+    def test_accept_makes_the_draft_ready_and_names_the_issue_in_its_commit(self):
+        """s3.draft.ready and s3.commit.receipt: no new pull request; the receipt commit starts "#41 hello: "."""
+        from harness.utils.orchestra import issues
+        from harness.utils.plan import tickets as plan_tickets
+        self.port.write(lambda con, rec: plan_tickets.save(con, {**plan_tickets.latest(con, "s1"), issues.ISSUES: {
+            "children": {"hello": {"repo": "o/r", "number": 41, "url": f"{URL}/issues/41", "sha": "a" * 64}}}}))
+        calls = []
+        self.hand_back()
+        self.assertIn("Green", self.check())
+        text = review.accept(self.port, "s1", "hello", LOCKED_UNITS,
+                             lambda method, path, fields=None: calls.append((method, path, dict(fields or {}))) or {})
+        self.assertIn(f"pull request #5 ({URL}/pull/5) from orch/p{self.plan}/hello into plan/p{self.plan}", text)
+        (method, path, fields), = calls
+        self.assertEqual((method, path), ("POST", "graphql"))
+        self.assertIn('markPullRequestReadyForReview(input: {pullRequestId: "PR_kw5"})', fields["query"])
+        self.assertEqual(self.port.ticket("s1")["crew"]["hello"]["pr"]["number"], 5)
+        self.assertEqual(git(self.origin, "log", "-1", "--format=%s", f"orch/p{self.plan}/hello").strip(),
+                         "#41 hello: Keep the receipt of hello out of work")
 
     def test_the_check_refuses_a_changed_workflow(self):
         """s2.check.workflow: a child branch whose workflow is not the locked one is not green."""

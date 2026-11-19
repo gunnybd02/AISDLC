@@ -20,7 +20,7 @@ from harness.utils.plan.closing import close_answers, delivery
 from harness.utils.plan.life import accepts as drop_accepts
 from harness.utils.plan.ship import mr_accepts
 from harness.utils.gateway.release import accepts as release_accepts
-from harness.utils.orchestra import child, register, synced
+from harness.utils.orchestra import child, draft, register, synced
 from harness.utils.orchestra.cleanup import removal_accepts
 from harness.utils.plan.request import FORM_ONLY
 from harness.utils.shapes import Facts
@@ -189,6 +189,7 @@ class Act:
             notes += store.uploaded(self.port, event)  # a Drive tool answered with a copy of the ledger
             notes += store.placed(self.port, event)  # a Drive tool showed the store's db or tickets folder
             notes += register.ticket_seen(self.port, event)  # a child's ticket, checked now and not kept
+            notes += draft.watch_seen(self.port, event)  # the parent watches a child's draft pull request
             from harness.assemble.engine.cli_live import after_merge  # cli_live imports build, which imports this
             notes += after_merge(Path(self.port.path).parent.parent, event)  # the harness's main merged: put it in force
             plan = facts.get("plan")

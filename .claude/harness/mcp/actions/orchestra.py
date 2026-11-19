@@ -31,6 +31,7 @@ from harness.utils.git.run import GitError, git
 from harness.utils.ledger import store
 from harness.utils.orchestra import brief as briefs
 from harness.utils.orchestra import crew, issues, locked, register, work
+from harness.utils.orchestra import draft as drafts  # draft is also the desk id of a plan here
 from harness.utils.orchestra.card import in_force, plan_units, unit_spec
 from harness.utils.plan.item_checks import run_limits
 from harness.utils.shapes import PlanStore, Ticket
@@ -89,18 +90,19 @@ def room(port: PlanStore, sid: str, name: str, cap: int) -> tuple[int, str, Any]
 
 class Spawn(McpAction):
     """orchestra.spawn: the brief of a child and the create_session call that opens it."""
-    block, name, effect = "orchestra", "spawn", READ
+    block, name, effect = "orchestra", "spawn", WRITE
     summary = ("Start a child of the delegated plan in force: the answer is its brief and the create_session call to "
-               "make; then record it with started {name, sid}")
+               "make (with locked tests, first the watch of its draft pull request); then record it with started")
     args_schema = {"type": "object", "properties": {"name": NAME_ARG, "model": {"type": "string"}},
                    "required": ["name"]}
-    needs = ("plans", "session", "units", "limits")
+    needs = ("plans", "session", "units", "limits", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """The brief and the create_session call of the named child; nothing is written until started. A child that
-        waits for a fresh session (a note on its branch) gets the brief of a fresh session. ActionError when no approved
-        delegated plan is in force, the name is no child of it, it has started, limits.children run, or its card names no
-        change paths or an open session to adopt."""
+        """The brief and the create_session call of the named child. With locked tests its draft pull request is opened
+        first, once (utils/orchestra/draft.py), and the answer gives the call that watches it. A child that waits for a
+        fresh session (a note on its branch) gets the brief of a fresh session. ActionError when no approved delegated
+        plan is in force, the name is no child of it, it has started, limits.children run, its card names no change
+        paths or an open session to adopt, or the draft cannot be opened."""
         sid = session_of(ctx)
         own = in_force(ctx.ports["plans"], sid)
         limits = run_limits(own, ctx.ports["limits"]())
@@ -126,7 +128,15 @@ class Spawn(McpAction):
         call = briefs.create_call(plan, card, prompt, url, args.get("model", ""))
         where = "" if url else (" The unit's repository has no URL another machine can clone: add source_url to "
                                 "the call by hand.")
-        return (f"Child {card['name']} of plan {plan}: open it with mcp__claude-code-remote__create_session and these "
+        watch = ""
+        if start:
+            try:
+                pr = drafts.open_draft(ctx.ports["plans"], sid, card, unit, ctx.ports["github"])
+            except drafts.DraftError as e:
+                raise ActionError(str(e)) from e
+            watch = (f"First watch its draft pull request #{pr['number']} ({pr['url']}), so a CI result of any push "
+                     f"wakes you: {drafts.WATCH} {json.dumps(drafts.watch_call(pr))}. Then ")
+        return (f"{watch}Child {card['name']} of plan {plan}: open it with mcp__claude-code-remote__create_session and these "
                 f"arguments, then record it at once: run('orchestra', 'started', {{name: '{card['name']}', sid: "
                 f"<the new session id>}}). Until then it does not count as running. Each child is a cloud session "
                 f"and costs as much as one.{where}\n" + json.dumps(call, ensure_ascii=False, indent=1))
@@ -214,13 +224,17 @@ class Started(McpAction):
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Write the child's crew entry (running, its session) and a story row in one transaction. ActionError for a
-        session id of the wrong shape, this session's own id, a session that is another child already, or any reason
+        session id of the wrong shape, this session's own id, a session that is another child already, a child of a
+        plan with locked tests whose draft pull request is not watched yet (utils/orchestra/draft.py), or any reason
         spawn refuses."""
         sid = session_of(ctx)
         cap = run_limits(in_force(ctx.ports["plans"], sid), ctx.ports["limits"]())["children"]
         child_sid = str(args["sid"]).strip()
         if not SESSION_ID.match(child_sid):
             raise ActionError(f"{child_sid!r} is no session id: give the id create_session answered (session_...)")
+        waiting = drafts.unwatched(ctx.ports["plans"].ticket(sid) or {}, str(args["name"]))
+        if waiting:  # with locked tests, a CI result must wake this session from the child's first push
+            raise ActionError(waiting)
         first = not ((ctx.ports["plans"].ticket(sid) or {}).get("crew"))  # no child started before this one
         try:
             entry = ctx.ports["plans"].write(lambda con, rec: crew.start(con, sid, args["name"], child_sid, cap,

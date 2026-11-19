@@ -104,6 +104,22 @@ class CiTest(unittest.TestCase):
         self.assertIn("work is not the plan branch plan/p7", self.failed(base="work")["base"])
         self.assertEqual(self.failed(head="feature")["branch"], "feature is no branch of a child (orch/p<plan>/<name>)")
 
+    def test_the_start_commit_of_the_parent_waits_then_is_skipped(self):
+        """s1.ci.waiting: the start commit alone is WAITING (exit 0); later the registration still comes first."""
+        record = (self.repo / ".harness" / "register" / "api.json").read_text(encoding="utf-8")
+        git(self.repo, "switch", "-q", "plan/p7")
+        git(self.repo, "branch", "-q", "-D", "orch/p7/api")
+        git(self.repo, "switch", "-q", "-c", "orch/p7/api")
+        self.commit({".harness/notes/api/start.md": "# Start of api\n"}, "#41 api: start")
+        ok, text = ci.report(str(self.repo), "plan/p7", "orch/p7/api", self.github)
+        self.assertTrue(ok)
+        self.assertEqual(text.splitlines()[1:], [f"WAIT: {ci.WAITING}.", "Result: WAITING, nothing to check yet."])
+        self.assertEqual(self.calls, [])
+        self.commit({".harness/register/api.json": record}, "#41 api: register (issue x, ticket y)")
+        self.commit({"app/orders.py": "ORDERS = []\n"}, "#41 api: List orders")
+        self.assertEqual(self.failed(), {})
+        self.assertIn("registers api for issue #41", self.results()["registered"][1])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -61,9 +61,14 @@ upload its answer gives, into the store's `tickets` folder (first find or make t
 reads Drive's answer and records it. For a plan with locked tests, spawn waits for the child's issue and, with a store
 folder, for the uploaded ticket file; the brief then names the issue and the ticket file.
 
-For each card: `run("orchestra", "spawn", {"name"})` gives the brief and the exact `create_session` call. Make the
-call, then at once `run("orchestra", "started", {"name", "sid": "<the new session id>"})`. After the first child, set
-the one check-in its answer gives (a child that dies silently wakes nobody).
+For each card: `run("orchestra", "spawn", {"name"})` gives the brief and the exact `create_session` call. With
+locked tests, spawn first pushes a start commit on the child's branch (`#N <name>: start`) and opens its draft pull
+request into the plan branch, once; its answer begins with the watch call,
+`mcp__claude-code-remote__subscribe_pr_activity {owner, repo, pullNumber}`. Make that call first: the harness
+records the watch from its answer, and started waits for it, so a CI result of the child's first push wakes you.
+Then make the `create_session` call, and at once `run("orchestra", "started", {"name", "sid": "<the new session
+id>"})`. After the first child, set the one check-in its answer gives (a child that dies silently wakes nobody).
+Accept later makes that draft ready; it is the one pull request land merges.
 
 ## 3. Wait
 Do not poll. Each child messages you once: "handed back <branch> <sha>". A question comes as a message too: answer
@@ -118,6 +123,8 @@ When every child has ended (accepted, forgotten or released): `run("orchestra", 
 | `a child has started` (lock) | the tests stay as they were locked |
 | `has no issue yet` (spawn) | `run("orchestra", "tickets", {})` |
 | `is not in the store yet` (spawn) | make the Drive upload the tickets answer gave |
+| `watch the draft pull request #N of <name> first` (started) | make the watch call it gives, then started again |
+| `is watched by another session or agent` (watch) | stop that watch, then watch it here again |
 | `lock the acceptance tests first` (tickets) | `run("orchestra", "lock", {})`, then tickets |
 | check: `asked a question` whose text starts `Registration failed` | the child's issue or ticket row did not match its brief; it did no work | read the reason; fix the plan (revise), or `forget` the child |
 | `has not passed a check this round` | check it first |

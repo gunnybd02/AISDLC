@@ -15,14 +15,17 @@ class PlanGitHub:
     """GitHub REST for a plan with a plan branch: each pull request merges its head into its own base on the real
     origin, through a clone of its own; the user's merge of the plan pull request is merge(n)."""
 
-    def __init__(self, origin, folder):
-        self.origin, self.folder, self.calls, self.prs = origin, folder, [], {}
+    def __init__(self, origin, folder, drafts=None):
+        self.origin, self.folder, self.calls = origin, folder, []
+        self.prs = {n: {"head": head, "base": base, "merged": False} for n, (head, base) in (drafts or {}).items()}
         git(folder, "clone", "-q", str(origin), ".")
         git(folder, "config", "user.name", "u")
         git(folder, "config", "user.email", "u@u")
 
     def __call__(self, method, path, fields=None):
         self.calls.append((method, path, dict(fields or {})))
+        if path == "graphql":  # a draft made ready
+            return {"data": {"markPullRequestReadyForReview": {"pullRequest": {"isDraft": False}}}}
         if method == "POST":
             n = 5 + len(self.prs)
             self.prs[n] = {"head": fields["head"], "base": fields["base"], "merged": False}
@@ -44,8 +47,8 @@ class PlanGitHub:
 
 class LockedLandTest(LockedScenario):
     def test_children_land_on_the_plan_branch_and_only_the_users_merge_delivers(self):
-        """s5.accept.plan-branch, s5.land.plan-pr, s5.land.delivered."""
-        github = PlanGitHub(self.origin, tree(self, {}))
+        """s5.accept.plan-branch, s5.land.plan-pr, s5.land.delivered: the child's draft #5 (spawn) is made ready."""
+        github = PlanGitHub(self.origin, tree(self, {}), {5: (f"orch/p{self.plan}/hello", f"plan/p{self.plan}")})
         self.hand_back()
         self.assertIn("Green", review.check(self.port, "s1", "hello", LOCKED_UNITS, []))
         self.assertIn(f"from orch/p{self.plan}/hello into plan/p{self.plan}",
@@ -65,7 +68,8 @@ class LockedLandTest(LockedScenario):
         self.assertIn("is delivered", text)
         self.assertEqual(self.port.ticket("s1")["state"], "closed")
         self.assertIn("orch-probe/hello.py", git(self.origin, "ls-tree", "-r", "--name-only", "work"))
-        self.assertEqual([c[2]["base"] for c in github.calls if c[0] == "POST"], [f"plan/p{self.plan}", "work"])
+        self.assertEqual([c[2]["base"] for c in github.calls if c[1].endswith("/pulls")], ["work"])  # the plan PR
+        self.assertEqual([c[1] for c in github.calls if c[0] == "POST"], ["graphql", "repos/o/r/pulls"])
 
 
 class LandTest(Scenario):
