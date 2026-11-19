@@ -117,6 +117,31 @@ class DoorbellTest(unittest.TestCase):
         self.assertFalse(any(n.startswith(line) for n in prompt("go on with the plan")))
         self.assertFalse(any(n.startswith(line) for n in prompt(wake, sid="s9")))  # no draft in that session
 
+    def test_a_github_notification_read_names_the_doorbell(self):
+        """s4.doorbell.rung-notifications: in the cloud the CI result is a notification; its answer gets the line,
+        as text or nested in an object."""
+        from harness.assemble.engine.runner import Act
+        from harness.utils.contracts import Event, Verdict
+        line = "A GitHub event woke you: run('orchestra', 'doorbell', {})."
+        wake = ('<wake reason="external-event"><event source="github" kind="check_run.completed" pr="5">harness-ci '
+                'completed: success</event></wake>\n0 remaining')
+        for answer in (wake, {"notifications": [{"body": wake}], "remaining": 0}):
+            notes = Act(self.port).run(Event("PostToolUse", doorbell.NOTIFICATIONS, {}, "s1", "/w", answer), {},
+                                       Verdict("allow"))
+            self.assertTrue(any(n.startswith(line) for n in notes))
+
+    def test_another_tool_or_a_notification_without_github_gets_no_line(self):
+        """s4.doorbell.rung-quiet: the line shows only when a GitHub event was read."""
+        from harness.utils.contracts import Event
+        wake = '<event source="github" kind="check_run.completed">harness-ci completed</event>'
+        self.assertEqual(doorbell.rung(self.port, Event("PostToolUse", "Bash", {}, "s1", "/w", wake)), [])
+        self.assertEqual(doorbell.rung(self.port, Event("PostToolUse", doorbell.NOTIFICATIONS, {}, "s1", "/w",
+                                                        "A scheduled check-in: look at the plan. 0 remaining")), [])
+        self.assertEqual(doorbell.rung(self.port, Event("PostToolUse", doorbell.NOTIFICATIONS, {}, "s9", "/w",
+                                                        wake)), [])  # no draft in that session
+        self.assertEqual(doorbell.rung(self.port, Event("PreToolUse", doorbell.NOTIFICATIONS, {}, "s1", "/w")), [])
+        self.assertEqual(doorbell.words({"a": ["x", {"b": "y"}], "n": 3}), ["x", "y"])
+
     def test_no_draft_and_an_ended_child(self):
         self.port.write(lambda con, rec: tickets.save(con, {**tickets.latest(con, "s1"),
                                                              "crew": {"api": {"sid": "x", "state": "accepted"}}}))

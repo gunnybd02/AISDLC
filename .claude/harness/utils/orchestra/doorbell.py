@@ -13,7 +13,8 @@ parent) and names the next step:
 - the receipt at the tip and CI green: check, then accept;
 - else: wait.
 
-A GitHub event in a prompt of a parent with drafts gets one line that names the doorbell (rung)."""
+A GitHub event in a prompt of a parent with drafts, or in the answer of ReadNotifications that reads it, gets
+one line that names the doorbell (rung)."""
 from __future__ import annotations
 
 import json
@@ -37,6 +38,7 @@ CHECK = "harness-ci"  # the job of the workflow (utils/orchestra/workflow.py), s
 RESULT, COMMENT = "ci.result", "child.comment"  # pl_notes kinds of the parent
 STAMP = re.compile(r"^\S+Z\s")  # the time GitHub puts before each line of a job's log
 EVENT = re.compile(r"source=[\"']?github|external-event", re.I)
+NOTIFICATIONS = "ReadNotifications"  # in the cloud a CI result is a notification the model reads with this tool
 MOST = 2000  # characters of a comment the ledger keeps
 MARKED = MARK.split("{")[0].strip()  # "<!-- harness-comment": a comment the harness of a child posted
 
@@ -188,21 +190,46 @@ def keep(port: PlanStore, sid: str, kind: str, target: str, key: str, body: dict
 
 
 def rung(port: PlanStore, event: Event) -> list[str]:
-    """At a prompt of a parent whose children have drafts: when it is a GitHub event (a CI result woke it), the line
-    that names the doorbell.
+    """At a prompt of a parent whose children have drafts, or at the answer of NOTIFICATIONS (live run 2: in the
+    cloud a CI result wakes the parent as a notification, not as a prompt): when it holds a GitHub event, the line that
+    names the doorbell.
 
     Args:
         port: the ledger port.
-        event: the UserPromptSubmit hook call.
+        event: the UserPromptSubmit hook call, or the PostToolUse call of any tool.
 
     Returns:
         The line, or [].
     """
-    if event.kind != "UserPromptSubmit" or not event.session:
+    if not event.session:
         return []
-    if not EVENT.search(str((event.input or {}).get("prompt") or "")):
+    if event.kind == "UserPromptSubmit":
+        said = str((event.input or {}).get("prompt") or "")
+    elif event.kind == "PostToolUse" and event.tool == NOTIFICATIONS:
+        said = "\n".join(words(event.response))
+    else:
+        return []
+    if not EVENT.search(said):
         return []
     if not (port.ticket(event.session) or {}).get(DRAFTS):
         return []
     return ["A GitHub event woke you: run('orchestra', 'doorbell', {}). The harness reads each child's CI result and "
             "new comments on GitHub itself, records them, and names the next step."]
+
+
+def words(value: Any) -> list[str]:
+    """Every text in a tool's answer, however it is nested (a JSON answer would hide quotes behind backslashes).
+
+    Args:
+        value: the answer: text, a list or an object.
+
+    Returns:
+        The texts, in order.
+    """
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [w for v in value.values() for w in words(v)]
+    if isinstance(value, (list, tuple)):
+        return [w for v in value for w in words(v)]
+    return []
