@@ -10,6 +10,7 @@
     "commit_facts",
     "drive_calls",
     "merge_calls",
+    "session_calls",
     "agent_places",
     "child_calls",
     "plan_paths"

@@ -7,6 +7,7 @@ ITEMS = [
     {"kind": "translator", "name": "shell_commit", "ref": "harness.gear.translate.git_rules:ShellCommit"},
     {"kind": "translator", "name": "drive_calls", "ref": "harness.gear.translate.drive:DriveCalls"},
     {"kind": "translator", "name": "merge_calls", "ref": "harness.gear.translate.merge:MergeCalls"},
+    {"kind": "translator", "name": "session_calls", "ref": "harness.gear.translate.session:SessionCalls"},
     {"kind": "translator", "name": "agent_places", "ref": "harness.gear.translate.agent:AgentPlaces"},
     {"kind": "translator", "name": "child_calls", "ref": "harness.gear.translate.child:ChildCalls"},
     {"kind": "translator", "name": "plan_paths", "ref": "harness.gear.translate.planfiles:PlanPaths"},

@@ -352,7 +352,8 @@ class PlanState(Port):
         stop_outside (plan -> files the session changed that the plan does not name), banned, store_owed (() -> the
         unsaved work of the store), child_role
         (() -> the session's ChildRole when it is a child of a delegated plan, else None), merge_pass (code -> whether
-        the user's pass for that merge is unused: utils/forge/merges.py), child_wait (() -> "", "waiting" or "stopped":
+        the user's pass for that merge is unused: utils/forge/merges.py), session_pass (the same for a session on a
+        model other than Sonnet: utils/forge/sessions.py), child_wait (() -> "", "waiting" or "stopped":
         utils/orchestra/orders.wait_of); after a shell line checked
         after it ran (auto mode), after_writes (the files it changed) and after_unseen (repositories it could not
         read again)."""
@@ -365,6 +366,7 @@ class PlanState(Port):
                  "store_owed": lambda: store.owed(self.port) if store.folder() else [],
                  "child_role": lambda: child.role_of(self.port.ticket(event.session)) if event.session else None,
                  "merge_pass": lambda code: merges.held(self.port, code),
+                 "session_pass": lambda code: merges.held(self.port, code),  # the one reader of a one-use pass
                  "child_wait": lambda: orders.wait_of(self.port.ticket(event.session)) if event.session else ""}
         if event.kind == "PostToolUse" and event.call and event.tool in writes.SHELLS:
             shots = self.port.read(lambda con: writes.before_of(con, event.call))
