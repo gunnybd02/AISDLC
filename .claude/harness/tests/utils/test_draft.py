@@ -108,6 +108,44 @@ class DraftTest(DraftScenario):
                          {"repo": "o/r", "number": 5, "url": "https://github.com/o/r/pull/5"})
 
 
+class ReadyTest(LockedScenario):
+    """accept makes the draft ready: GraphQL first, the cloud proxy's route when GraphQL is refused (live run 2)."""
+
+    def refusing(self, *refused):
+        calls = []
+
+        def github(method, path, fields=None):
+            calls.append((method, path))
+            if any(path.startswith(r) for r in refused):
+                raise draft.GitHubError(f"gh api {method} {path}: HTTP 403")
+            return {}
+        return github, calls
+
+    def test_a_refused_graphql_call_falls_back_to_the_route(self):
+        """s1.draft.ready-fallback: the draft is made ready through repos/o/r/pulls/5/ccr/ready_for_review."""
+        github, calls = self.refusing("graphql")
+        pr = draft.ready(self.port.ticket("s1"), "hello", github)
+        self.assertEqual(pr, {"number": 5, "html_url": "https://github.com/o/r/pull/5"})
+        self.assertEqual(calls, [("POST", "graphql"), ("POST", "repos/o/r/pulls/5/ccr/ready_for_review")])
+        github, calls = self.refusing()
+        draft.ready(self.port.ticket("s1"), "hello", github)
+        self.assertEqual(calls, [("POST", "graphql")])  # GraphQL answers: no second call
+
+    def test_both_refused_raise_and_accept_records_nothing(self):
+        """s1.draft.ready-refused: the route's error comes up; accept refuses and the child is not accepted."""
+        from harness.utils.orchestra import review
+        github, calls = self.refusing("graphql", "repos/")
+        with self.assertRaisesRegex(draft.GitHubError, "ccr/ready_for_review"):
+            draft.ready(self.port.ticket("s1"), "hello", github)
+        self.hand_back()
+        self.assertIn("Green", self.check())
+        with self.assertRaisesRegex(review.ReviewError, "not opened or made ready"):
+            review.accept(self.port, "s1", "hello", LOCKED_UNITS, github)
+        entry = self.port.ticket("s1")["crew"]["hello"]
+        self.assertNotEqual(entry["state"], "accepted")
+        self.assertNotIn("pr", entry)
+
+
 class SayTest(unittest.TestCase):
     """A child whose brief names its draft: question and handback reach the parent as comments the harness posts."""
     PR = {"repo": "o/r", "number": 5, "url": "https://github.com/o/r/pull/5"}
