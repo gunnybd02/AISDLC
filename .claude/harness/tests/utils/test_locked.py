@@ -90,6 +90,10 @@ class LockTest(unittest.TestCase):
         ctx = ActionContext({**self.ctx.ports, "github": github})
         Tickets().run(ctx, {"into": str(tree(self, {}))})
         self.assertIn("create_session", Spawn().run(ctx, {"name": "hello"}))  # it opens the draft pull request too
+        from harness.utils.contracts import Event
+        from harness.utils.orchestra import draft
+        draft.watch_seen(self.port, Event("PostToolUse", draft.WATCH, {"owner": "o", "repo": "r", "pullNumber": 41},
+                                          "s1", "/w", "Subscribed."))  # the parent watches the draft
         Started().run(self.ctx, {"name": "hello", "sid": "session_child0001"})
         with self.assertRaises(ActionError) as e:
             Lock().run(self.ctx, {})

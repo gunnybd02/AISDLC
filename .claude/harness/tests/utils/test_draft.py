@@ -34,7 +34,7 @@ class DraftScenario(LockedScenario):
 
     def setUp(self):
         super().setUp()
-        self.port.write(lambda con, rec: plan_tickets.save(con, {**self.port.ticket("s1"), "crew": {}}))
+        self.port.write(lambda con, rec: plan_tickets.save(con, {**self.port.ticket("s1"), "crew": {}, "drafts": {}}))
         self.github = FakeGitHub()
         Tickets().run(self.ctx_of(), {"into": str(tree(self, {}))})
 
@@ -69,6 +69,34 @@ class DraftTest(DraftScenario):
         self.spawn()  # a second spawn reuses the draft: no new pull request, no new start commit
         self.assertEqual(len(self.github.pulls()), 1)
         self.assertEqual(len(git(self.origin, "log", "--format=%s", f"{into}..{ref}").splitlines()), 1)
+
+    def watch(self, response, number=5, repo="r"):
+        """The hook's Act on the answer of the watch call in the parent's session."""
+        from harness.assemble.engine.runner import Act
+        from harness.utils.contracts import Event, Verdict
+        event = Event("PostToolUse", draft.WATCH, {"owner": "o", "repo": repo, "pullNumber": number}, "s1", "/w", response)
+        return Act(self.port).run(event, {}, Verdict("allow"))
+
+    def started(self):
+        from harness.mcp.actions.orchestra import Started
+        return Started().run(self.ctx_of(), {"name": "hello", "sid": "session_child0001"})
+
+    def test_started_waits_for_the_watch_the_hook_records(self):
+        """s2.draft.watch: no draft, then an unwatched one, refuse started; the answer of the watch records it."""
+        from harness.utils.contracts import ActionError
+        with self.assertRaisesRegex(ActionError, r"hello has no draft pull request yet: run\('orchestra', 'spawn'"):
+            self.started()
+        self.spawn()
+        with self.assertRaisesRegex(ActionError, r"watch the draft pull request #5 of hello first"):
+            self.started()
+        self.assertEqual(self.watch("Subscribed.", number=6), [])  # another pull request: not this child's draft
+        self.assertEqual(self.watch("Subscribed.", repo="other"), [])
+        other = self.watch("A Claude agent is already watching this PR; this session will not receive its events.")
+        self.assertIn("watched by another session or agent", other[0])
+        self.assertNotIn("watched", self.port.ticket("s1")[draft.DRAFTS]["hello"])
+        self.assertIn("recorded your watch of the draft pull request #5 of hello", self.watch({"ok": True})[0])
+        self.assertIsInstance(self.port.ticket("s1")[draft.DRAFTS]["hello"]["watched"], int)
+        self.assertIn("runs in session session_child0001", self.started())
 
 
 if __name__ == "__main__":

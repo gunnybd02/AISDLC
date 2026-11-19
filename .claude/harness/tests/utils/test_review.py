@@ -135,8 +135,11 @@ class LockedScenario(Scenario):
         (self.repo / "orch-probe").mkdir()
         (self.repo / "orch-probe" / "test_hello_ac.py").write_text(AC_TEST, encoding="utf-8")
         self.locked_text = locked.lock(self.port, "s1", LOCKED_UNITS, HARNESS)
+        from harness.utils.plan import tickets as plan_tickets
+        self.port.write(lambda con, rec: plan_tickets.save(con, {**plan_tickets.latest(con, "s1"), "drafts": {
+            "hello": {"repo": "o/r", "number": 5, "url": f"{URL}/pull/5", "node": "PR_kw5", "watched": 1}}}))
         Started().run(ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3}}),
-                      {"name": "hello", "sid": "session_child0001"})
+                      {"name": "hello", "sid": "session_child0001"})  # its draft is open and watched, as spawn leaves it
 
     def hand_back(self, receipt=None, code=CODE, ac=AC_TEST, flow=None):
         """Push the child's branch, made from the plan branch: its code (and the acceptance test as given, and the CI

@@ -224,13 +224,17 @@ class Started(McpAction):
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Write the child's crew entry (running, its session) and a story row in one transaction. ActionError for a
-        session id of the wrong shape, this session's own id, a session that is another child already, or any reason
+        session id of the wrong shape, this session's own id, a session that is another child already, a child of a
+        plan with locked tests whose draft pull request is not watched yet (utils/orchestra/draft.py), or any reason
         spawn refuses."""
         sid = session_of(ctx)
         cap = run_limits(in_force(ctx.ports["plans"], sid), ctx.ports["limits"]())["children"]
         child_sid = str(args["sid"]).strip()
         if not SESSION_ID.match(child_sid):
             raise ActionError(f"{child_sid!r} is no session id: give the id create_session answered (session_...)")
+        waiting = drafts.unwatched(ctx.ports["plans"].ticket(sid) or {}, str(args["name"]))
+        if waiting:  # with locked tests, a CI result must wake this session from the child's first push
+            raise ActionError(waiting)
         first = not ((ctx.ports["plans"].ticket(sid) or {}).get("crew"))  # no child started before this one
         try:
             entry = ctx.ports["plans"].write(lambda con, rec: crew.start(con, sid, args["name"], child_sid, cap,
