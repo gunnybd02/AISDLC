@@ -1,8 +1,12 @@
 """orchestra part 3, the final route: land merges the accepted pull requests (a fake GitHub that merges on the real
 origin), runs the unit's tests on the merged base and closes the delegated plan delivered; a conflict stops it with
 the two ways on; it waits while a child runs and for the parent's own files."""
+import re
 import unittest
 
+from harness.assemble.engine.runner import Act
+from harness.utils.contracts import Event, Verdict
+from harness.utils.git.github import GitHubError
 from harness.utils.orchestra import land, review
 from harness.utils.plan import tickets
 
@@ -15,8 +19,8 @@ class PlanGitHub:
     """GitHub REST for a plan with a plan branch: each pull request merges its head into its own base on the real
     origin, through a clone of its own; the user's merge of the plan pull request is merge(n)."""
 
-    def __init__(self, origin, folder, drafts=None):
-        self.origin, self.folder, self.calls = origin, folder, []
+    def __init__(self, origin, folder, drafts=None, keep=()):
+        self.origin, self.folder, self.calls, self.keep = origin, folder, [], keep
         self.prs = {n: {"head": head, "base": base, "merged": False} for n, (head, base) in (drafts or {}).items()}
         git(folder, "clone", "-q", str(origin), ".")
         git(folder, "config", "user.name", "u")
@@ -30,9 +34,16 @@ class PlanGitHub:
             n = 5 + len(self.prs)
             self.prs[n] = {"head": fields["head"], "base": fields["base"], "merged": False}
             return {"number": n, "html_url": f"{URL}/pull/{n}"}
+        if method == "DELETE":  # repos/o/r/git/refs/heads/<ref>: a branch deleted, unless kept
+            ref = path.split("/refs/heads/", 1)[1]
+            if ref in self.keep:
+                raise GitHubError("gh api DELETE: Reference does not exist (HTTP 422)")
+            git(self.origin, "branch", "-D", ref)
+            return {}
         n = int(path.split("/")[4])  # repos/o/r/pulls/<n>[/merge]
         if method == "GET":
-            return {"merged": self.prs[n]["merged"], "mergeable": True}
+            head = git(self.origin, "rev-parse", self.prs[n]["head"]).strip()
+            return {"merged": self.prs[n]["merged"], "mergeable": True, "head": {"sha": head}}
         return {"sha": self.merge(n)}
 
     def merge(self, n):
@@ -57,19 +68,51 @@ class LockedLandTest(LockedScenario):
         text = land.land(self.port, "s1", LOCKED_UNITS, [], github)
         self.assertIn(f"Merged #5 of hello into plan/p{self.plan}", text)
         self.assertIn(f"on the merged plan/p{self.plan}: green", text)
-        self.assertIn(f"Plan pull request #6 ({URL}/pull/6): plan/p{self.plan} into work", text)
-        self.assertIn("the harness refuses it with the form question until the user allows it", text)
+        self.assertIn(f"Plan pull request #6 ({URL}/pull/6): plan/p{self.plan} into work, not merged yet", text)
+        self.assertIn("Ask the user form 2 now", text)
         self.assertEqual(self.port.ticket("s1")["state"], "open")
         self.assertNotIn("orch-probe/hello.py", git(self.origin, "ls-tree", "-r", "--name-only", "work"))
-        self.assertIn("Plan pull request #6", land.land(self.port, "s1", LOCKED_UNITS, [], github))  # still waits
-        github.merge(6)  # the user's merge
+        q = re.search(r"exactly:\n(.+)\nOptions", land.land(self.port, "s1", LOCKED_UNITS, [], github)).group(1)
+        self.assertTrue(q.startswith(f"End plan {self.plan}: merge plan/p{self.plan} into work (PR #6 at "))
+        self.assertIn(f"delete 2 branches (orch/p{self.plan}/hello, plan/p{self.plan}), archive 1 child sessions", q)
+        answer = Event("PostToolUse", "AskUserQuestion", {"questions": [{"question": q}]}, "s1", "/w")
+        notes = Act(self.port).run(answer, {"answers": {q: "Allow"}}, Verdict("allow"))
+        self.assertTrue(any(n.startswith("GATE: the user allows form 2") for n in notes))
+        self.assertIn("Form 2 is allowed. Merge PR #6 of o/r with the merge tool, expectedHeadSha",
+                      land.land(self.port, "s1", LOCKED_UNITS, [], github))
+        github.merge(6)  # the merge the gate let through
         text = land.land(self.port, "s1", LOCKED_UNITS, [], github)
         self.assertIn("The plan pull request #6 is merged into work", text)
+        self.assertIn(f"Deleted the branches orch/p{self.plan}/hello, plan/p{self.plan}.", text)
+        self.assertIn('Archive the child session session_child0001 now: mcp__claude-code-remote__archive_session '
+                      '{"session_id": "session_child0001"}', text)
         self.assertIn("is delivered", text)
         self.assertEqual(self.port.ticket("s1")["state"], "closed")
         self.assertIn("orch-probe/hello.py", git(self.origin, "ls-tree", "-r", "--name-only", "work"))
         self.assertEqual([c[2]["base"] for c in github.calls if c[1].endswith("/pulls")], ["work"])  # the plan PR
         self.assertEqual([c[1] for c in github.calls if c[0] == "POST"], ["graphql", "repos/o/r/pulls"])
+
+    def test_after_the_plan_pr_merged_land_cleans_up_and_names_a_branch_it_cannot_delete(self):
+        """s6.end.cleanup: every child session is archived (earlier ones too); a kept branch is named for the user."""
+        github = PlanGitHub(self.origin, tree(self, {}), {5: (f"orch/p{self.plan}/hello", f"plan/p{self.plan}")},
+                            keep=(f"plan/p{self.plan}",))
+        self.hand_back()
+        review.check(self.port, "s1", "hello", LOCKED_UNITS, [])
+        review.accept(self.port, "s1", "hello", LOCKED_UNITS, github)
+        team = self.port.ticket("s1")["crew"]
+        team["hello"]["sessions"] = ["session_child_old"]  # a send-back opened a fresh session once
+        self.port.write(lambda con, rec: tickets.save(con, {**self.port.ticket("s1"), "crew": team, "phase": "deliver"}))
+        q = re.search(r"exactly:\n(.+)\nOptions", land.land(self.port, "s1", LOCKED_UNITS, [], github)).group(1)
+        self.assertIn("archive 2 child sessions", q)
+        Act(self.port).run(Event("PostToolUse", "AskUserQuestion", {"questions": [{"question": q}]}, "s1", "/w"),
+                           {"answers": {q: "Allow"}}, Verdict("allow"))
+        github.merge(6)
+        text = land.land(self.port, "s1", LOCKED_UNITS, [], github)
+        self.assertIn(f"Deleted the branches orch/p{self.plan}/hello.", text)
+        self.assertIn(f"GitHub kept plan/p{self.plan} (", text)
+        for sid in ("session_child_old", "session_child0001"):
+            self.assertIn(f'{{"session_id": "{sid}"}}', text)
+        self.assertEqual(self.port.ticket("s1")["state"], "closed")
 
 
 class LandTest(Scenario):

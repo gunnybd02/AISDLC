@@ -214,9 +214,11 @@ def give(port: PlanStore, sid: str, name: str, kind: str, body: str = "") -> str
         return ""
     message = text(held["key"], held["plan"], name, held["issue"], held["sha"], held["round"], kind, body)
     call = {"session_id": held["sid"], "message": message}
+    after = ("Its harness checks it, uploads its ledger copy and ends." if kind == "stop" else
+             "Its harness checks it and lets it go on; it sends nothing back. Only if its session has ended, spawn "
+             "opens a fresh session that reads the note instead.")
     return (f"Send {name} its signed order ({kind}, round {held['round']}) now, as it is: {SEND} "
-            f"{json.dumps(call, ensure_ascii=False)}. Its harness checks it and lets it go on; it sends nothing back. "
-            "Only if its session has ended, spawn opens a fresh session that reads the note instead.")
+            f"{json.dumps(call, ensure_ascii=False)}. {after}")
 
 
 def sent_seen(port: PlanStore, event: Any) -> list[str]:
