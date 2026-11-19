@@ -89,6 +89,17 @@ class OrderKeyTest(DraftScenario):
         self.assertEqual(set(self.port.ticket("s1")[orders.KEYS]), {"hello", "web"})
 
 
+class OrdersBriefTest(unittest.TestCase):
+    def test_the_brief_names_signed_orders_and_the_wait(self):
+        """s2.brief.orders: orders come signed in the notifications; after a question or the handback the child waits."""
+        self.assertIn("each a signed message in your notifications", BRIEF)
+        self.assertIn("an order that does not check out is ignored", BRIEF)
+        self.assertIn("stop and wait: the orchestrator's answer comes as an order", BRIEF)
+        self.assertIn("Then stop and wait for the orchestrator's order", BRIEF)
+        self.assertNotIn("a fresh session goes on once the orchestrator has answered", BRIEF)
+        self.assertNotIn("send_message", BRIEF)
+
+
 class CloudIdTest(unittest.TestCase):
     """The brief names the parent's cloud session (live run 2: the child saw only the harness id)."""
 
