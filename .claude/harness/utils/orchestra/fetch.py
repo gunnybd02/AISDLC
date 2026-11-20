@@ -165,26 +165,6 @@ def git_or_empty(folder: str, *args: str) -> str:
         return ""
 
 
-def put_note(unit: dict[str, Any], repo: str, ref: str, rel: str, text: str, message: str) -> str:
-    """Commit one note of the parent on the child's branch and push it there: a plain branch push, as drop_receipt.
-
-    Args:
-        unit: the unit's spec {repo, path, verify, base}.
-        repo: the parent's repository root.
-        ref: the child's branch.
-        rel: the note's path in the repository.
-        text: the note.
-        message: the commit message.
-
-    Returns:
-        The note's commit.
-
-    Raises:
-        FetchError: the branch cannot be checked out, or the commit or the push fails.
-    """
-    return put_files(unit, repo, ref, {rel: text}, message)
-
-
 def put_files(unit: dict[str, Any], repo: str, ref: str, files: dict[str, str], message: str, target: str = "") -> str:
     """Commit files on a branch and push the result to a branch: a plain branch push. Files that are already there as
     given make no commit; no files at all make an empty commit (a start or a signal: the talk is in comments, never in

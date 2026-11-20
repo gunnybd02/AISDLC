@@ -8,7 +8,7 @@ from harness.mcp.actions.orchestra_parent import Answer, Reject
 from harness.utils.contracts import ActionContext, Event, Verdict
 from harness.utils.orchestra import orders
 from harness.utils.plan import tickets as plan_tickets
-from harness.tests.utils.test_review import UNITS, Scenario, git
+from harness.tests.utils.test_review import UNITS, URL, Scenario, git
 
 KEY = "0123456789abcdef0123456789abcdef"
 SHA = "7719dfaab165839f614f8ee106899ea6b26379c6cc19688a5db5e0fd235f1146"
@@ -64,31 +64,34 @@ class OrdersTest(unittest.TestCase):
 
 
 class SendTest(Scenario):
-    """Part 6, the parent's side: reject and answer push the note and give the signed order for the running child; the
-    hook records the order sent, so the next one has the next round."""
+    """Part 6, the parent's side: reject and answer post a comment on the draft and give the signed order for the
+    running child; the hook records the order sent, so the next one has the next round."""
 
     def ctx(self):
+        if not hasattr(self, "github"):
+            self.github = self.drafted()  # every child has a draft: the talk goes there
         return ActionContext({"plans": self.port, "session": lambda: "s1", "units": lambda: UNITS,
-                              "limits": lambda: {"children": 3, "rounds": 3}})
+                              "limits": lambda: {"children": 3, "rounds": 3}, "github": self.github})
 
     def call_of(self, text):
         return json.loads(text[text.index(orders.SEND) + len(orders.SEND):].split(". Its harness")[0])
 
-    def test_reject_and_answer_give_the_signed_order_and_still_push_the_note(self):
-        """s3.orders.sent"""
+    def test_reject_and_answer_give_the_signed_order_and_post_the_comment(self):
+        """s3.orders.sent: the order carries the words and the comment's URL; no note is committed on the branch."""
         key = orders.key_for(self.port, "s1", "hello")
         self.hand_back()
         text = Reject().run(self.ctx(), {"name": "hello", "why": "AC2 is not tested"})
-        self.assertIn(f"The note is .harness/notes/hello/sendback-1.md on orch/p{self.plan}/hello", text)
+        comment = f"{URL}/pull/5#issuecomment-701"
+        self.assertIn(f"The send-back 1 is the comment {comment} on its draft.", text)
         self.assertNotIn("nothing is sent to the child", text)
         self.assertIn("Send hello its signed order (fix, round 1) now", text)
         call = self.call_of(text)
         self.assertEqual(call["session_id"], "session_child0001")
         (order,) = orders.parse(call["message"])
         self.assertEqual(orders.check(order, self.plan, "hello", orders.NO_ISSUE, orders.NO_SHA, key, 0), "")
-        self.assertEqual(order["body"], "AC2 is not tested")
-        note = git(self.origin, "show", f"orch/p{self.plan}/hello:.harness/notes/hello/sendback-1.md")
-        self.assertIn("AC2 is not tested", note)  # the note stays on the branch, as record and fallback
+        self.assertEqual(order["body"], f"AC2 is not tested (the comment: {comment})")
+        files = git(self.origin, "ls-tree", "-r", "--name-only", f"orch/p{self.plan}/hello")
+        self.assertNotIn(".harness/notes", files)  # the talk is the comment, never a commit on the child's branch
         answer = Answer().run(self.ctx(), {"name": "hello", "text": "Use 400."})
         self.assertIn("(answer, round 1)", answer)  # round 1 was given, not seen sent: it is given again
 

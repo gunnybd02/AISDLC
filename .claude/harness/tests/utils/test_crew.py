@@ -75,8 +75,8 @@ class BriefTest(unittest.TestCase):
         text = brief.brief(7, "pd-x", GOOD, "session_parent01", rounds=3)
         self.assertNotIn("send_message", text)
         self.assertIn("your branch, CI and your draft pull request are how you talk", text)
-        self.assertIn(".harness/notes/api/ on your branch", text)
-        self.assertIn("Read every note there before you start", text)
+        self.assertIn("Each send-back and answer is also a comment of the orchestrator on your draft pull request", text)
+        self.assertNotIn(".harness/notes", text)  # the talk is comments, never files on the branch
 
     def test_the_brief_sends_the_child_to_the_ledger_door_not_the_file(self):
         text = brief.brief(7, "pd-x", GOOD, "session_parent01", rounds=3)
@@ -87,7 +87,7 @@ class BriefTest(unittest.TestCase):
         text = brief.brief(7, "pd-x", GOOD, "session_parent01", rounds=3)
         self.assertTrue(text.startswith('You are child session "api" of the delegated plan 7, approved by the user in '
                                         "the orchestrator session session_parent01."))
-        for part in ("never call AskUserQuestion", "orch/p7/api", "Each send-back and answer", "act on them",
+        for part in ("never call AskUserQuestion", "orch/p7/api", "Each send-back and answer", "act on it",
                      "AC1: GET /orders returns the user's orders  (behaviour p7.api.ac1)", "p7.api.ac2",
                      "run('orchestra', 'take')", "Change: app/orders.py"):
             self.assertIn(part, text)

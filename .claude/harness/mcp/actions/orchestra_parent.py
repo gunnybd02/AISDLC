@@ -93,7 +93,7 @@ def with_order(done: str, ctx: ActionContext, name: str, kind: str, body: str) -
     """The answer of reject or answer, and then the signed order that tells the running child (utils/orchestra/orders.py).
 
     Args:
-        done: the answer of the step (the note is pushed).
+        done: the answer of the step (the comment is posted).
         ctx: the action's context.
         name: the child's name.
         kind: fix or answer.
@@ -102,7 +102,9 @@ def with_order(done: str, ctx: ActionContext, name: str, kind: str, body: str) -
     Returns:
         done, then the order's call when the child takes orders.
     """
-    order = orders.give(ctx.ports["plans"], session_of(ctx), name, kind, body)
+    entry = ((ctx.ports["plans"].ticket(session_of(ctx)) or {}).get("crew") or {}).get(name) or {}
+    url = (entry.get("fresh") or {}).get("url")  # the comment of the same words on the child's draft
+    order = orders.give(ctx.ports["plans"], session_of(ctx), name, kind, f"{body} (the comment: {url})" if url else body)
     if not order:
         return done
     note, cut, _ = done.partition("; nothing is sent to the child")  # review.fresh_session's words for a fresh session
@@ -112,34 +114,36 @@ def with_order(done: str, ctx: ActionContext, name: str, kind: str, body: str) -
 class Reject(McpAction):
     """orchestra.reject: send a child back, one round of limits.rounds."""
     block, name, effect = "orchestra", "reject", WRITE
-    summary = ("Send a child back with why (limits.rounds at most): a note pushed on its branch and a signed order for its "
+    summary = ("Send a child back with why (limits.rounds at most): a comment on its draft and a signed order for its "
                "running session (or spawn opens a fresh one)")
     args_schema = {"type": "object", "properties": {"name": NAME, "why": {"type": "string"}},
                    "required": ["name", "why"]}
-    needs = ("plans", "session", "units", "limits")
+    needs = ("plans", "session", "limits", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Push the send-back note and keep the round (utils/orchestra/review.reject)."""
+        """Post the send-back comment and keep the round (utils/orchestra/review.reject)."""
         sid = session_of(ctx)
         rounds = run_limits(in_force(ctx.ports["plans"], sid), ctx.ports["limits"]())["rounds"]
         return answered(PARENT_ERRORS, lambda: with_order(review.reject(
-            ctx.ports["plans"], sid, args["name"], args["why"], units(ctx), rounds), ctx, args["name"], "fix", args["why"]))
+            ctx.ports["plans"], sid, args["name"], args["why"], rounds, ctx.ports["github"]), ctx, args["name"], "fix",
+            args["why"]))
 
 
 class Answer(McpAction):
     """orchestra.answer: the reply to a child's question."""
     block, name, effect = "orchestra", "answer", WRITE
-    summary = ("Answer a child's question: a note pushed on its branch and a signed order for its running session (or "
+    summary = ("Answer a child's question: a comment on its draft and a signed order for its running session (or "
                "spawn opens a fresh one)")
     args_schema = {"type": "object", "properties": {"name": NAME, "text": {"type": "string"}},
                    "required": ["name", "text"]}
-    needs = ("plans", "session", "units")
+    needs = ("plans", "session", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Push the answer note (utils/orchestra/review.answer)."""
+        """Post the answer comment (utils/orchestra/review.answer)."""
         sid = session_of(ctx)
         return answered(PARENT_ERRORS, lambda: with_order(review.answer(
-            ctx.ports["plans"], sid, args["name"], args["text"], units(ctx)), ctx, args["name"], "answer", args["text"]))
+            ctx.ports["plans"], sid, args["name"], args["text"], ctx.ports["github"]), ctx, args["name"], "answer",
+            args["text"]))
 
 
 class Forget(McpAction):

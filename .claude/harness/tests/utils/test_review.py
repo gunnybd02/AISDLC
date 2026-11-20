@@ -42,6 +42,9 @@ class FakeGitHub:
 
     def __call__(self, method, path, fields=None):
         self.calls.append((method, path, dict(fields or {})))
+        if method == "POST" and path.endswith("/comments"):  # the talk: a comment on the draft
+            n = len(self.calls)
+            return {"id": 700 + n, "html_url": f"{URL}/pull/5#issuecomment-{700 + n}", "body": fields["body"]}
         if method == "POST":
             self.head, self.base = fields["head"], fields["base"]
             return {"number": 5, "html_url": f"{URL}/pull/5"}
@@ -106,6 +109,14 @@ class Scenario(unittest.TestCase):
 
     def check(self):
         return review.check(self.port, "s1", "hello", UNITS, [])
+
+    def drafted(self):
+        """The child's draft as spawn keeps it (every child has one); the talk goes there. A fake GitHub for it."""
+        from harness.utils.orchestra.draft import DRAFTS
+        from harness.utils.plan import tickets
+        self.port.write(lambda con, rec: tickets.save(con, {**tickets.latest(con, "s1"), DRAFTS: {
+            "hello": {"repo": "o/r", "number": 5, "url": f"{URL}/pull/5"}}}))
+        return FakeGitHub(self.repo)
 
 
 LOCKED_UNITS = {"probe": {**UNITS["probe"], "verify": ["{python}", "{test}"]}}  # one locked test file per run
@@ -266,25 +277,25 @@ class ReviewTest(Scenario):
         return ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3},
                               "units": lambda: UNITS, "github": FakeGitHub(self.repo)})  # every child gets a draft
 
-    def test_reject_pushes_a_send_back_note_and_a_fresh_session_reads_it(self):
+
+    def test_reject_posts_a_send_back_comment_and_a_fresh_session_reads_it(self):
         self.hand_back()
-        text = review.reject(self.port, "s1", "hello", "AC2 is not tested", UNITS, 3)
+        github = self.drafted()
+        text = review.reject(self.port, "s1", "hello", "AC2 is not tested", 3, github)
         self.assertIn("round 1 of 3", text)
         self.assertNotIn("send_message", text)
         self.assertIn("run('orchestra', 'spawn', {name: 'hello'})", text)
-        ref = f"orch/p{self.plan}/hello"
-        note = git(self.origin, "show", f"{ref}:.harness/notes/hello/sendback-1.md")
-        self.assertIn("AC2 is not tested", note)
-        self.assertIn("Send-back 1 of hello", git(self.origin, "log", "-1", "--format=%s", ref))
         spawned = Spawn().run(self.ctx(), {"name": "hello"})  # the same child, in a fresh session
         prompt = json.loads(spawned[spawned.index("\n{") + 1:])["prompt"]
         self.assertIn("You are a fresh session of this child", prompt)
-        self.assertIn("Read .harness/notes/hello/sendback-1.md on it first", prompt)
+        self.assertIn("The orchestrator's last words, also a comment on your draft pull request, are why you go on: "
+                      f"send-back 1 ({URL}/pull/5#issuecomment-701): Send-back 1 of 3: AC2 is not tested", prompt)
+        self.assertNotIn(".harness/notes", prompt)
         self.assertNotIn("send_message", prompt)
         for n in (2, 3):
-            self.assertIn(f"round {n} of 3", review.reject(self.port, "s1", "hello", "AC2 is not tested", UNITS, 3))
+            self.assertIn(f"round {n} of 3", review.reject(self.port, "s1", "hello", "AC2 is not tested", 3, github))
         with self.assertRaisesRegex(review.ReviewError, "the user decides now"):
-            review.reject(self.port, "s1", "hello", "again", UNITS, 3)
+            review.reject(self.port, "s1", "hello", "again", 3, github)
         self.hand_back(receipt={"at": 1})  # a receipt older than the send-back
         with self.assertRaisesRegex(review.ReviewError, "not handed back since it was sent back"):
             self.check()
@@ -305,9 +316,10 @@ class ReviewTest(Scenario):
 
     def test_the_rounds_come_from_the_limits(self):
         self.hand_back()
-        self.assertIn("round 1 of 1", review.reject(self.port, "s1", "hello", "AC2 is not tested", UNITS, 1))
+        github = self.drafted()
+        self.assertIn("round 1 of 1", review.reject(self.port, "s1", "hello", "AC2 is not tested", 1, github))
         with self.assertRaisesRegex(review.ReviewError, "sent back 1 times: the user decides now"):
-            review.reject(self.port, "s1", "hello", "again", UNITS, 1)
+            review.reject(self.port, "s1", "hello", "again", 1, github)
         spawned = Spawn().run(ActionContext({"plans": self.port, "session": lambda: "s1", "units": lambda: UNITS,
                                              "limits": lambda: {"children": 3, "rounds": 1},
                                              "github": FakeGitHub(self.repo)}), {"name": "hello"})
@@ -315,7 +327,7 @@ class ReviewTest(Scenario):
 
     def test_a_fresh_session_keeps_the_childs_rounds(self):
         self.hand_back()
-        review.reject(self.port, "s1", "hello", "AC2 is not tested", UNITS, 3)
+        review.reject(self.port, "s1", "hello", "AC2 is not tested", 3, self.drafted())
         text = Started().run(ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3}}),
                              {"name": "hello", "sid": "session_child0002"})
         self.assertIn("runs in session session_child0002", text)
@@ -326,25 +338,34 @@ class ReviewTest(Scenario):
         with self.assertRaisesRegex(Exception, "has started already"):
             Spawn().run(self.ctx(), {"name": "hello"})
 
-    def test_the_notes_of_the_parent_start_with_the_issue_prefix(self):
-        """s2.commit.parent: a child with an issue in the parent's ticket gets "#N <name>: " notes."""
-        from harness.utils.orchestra import issues
-        from harness.utils.plan import tickets
+    def test_reject_and_answer_post_comments_and_leave_the_branch(self):
+        """s3.parent.comments: each is one comment of the orchestrator on the draft; the child's branch stays where it
+        was; a child without a draft is refused."""
+        from harness.utils.orchestra import talk
         self.hand_back()
-        self.port.write(lambda con, rec: tickets.save(con, {**tickets.latest(con, "s1"), issues.ISSUES: {
-            "children": {"hello": {"repo": "o/r", "number": 41, "url": f"{URL}/issues/41", "sha": "a" * 64}}}}))
-        review.reject(self.port, "s1", "hello", "AC2 is not tested", UNITS, 3)
-        review.answer(self.port, "s1", "hello", "use 404", UNITS)
-        self.assertEqual(git(self.origin, "log", "-2", "--format=%s", f"orch/p{self.plan}/hello").splitlines(),
-                         ["#41 hello: Answer 1 to hello", "#41 hello: Send-back 1 of hello"])
+        with self.assertRaisesRegex(review.ReviewError, "hello has no draft pull request to post on"):
+            review.reject(self.port, "s1", "hello", "AC2 is not tested", 3, FakeGitHub(self.repo))
+        ref = f"orch/p{self.plan}/hello"
+        tip = git(self.origin, "rev-parse", ref).strip()
+        github = self.drafted()
+        review.reject(self.port, "s1", "hello", "AC2 is not tested", 3, github)
+        review.answer(self.port, "s1", "hello", "use 404", github)
+        self.assertEqual(git(self.origin, "rev-parse", ref).strip(), tip)  # no commit on the child's branch
+        posts = [(path, fields["body"]) for method, path, fields in github.calls if method == "POST"]
+        self.assertEqual([p for p, _ in posts], ["repos/o/r/issues/5/comments"] * 2)
+        metas = [talk.read({"body": body}) for _, body in posts]
+        self.assertEqual([(m["kind"], m["from"], m["n"], m["child"]) for m in metas],
+                         [("sendback", "orchestrator", 1, "hello"), ("answer", "orchestrator", 1, "hello")])
+        self.assertIn("Send-back 1 of 3: AC2 is not tested", posts[0][1])
+        self.assertIn("use 404", posts[1][1])
 
-    def test_answer_pushes_a_note_and_forget_is_recorded(self):
+    def test_answer_posts_a_comment_and_forget_is_recorded(self):
         self.hand_back()
-        text = review.answer(self.port, "s1", "hello", "use 404", UNITS)
+        text = review.answer(self.port, "s1", "hello", "use 404", self.drafted())
         self.assertIn("Answer 1 to hello", text)
         self.assertNotIn("send_message", text)
-        self.assertIn("use 404", git(self.origin, "show", f"orch/p{self.plan}/hello:.harness/notes/hello/answer-1.md"))
-        self.assertIn("waits for a fresh session: .harness/notes/hello/answer-1.md",
+        self.assertIn(f"The answer 1 is the comment {URL}/pull/5#issuecomment-701 on its draft", text)
+        self.assertIn(f"waits for a fresh session: answer 1 ({URL}/pull/5#issuecomment-701): use 404",
                       __import__("harness.utils.orchestra.crew", fromlist=["x"]).status(self.port.ticket("s1"), 3))
         self.assertIn("forgotten", review.forget(self.port, "s1", "hello", "it will not come back"))
         entry = self.port.ticket("s1")["crew"]["hello"]
