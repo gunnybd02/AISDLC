@@ -1,6 +1,5 @@
 """What a commit would add: the added lines of each file to commit, against HEAD (a new file: all its lines). The
-secret scan reads these, never the whole history. added_between gives the same for a branch over its base (harness
-ci, utils/orchestra/ci.py); both read git's diff with one parser (parse_added)."""
+secret scan reads these, never the whole history; git's diff is read with one parser (parse_added)."""
 from __future__ import annotations
 
 import os
@@ -61,20 +60,3 @@ def parse_added(diff: str) -> dict[str, list[str]]:
         elif current is not None and line.startswith("+") and not line.startswith("+++"):
             out.setdefault(current, []).append(line[1:])
     return out
-
-
-def added_between(repo: str, base: str, head: str) -> dict[str, list[str]]:
-    """The added lines of each file a branch changes over its base (from their merge base).
-
-    Args:
-        repo: the repository's root.
-        base: the base's ref.
-        head: the branch's ref.
-
-    Returns:
-        {path: [added lines]}.
-
-    Raises:
-        GitError: git cannot read the refs.
-    """
-    return parse_added(git(repo, "diff", "--no-color", "--no-renames", "--unified=0", f"{base}...{head}"))
