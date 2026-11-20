@@ -1,10 +1,11 @@
 """Review: the parent's side of a handed-back child (docs/05b-orchestra-cloud.md part 3). The parent reads no code:
-it fetches the child's branch, reads the receipt, reruns the tests itself, then accepts (one pull request into the
-unit's base; nothing is merged here) or sends the child back (the config's limits.rounds at most).
+it reads the child's handback comment on its draft (the receipt), fetches its branch, reruns the tests itself, then
+accepts (its draft becomes the pull request; nothing is merged here) or sends the child back (the config's
+limits.rounds at most).
 
-The child's machine and ledger are not the parent's: every fact comes from the branch. Parent and child talk only
-through the branch: a send-back or an answer is a note pushed there (.harness/notes/<name>/), read by a fresh session
-of the child that spawn opens; no message is sent (a cloud child cannot answer one)."""
+The child's machine and ledger are not the parent's: every fact comes from the branch and the draft. A send-back or an
+answer is a comment of the orchestrator on the child's draft (utils/orchestra/talk.py), never a commit on its branch;
+the signed order carries the same words to a running child, and a fresh session reads them in its brief."""
 from __future__ import annotations
 
 import json
@@ -12,19 +13,17 @@ import re
 import sqlite3
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from harness.utils.contracts import now
 from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError, repo_of
 from harness.utils.git.run import GitError, git
-from harness.utils.orchestra import crew, locked
-from harness.utils.orchestra.brief import NOTES, branch, subject
+from harness.utils.orchestra import crew, locked, talk
+from harness.utils.orchestra.brief import branch
 from harness.utils.orchestra.card import card_of, unit_spec
-from harness.utils.orchestra.draft import ready
-from harness.utils.orchestra.fetch import TAIL, FetchError, checkout, drop_receipt, put_note, rerun
-from harness.utils.orchestra.issues import ISSUES
-from harness.utils.orchestra.work import RECEIPTS, find_receipt
+from harness.utils.orchestra.draft import DRAFTS, ready
+from harness.utils.orchestra.fetch import TAIL, checkout, rerun
 from harness.utils.plan import tickets
 from harness.utils.shapes import Card, CrewEntry, PlanStore, Ticket
 
@@ -110,27 +109,34 @@ def covered(receipt: dict[str, Any], card: Card) -> list[int]:
     return [n for n in range(1, len(card.get("ac", [])) + 1) if n not in found]
 
 
-def asked_at_tip(folder: str, name: str, tip: list[str]) -> str:
-    """The child's question when the tip commit of its branch is a question note (it asked and stopped).
+def last_word(ticket: Ticket, entry: CrewEntry, name: str, github: Callable[..., Any]) -> Optional[dict[str, Any]]:
+    """The child's newest question or handback comment on its draft (talk.newest, from the child).
 
     Args:
-        folder: the checkout of the child's branch.
+        ticket: the parent's ticket.
+        entry: the child's crew entry.
         name: the child's name.
-        tip: the files of the tip commit.
+        github: call(method, path, fields?) -> the JSON answer.
 
     Returns:
-        "(question n) <text>", or "" when the tip is no question note.
+        Its meta with words, sha and receipt; None when the child has said neither yet.
+
+    Raises:
+        ReviewError: the child has no draft, or GitHub cannot be read.
     """
-    if len(tip) != 1 or not re.fullmatch(rf"{re.escape(NOTES)}/{re.escape(name)}/question-(\d+)\.md", tip[0]):
-        return ""
-    lines = (Path(folder) / tip[0]).read_text(encoding="utf-8").splitlines()
-    text = " ".join(l.strip() for l in lines[1:] if l.strip())
-    return f"({tip[0].rsplit('-', 1)[1][:-3]}) {text}"
+    where = (ticket.get(DRAFTS) or {}).get(name) or entry.get("pr") or {}
+    if not where.get("repo") or not where.get("number"):
+        raise ReviewError(f"{name} has no draft pull request to read (spawn opens one for every child)")
+    try:
+        return talk.newest(talk.comments_of(github, where), name, ("question", "handback"))
+    except GitHubError as e:
+        raise ReviewError(f"the draft #{where['number']} of {name} cannot be read: {str(e)[-200:]}") from e
 
 
-def check(port: PlanStore, sid: str, name: str, units: dict[str, Any], verify: list[str], timeout_min: int = 10) -> str:
-    """Check a handed-back child: its receipt on its branch, and then, for a card with locked acceptance tests
-    (acTests), that they are unchanged and green (each alone when the unit's command names {test}, else the unit's
+def check(port: PlanStore, sid: str, name: str, units: dict[str, Any], verify: list[str], github: Callable[..., Any],
+          timeout_min: int = 10) -> str:
+    """Check a handed-back child: its handback comment (the receipt, whose commit must be its branch's tip), and then,
+    for a card with locked acceptance tests (acTests), that they are unchanged and green (each alone when the unit's command names {test}, else the unit's
     suite that holds them); for any other card, the coverage of its criteria and a rerun of its registered tests.
 
     Args:
@@ -139,6 +145,7 @@ def check(port: PlanStore, sid: str, name: str, units: dict[str, Any], verify: l
         name: the child's name.
         units: the declared units by name.
         verify: the config's test command (the home's, for a home child).
+        github: call(method, path, fields?) -> the JSON answer.
         timeout_min: the minutes each test run may take (1 to 30).
 
     Returns:
@@ -156,18 +163,17 @@ def check(port: PlanStore, sid: str, name: str, units: dict[str, Any], verify: l
     command = [sys.executable if w == "{python}" else w for w in (unit.get("verify") or verify)]
     if not command:
         raise ReviewError("the unit has no test command: declare verify for it in the config's units")
-    ref = branch(ticket["plan"]["id"], name)
+    ref, said = branch(ticket["plan"]["id"], name), last_word(ticket, entry, name, github)
+    if said and said.get("kind") == "question":
+        raise ReviewError(f"{name} asked a question and stopped: ({said.get('n')}) {said.get('words')} Answer it with "
+                          "run('orchestra', 'answer', {name, text}); a fresh session goes on from the answer.")
+    receipt = (said or {}).get("receipt")
+    if not receipt:
+        raise ReviewError(f"{name} has posted no handback on its draft: it has not handed back (it is still working)")
     with checkout(unit, repo, ref) as folder:
-        tip = [f for f in git(folder, "show", "--name-only", "--format=", "HEAD").splitlines() if f.strip()]
-        asked = asked_at_tip(folder, name, tip)
-        if asked:
-            raise ReviewError(f"{name} asked a question and stopped: {asked} Answer it with run('orchestra', 'answer', "
-                              "{name, text}); a fresh session goes on from the answer.")
-        receipt = find_receipt(folder, name)
-        if receipt is None:
-            raise ReviewError(f"{ref} holds no receipt: {name} has not handed back (it is still working)")
-        if tip != [f"{RECEIPTS}/{name}.json"]:
-            raise ReviewError(f"the tip of {ref} is not its receipt: the receipt does not describe the code after it")
+        if said.get("sha") != git(folder, "rev-parse", "HEAD").strip():
+            raise ReviewError(f"the tip of {ref} is not its receipt's commit: the receipt does not describe the code "
+                              "after it")
         if receipt.get("parent") != sid or receipt.get("name") != name:
             raise ReviewError(f"the receipt on {ref} is not of {name} of this session")
         if entry.get("sentBackAt") and int(receipt.get("at", 0)) <= int(entry["sentBackAt"]):
@@ -198,7 +204,7 @@ def check(port: PlanStore, sid: str, name: str, units: dict[str, Any], verify: l
         lines.append(tail[-TAIL:])
     set_entry(port, sid, name, card, {"state": crew.HANDED_BACK, "checkedAt": entry.get("backs", 0) if green else None,
                                       "lastCheck": {"green": green, "at": now(), "lines": lines[:12]},
-                                      "receipt": receipt}, CHECKED)
+                                      "receipt": receipt, "handbackUrl": said.get("url")}, CHECKED)
     head = "Green: accept it with run('orchestra', 'accept', {name})." if green else \
         "Not green: send it back with run('orchestra', 'reject', {name, why})."
     return "\n".join([f"Check of {name}: {head}"] + lines)
@@ -233,7 +239,7 @@ def accept(port: PlanStore, sid: str, name: str, units: dict[str, Any], github: 
     body = "\n".join([f"Child {name} of the delegated plan {ticket['plan']['id']} ({ticket['draft']}).", "",
                       "Acceptance criteria, each with a registered test the parent ran again:"]
                      + [f"- AC{n}: {a}" for n, a in enumerate(card["ac"], 1)]
-                     + ["", f"The receipt is {RECEIPTS}/{name}.json on {ref}."])
+                     + ["", f"The receipt is the handback comment {entry.get('handbackUrl') or 'on its draft'}."])
     held = entry.get("pr") or {}
     try:  # its draft pull request (opened at spawn, draft.py) becomes ready; else one is opened now
         pr = {"number": held["number"], "html_url": held.get("url")} if held.get("number") else ready(
@@ -243,107 +249,102 @@ def accept(port: PlanStore, sid: str, name: str, units: dict[str, Any], github: 
         raise ReviewError(f"the pull request was not opened or made ready: {e}") from e
     set_entry(port, sid, name, card, {"state": crew.ACCEPTED, "pr": {"number": pr.get("number"),
               "url": pr.get("html_url"), "repo": repo_of(url), "base": into}}, crew.ACCEPTED)
-    kept = drop_receipt(unit, repo, ref, name, issue_number(ticket, name))
     return (f"{name} accepted: pull request #{pr.get('number')} ({pr.get('html_url')}) from {ref} into "
-            f"{into}. {kept} Nothing is merged yet: when every child is accepted, run('orchestra', "
+            f"{into}. Nothing is merged yet: when every child is accepted, run('orchestra', "
             "'land', {}) merges the pull requests.")
 
 
-def fresh_session(port: PlanStore, sid: str, name: str, card: Card, change: dict[str, Any], state: str, rel: str,
-                  sha: str, ref: str) -> str:
-    """Keep a note on the child's entry and say how its fresh session is opened.
+def say_back(port: PlanStore, sid: str, name: str, card: Card, kind: str, n: int, words: str, short: str,
+             change: dict[str, Any], state: str, github: Callable[..., Any]) -> str:
+    """Post the orchestrator's words as one comment on the child's draft (else its pull request; talk.py), keep them on
+    its entry (sent, and fresh: what spawn gives a fresh session's brief), and say how that session is opened.
 
     Args:
-        port: the ledger port.
-        sid: the parent's session.
-        name: the child's name.
-        card: its card.
-        change: the entry's other keys to set.
-        state: the story row's state.
-        rel: the note's path.
-        sha: the note's commit.
-        ref: the child's branch.
+        port, sid, name, card: the ledger port, the parent's session, the child and its card.
+        kind, n: sendback or answer, and its number.
+        words: the comment's words; short: what the entry's sent list keeps.
+        change, state: the entry's other keys, and the story row's state.
+        github: call(method, path, fields?) -> the JSON answer.
 
     Returns:
         The sentence for the answer.
+
+    Raises:
+        ReviewError: the child has no draft or pull request, or GitHub refuses the comment.
     """
-    set_entry(port, sid, name, card, {**change, "fresh": {"note": rel, "at": now(), "sha": sha}}, state)
-    return (f"The note is {rel} on {ref} ({sha[:12]}); nothing is sent to the child. Open a fresh session for it now: "
-            f"run('orchestra', 'spawn', {{name: '{name}'}}) gives the create_session call (it reads the note first), "
-            f"then run('orchestra', 'started', {{name: '{name}', sid}}).")
+    ticket, _, entry = child_of(port, sid, name, live=False)
+    where = (ticket.get(DRAFTS) or {}).get(name) or entry.get("pr") or {}
+    if not where.get("repo") or not where.get("number"):
+        raise ReviewError(f"{name} has no draft pull request to post on (spawn opens one for every child)")
+    try:
+        made = talk.post(port, sid, github, where, kind, {"child": name, "plan": ticket["plan"]["id"],
+                                                          "from": talk.PARENT, "n": n}, [words])
+    except GitHubError as e:
+        raise ReviewError(f"the {kind} was not posted on #{where['number']}: {str(e)[-200:]}") from e
+    url, what = str(made.get("html_url") or where.get("url") or ""), f"{'send-back' if kind == 'sendback' else kind} {n}"
+    sent = list(entry.get("sent", [])) + [{"at": now(), "how": what.split()[0], "text": short[:1000], "comment": url}]
+    fresh = {"note": f"{what} ({url}): {words}", "words": words, "url": url, "at": now()}  # crew.status shows note
+    set_entry(port, sid, name, card, {**change, "sent": sent, "fresh": fresh}, state)
+    return (f"The {what} is the comment {url} on its draft; nothing is sent to the child. Open a fresh session for it "
+            f"now: run('orchestra', 'spawn', {{name: '{name}'}}) gives the create_session call (its brief holds the "
+            f"words), then run('orchestra', 'started', {{name: '{name}', sid}}).")
 
 
-def reject(port: PlanStore, sid: str, name: str, why: str, units: dict[str, Any], rounds: int) -> str:
-    """Send a child back with a reason, one round of at most rounds: a send-back note pushed on its branch, for a fresh
-    session of the child.
+def reject(port: PlanStore, sid: str, name: str, why: str, rounds: int, github: Callable[..., Any]) -> str:
+    """Send a child back with a reason, one round of at most rounds: a send-back comment on its draft.
 
     Args:
         port: the ledger port.
         sid: the parent's session.
         name: the child's name.
         why: the reason, for the child.
-        units: the declared units by name.
         rounds: the send-backs a child may have (the config's limits.rounds).
+        github: call(method, path, fields?) -> the JSON answer.
 
     Returns:
-        The round, the note, and how to open the fresh session.
+        The round, the comment, and how to open the fresh session.
 
     Raises:
         ReviewError: no such child, ended (an accepted child whose pull request is not merged may still be sent back,
-            for a conflict), no reason, rounds send-backs already (the user decides then), or the note cannot be pushed.
+            for a conflict), no reason, rounds send-backs already (the user decides then), or no comment was posted.
     """
     text = " ".join(str(why).split())
     if not text:
         raise ReviewError("say why the child is sent back")
-    ticket, card, entry = child_of(port, sid, name, live=False)
+    _, card, entry = child_of(port, sid, name, live=False)
     if entry.get("state") in crew.ENDED and (entry.get("state") != crew.ACCEPTED or entry.get("merged")):
         raise ReviewError(f"{name} has ended ({entry['state']}{', merged' if entry.get('merged') else ''})")
     if entry.get("backs", 0) >= rounds:
         raise ReviewError(f"{name} was sent back {rounds} times: the user decides now (forget it, or say what to do)")
     n = entry.get("backs", 0) + 1
-    ref, rel = branch(ticket["plan"]["id"], name), f"{NOTES}/{name}/sendback-{n}.md"
-    note = (f"# Send-back {n} of {rounds} from the orchestrator\n\n{text}\n\nFix it on this branch, verify, push, "
-            "and hand back again.\n")
-    sha = put_note(unit_spec(card, units), top(ticket["plan"]["root"]) or "", ref, rel, note,
-                   subject(issue_number(ticket, name), name, f"Send-back {n} of {name}"))
-    sent = list(entry.get("sent", [])) + [{"at": now(), "how": "send-back", "text": text[:1000], "note": rel}]
-    told = fresh_session(port, sid, name, card, {"state": crew.RUNNING, "backs": n, "sentBackAt": now(),
-                                                 "checkedAt": None, "sent": sent}, "rejected", rel, sha, ref)
+    words = f"Send-back {n} of {rounds}: {text} Fix it on your branch, verify, push, and hand back again."
+    told = say_back(port, sid, name, card, "sendback", n, words, text, {"state": crew.RUNNING, "backs": n,
+                    "sentBackAt": now(), "checkedAt": None}, "rejected", github)
     return f"{name} sent back (round {n} of {rounds}). {told} Check it again after its next handback."
 
 
-def issue_number(ticket: Ticket, name: str) -> Any:
-    """The number of the issue of the child name, as the parent's ticket keeps it (issues.py); None for none."""
-    return (((ticket.get(ISSUES) or {}).get("children") or {}).get(name) or {}).get("number")
-
-
-def answer(port: PlanStore, sid: str, name: str, text: str, units: dict[str, Any]) -> str:
-    """The parent's reply to a child's question: an answer note pushed on its branch, for a fresh session of the child.
+def answer(port: PlanStore, sid: str, name: str, text: str, github: Callable[..., Any]) -> str:
+    """The parent's reply to a child's question: an answer comment on its draft.
 
     Args:
         port: the ledger port.
         sid: the parent's session.
         name: the child's name.
         text: the reply.
-        units: the declared units by name.
+        github: call(method, path, fields?) -> the JSON answer.
 
     Returns:
-        The note, and how to open the fresh session.
+        The comment, and how to open the fresh session.
 
     Raises:
-        ReviewError: no such child, ended, an empty reply, or the note cannot be pushed.
+        ReviewError: no such child, ended, an empty reply, or no comment was posted.
     """
     reply = " ".join(str(text).split())
     if not reply:
         raise ReviewError("the answer is empty")
-    ticket, card, entry = child_of(port, sid, name)
+    _, card, entry = child_of(port, sid, name)
     k = sum(1 for s in entry.get("sent", []) if s.get("how") == "answer") + 1
-    ref, rel = branch(ticket["plan"]["id"], name), f"{NOTES}/{name}/answer-{k}.md"
-    sha = put_note(unit_spec(card, units), top(ticket["plan"]["root"]) or "", ref, rel,
-                   f"# Answer {k} from the orchestrator\n\n{reply}\n",
-                   subject(issue_number(ticket, name), name, f"Answer {k} to {name}"))
-    sent = list(entry.get("sent", [])) + [{"at": now(), "how": "answer", "text": reply[:1000], "note": rel}]
-    return f"Answer {k} to {name}. " + fresh_session(port, sid, name, card, {"sent": sent}, "answered", rel, sha, ref)
+    return f"Answer {k} to {name}. " + say_back(port, sid, name, card, "answer", k, reply, reply, {}, "answered", github)
 
 
 def forget(port: PlanStore, sid: str, name: str, why: str) -> str:
@@ -368,24 +369,22 @@ def forget(port: PlanStore, sid: str, name: str, why: str) -> str:
             "until the user agrees to archive it.")
 
 
-def read(port: PlanStore, sid: str, name: str, units: dict[str, Any]) -> str:
-    """The receipt of a child, read from its branch.
+def read(port: PlanStore, sid: str, name: str, github: Callable[..., Any]) -> str:
+    """The receipt of a child, read from its handback comment on its draft.
 
     Args:
         port: the ledger port.
         sid: the parent's session.
         name: the child's name.
-        units: the declared units by name.
+        github: call(method, path, fields?) -> the JSON answer.
 
     Returns:
         The receipt as JSON text, or that there is none yet.
 
     Raises:
-        ReviewError: no such child, or its branch cannot be fetched.
+        ReviewError: no such child, no draft, or GitHub cannot be read.
     """
-    ticket, card, _ = child_of(port, sid, name, live=False)
-    repo = top(ticket["plan"]["root"])
-    with checkout(unit_spec(card, units), repo, branch(ticket["plan"]["id"], name)) as folder:
-        receipt = find_receipt(folder, name)
+    ticket, _, entry = child_of(port, sid, name, live=False)
+    said = last_word(ticket, entry, name, github)
+    receipt = (said or {}).get("receipt") if (said or {}).get("kind") == "handback" else None
     return json.dumps(receipt, ensure_ascii=False, indent=1) if receipt else f"{name} has no receipt yet."
-

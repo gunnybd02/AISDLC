@@ -216,7 +216,7 @@ def give(port: PlanStore, sid: str, name: str, kind: str, body: str = "") -> str
     call = {"session_id": held["sid"], "message": message}
     after = ("Its harness checks it, uploads its ledger copy and ends." if kind == "stop" else
              "Its harness checks it and lets it go on; it sends nothing back. Only if its session has ended, spawn "
-             "opens a fresh session that reads the note instead.")
+             "opens a fresh session whose brief holds the same words.")
     return (f"Send {name} its signed order ({kind}, round {held['round']}) now, as it is: {SEND} "
             f"{json.dumps(call, ensure_ascii=False)}. {after}")
 
@@ -292,7 +292,6 @@ def arrived(port: PlanStore, event: Any) -> list[str]:
     held, issue = of_role(role), (role.get("record") or {}).get("issue") or {}
     number, sha = int(issue.get("number") or NO_ISSUE), str(issue.get("sha") or NO_SHA)
     lines: list[str] = []
-    opened: list[str] = []
 
     def write(con: Any, rec: Any) -> None:
         fresh = tickets.latest(con, event.session)
@@ -309,16 +308,11 @@ def arrived(port: PlanStore, event: Any) -> list[str]:
                 continue
             last = o["round"]
             fresh = {**fresh, TAKEN: {"round": last, "kind": o["kind"], "at": now()}}
-            if o["kind"] != "stop":
-                opened.append(o["kind"])
-                if fresh.get("phase") == "deliver" and tickets.approved_plan(fresh):
-                    fresh = tickets.back_to_execute(fresh)
+            if o["kind"] != "stop" and fresh.get("phase") == "deliver" and tickets.approved_plan(fresh):
+                fresh = tickets.back_to_execute(fresh)
             lines.append(said_of(o))
         tickets.save(con, fresh)
     port.write(write)
-    if opened:  # a valid fix or answer: the note it names comes into the tree at once
-        from harness.utils.orchestra.catchup import caught_up
-        lines += caught_up(port, event.session, role)
     return lines
 
 
@@ -335,10 +329,9 @@ def said_of(order: dict[str, Any]) -> str:
         return (f"The orchestrator's order stop (round {order['round']}) is valid: your work is over. Export your ledger "
                 "with run('ledger', 'export', {reason: 'stop'}), upload it as the answer says, then end; change nothing.")
     words = f" Its words: {order['body']}" if order.get("body") else ""
-    what = "send-back" if order["kind"] == "fix" else "answer"
     return (f"The orchestrator's order {order['kind']} (round {order['round']}) is valid: your card plan is open for "
-            f"one more round.{words} Read the {what} note in .harness/notes/ on your branch, do it inside your card, "
-            "verify, push, and hand back again.")
+            f"one more round.{words} The same words are a comment of the orchestrator on your draft pull request. Do "
+            "it inside your card, verify, push, and hand back again.")
 
 
 def wait_of(ticket: Any) -> str:

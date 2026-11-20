@@ -1,16 +1,17 @@
 """Doorbell: what the parent does when a CI result on a child's draft pull request wakes it (docs/system.md section 8;
 Sessions part 5, piece 4). A child cannot message its parent (auto mode refuses it); it pushes, and its harness posts
-its question or handback as a comment on its draft (utils/orchestra/draft.say). The harness reads GitHub itself, never
+its question or handback as a comment on its draft (utils/orchestra/talk.py). The harness reads GitHub itself, never
 the wake-up's text: for each child with a draft, the head commit of its pull request, the CHECK run on it, the FAIL
-lines of that job's log when it failed, the new comments, and the files of the head commit. It records each CI result
-(RESULT, once per commit and result) and each new comment (COMMENT, once: from the child, or the GitHub login, to the
-parent) and names the next step:
+lines of that job's log when it failed, and the comments (the child's newest question or handback names the commit
+it goes with: talk.newest). It records each CI result
+(RESULT, once per commit and result) and each new comment (COMMENT, once: from the child or the orchestrator when a
+harness posted it, else the GitHub login) and names the next step:
 
 - no result yet, or CI running: wait;
 - a rule of harness ci failed: send the child back with those rules;
 - its tests failed: send it back when it has handed back, else wait while it works;
-- a question at the tip: answer it;
-- the receipt at the tip and CI green: check, then accept;
+- a question for the head commit: answer it;
+- the handback for the head commit and CI green: check, then accept;
 - else: wait.
 
 A GitHub event in a prompt of a parent with drafts, or in the answer of ReadNotifications that reads it, gets
@@ -29,9 +30,8 @@ from harness.utils.git.github import GitHubError
 from harness.utils.ledger.mask import mask
 from harness.utils.ledger.store import note
 from harness.utils.orchestra import crew
-from harness.utils.orchestra.brief import NOTES
-from harness.utils.orchestra.draft import DRAFTS, MARK
-from harness.utils.orchestra.work import RECEIPTS
+from harness.utils.orchestra import talk
+from harness.utils.orchestra.draft import DRAFTS
 from harness.utils.shapes import PlanStore
 
 CHECK = "harness-ci"  # the job of the workflow (utils/orchestra/workflow.py), so the name of its check run
@@ -40,7 +40,6 @@ STAMP = re.compile(r"^\S+Z\s")  # the time GitHub puts before each line of a job
 EVENT = re.compile(r"source=[\"']?github|external-event", re.I)
 NOTIFICATIONS = "ReadNotifications"  # in the cloud a CI result is a notification the model reads with this tool
 MOST = 2000  # characters of a comment the ledger keeps
-MARKED = MARK.split("{")[0].strip()  # "<!-- harness-comment": a comment the harness of a child posted
 
 
 def ring(port: PlanStore, sid: str, github: Callable[..., Any], log: Optional[Callable[..., str]] = None) -> str:
@@ -89,8 +88,7 @@ def one(port: PlanStore, sid: str, name: str, pr: dict[str, Any], entry: dict[st
     try:
         head = str(((github("GET", f"{base}/pulls/{number}") or {}).get("head") or {}).get("sha") or "")
         runs = (github("GET", f"{base}/commits/{head}/check-runs") or {}).get("check_runs") or []
-        files = [str(f.get("filename")) for f in (github("GET", f"{base}/commits/{head}") or {}).get("files") or []]
-        comments = github("GET", f"{base}/issues/{number}/comments") or []
+        comments = talk.comments_of(github, pr)
     except GitHubError as e:
         return f"{name}: its draft #{number} cannot be read on GitHub ({str(e)[-200:]}); try the doorbell again."
     run = next((r for r in runs if r.get("name") == CHECK), {})
@@ -100,8 +98,9 @@ def one(port: PlanStore, sid: str, name: str, pr: dict[str, Any], entry: dict[st
          {"child": name, "sha": head, "status": status, "conclusion": conclusion, "failures": failures,
           "url": run.get("html_url")})
     said = heard(port, sid, name, entry, comments)
-    receipt = f"{RECEIPTS}/{name}.json" in files
-    asked = any(f.startswith(f"{NOTES}/{name}/question-") for f in files)
+    last = talk.newest(comments, name, ("question", "handback"))  # what the child said with its head commit
+    kind = (last or {}).get("kind") if (last or {}).get("sha") == head else ""
+    receipt, asked = kind == "handback", kind == "question"
     short, rules = head[:12], [f for f in failures if f.startswith("FAIL ")]
     if not run:
         step = f"no {CHECK} result on {short} yet: wait."
@@ -142,8 +141,8 @@ def fails(base: str, run: dict[str, Any], log: Callable[..., str]) -> list[str]:
 
 
 def heard(port: PlanStore, sid: str, name: str, entry: dict[str, Any], comments: list[dict[str, Any]]) -> list[str]:
-    """Record each comment not recorded before (COMMENT, target its id): from the child when its harness posted it
-    (MARK names the child), else from the GitHub login; to the parent.
+    """Record each comment not recorded before (COMMENT, target its id): from the child when its harness posted it,
+    from the orchestrator when the parent's harness did (talk.read), else from the GitHub login.
 
     Args:
         port: the ledger port.
@@ -157,11 +156,12 @@ def heard(port: PlanStore, sid: str, name: str, entry: dict[str, Any], comments:
     """
     out = []
     for c in comments:
-        body = str(c.get("body") or "")
-        ours = MARKED in body and f'"child": "{name}"' in body
-        sender = name if ours else f"@{(c.get('user') or {}).get('login', '?')}"
-        kept = {"from": sender, "fromSession": entry.get("sid") if ours else None, "to": sid, "url": c.get("html_url"),
-                "body": mask(body)[:MOST]}
+        body, meta = str(c.get("body") or ""), talk.read(c) or {}
+        ours = meta.get("child") == name and meta.get("from") == talk.CHILD
+        mine = meta.get("child") == name and meta.get("from") == talk.PARENT  # never the child's words
+        sender = name if ours else talk.PARENT if mine else f"@{(c.get('user') or {}).get('login', '?')}"
+        kept = {"from": sender, "fromSession": entry.get("sid") if ours else sid if mine else None,
+                "to": entry.get("sid") if mine else sid, "url": c.get("html_url"), "body": mask(body)[:MOST]}
         if keep(port, sid, COMMENT, str(c.get("id")), name, kept):
             first = " ".join(body.split("<!--")[0].split())[:300]
             out.append(f"from {sender}: {first}")

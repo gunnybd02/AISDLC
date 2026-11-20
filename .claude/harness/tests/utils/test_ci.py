@@ -1,12 +1,14 @@
-"""Sessions part 5, harness ci (utils/orchestra/ci.py): the child's gate run again from the branch alone. A real
-repository holds the plan branch (with its locked test) and the child's branch (its registration first, then its
-work); a fake GitHub answers the child's issue. A branch that keeps every rule is green; each broken rule fails with
-why, and a rule that cannot run fails as not checked."""
+"""Sessions part 5, harness ci (utils/orchestra/ci.py): the child's gate run again from the branch and its issue alone.
+A real repository holds the plan branch (with its locked test) and the child's branch (the parent's empty start
+commit, then the child's work); a fake GitHub answers the child's issue and its comments, where the registration is.
+A branch that keeps every rule is green; each broken rule fails with why, and a rule that cannot run fails as not
+checked."""
 import json
 import subprocess
 import unittest
 
-from harness.utils.orchestra import ci, issues, register
+from harness.utils.git.github import GitHubError
+from harness.utils.orchestra import ci, issues, register, talk
 from harness.tests.e2e import git_repo
 
 CARD = {"name": "api", "unit": "home", "goal": "List the orders of a user", "ac": ["GET /orders returns the orders"],
@@ -14,6 +16,7 @@ CARD = {"name": "api", "unit": "home", "goal": "List the orders of a user", "ac"
 PLAN = {"id": 7, "sha": "f" * 64, "children": [CARD]}
 URL = "https://github.com/o/r"
 SECRET = "KEY = 'AKIA" + "ABCDEFGHIJKLMNOP'\n"
+COMMENTS = "repos/o/r/issues/41/comments?per_page=100"
 
 
 def git(repo, *args):
@@ -21,20 +24,25 @@ def git(repo, *args):
     return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout
 
 
+def registration(sha, n=801, **change):
+    """The registration comment a child's harness posts on its issue (register.on_issue)."""
+    meta = {"kind": "register", "child": "api", "plan": 7, "from": "child", "format": register.RECORD_FORMAT,
+            "draft": "pd-x", "branch": "orch/p7/api", "issueSha": sha, "ticketSha256": "b" * 64, "planSha": "f" * 64,
+            **change}
+    return {"id": n, "html_url": f"{URL}/issues/41#c{n}",
+            "body": "**Register of api** (plan 7)\n\nRegistered.\n\n" + talk.MARK.format(meta=json.dumps(meta))}
+
+
 class CiTest(unittest.TestCase):
     def setUp(self):
         self.repo = git_repo(self, {"a.py": "X = 1\n"})
-        _, self.body, sha = issues.issue_text(CARD, issues.block_of(PLAN, "pd-x", CARD, URL, "plan/p7"), 7)
-        self.calls = []
+        _, self.body, self.sha = issues.issue_text(CARD, issues.block_of(PLAN, "pd-x", CARD, URL, "plan/p7"), 7)
+        self.comments, self.calls = [registration(self.sha)], []
         git(self.repo, "switch", "-q", "-c", "plan/p7")
         self.commit({"tests/test_orders_ac.py": "# locked\n"}, "Acceptance tests of plan 7, locked")
         git(self.repo, "switch", "-q", "-c", "orch/p7/api")
-        record = {"format": register.RECORD_FORMAT, "plan": "pd-x", "child": "api", "branch": "orch/p7/api",
-                  "repo": "o/r", "issue": 41, "issueSha": sha, "ticketSha256": "b" * 64, "planSha": "f" * 64}
-        self.commit({".harness/register/api.json": json.dumps(record, indent=1, sort_keys=True) + "\n"},
-                    "#41 api: register (issue x, ticket y)")
+        self.commit({}, "#41 api: start\n\nThe orchestrator made this branch from plan/p7.")
         self.commit({"app/orders.py": "ORDERS = []\n", "tests/test_orders.py": "# test\n"}, "#41 api: List orders")
-        self.commit({".harness/handback/api.json": "{}\n"}, "#41 api: Handback of api (plan 7)")
 
     def commit(self, files, message):
         for rel, text in files.items():
@@ -42,25 +50,36 @@ class CiTest(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8")
         git(self.repo, "add", "-A")
-        git(self.repo, "commit", "-q", "-m", message)
+        git(self.repo, "commit", "-q", "--allow-empty", "-m", message)
 
     def github(self, method, path, fields=None):
         self.calls.append((method, path))
-        return {"number": 41, "body": self.body}
+        if path == "repos/o/r/issues/41":
+            return {"number": 41, "body": self.body}
+        if path == COMMENTS:
+            return list(self.comments)
+        raise GitHubError(f"gh api {method} {path}: HTTP 404")
 
-    def results(self, base="plan/p7", head="orch/p7/api"):
-        return {rule: (ok, why) for rule, ok, why in ci.check(str(self.repo), base, head, self.github)}
+    def results(self, base="plan/p7", head="orch/p7/api", slug="o/r"):
+        return {rule: (ok, why) for rule, ok, why in ci.check(str(self.repo), base, head, self.github, slug=slug)}
 
     def failed(self, **kw):
         return {rule: why for rule, (ok, why) in self.results(**kw).items() if not ok}
 
+    def fresh_branch(self):
+        """The child's branch again from the plan branch, with nothing on it."""
+        git(self.repo, "switch", "-q", "plan/p7")
+        git(self.repo, "branch", "-q", "-D", "orch/p7/api")
+        git(self.repo, "switch", "-q", "-c", "orch/p7/api")
+
     def test_a_branch_that_keeps_every_rule_is_green(self):
-        """s4.ci.rules: every rule passes, read from the branch and the issue the registration names."""
+        """s4.ci.rules: every rule passes, read from the branch, the issue its start names and its comments."""
         results = self.results()
         self.assertEqual(list(results), list(ci.RULES))
         self.assertEqual([rule for rule, (ok, _) in results.items() if not ok], [])
-        self.assertEqual(self.calls, [("GET", "repos/o/r/issues/41")])  # one read of the issue the record names
-        ok, text = ci.report(str(self.repo), "plan/p7", "orch/p7/api", self.github)
+        self.assertEqual(self.calls, [("GET", COMMENTS), ("GET", "repos/o/r/issues/41")])
+        self.assertEqual(results["registered"][1], "comment 801 on issue #41 registers api for its plan")
+        ok, text = ci.report(str(self.repo), "plan/p7", "orch/p7/api", self.github, slug="o/r")
         self.assertTrue(ok)
         self.assertEqual(text.splitlines()[0], "harness ci: orch/p7/api into plan/p7")
         self.assertIn("PASS subjects: every commit starts '#41 api: '", text)
@@ -76,23 +95,52 @@ class CiTest(unittest.TestCase):
         self.assertIn("app/orders.py holds", failed["secrets"])
         self.assertEqual(failed["scope"], "outside the scope of the issue: app/other.py, tests/test_orders_ac.py")
         self.assertEqual(failed["locked"], "locked acceptance tests changed: tests/test_orders_ac.py")
-        ok, text = ci.report(str(self.repo), "plan/p7", "orch/p7/api", self.github)
+        ok, text = ci.report(str(self.repo), "plan/p7", "orch/p7/api", self.github, slug="o/r")
         self.assertFalse(ok)
         self.assertTrue(text.endswith("Result: RED, 5 rule(s) failed: subjects, marks, secrets, scope, locked."))
 
-    def test_code_before_the_registration_fails(self):
-        record = (self.repo / ".harness" / "register" / "api.json").read_text(encoding="utf-8")
-        git(self.repo, "switch", "-q", "plan/p7")
-        git(self.repo, "branch", "-q", "-D", "orch/p7/api")
-        git(self.repo, "switch", "-q", "-c", "orch/p7/api")
-        self.commit({"app/orders.py": "ORDERS = []\n"}, "#41 api: List orders")
-        failed = self.failed()  # no registration at all: nothing else can be read
-        self.assertEqual(failed["registered"], "orch/p7/api holds no registration (.harness/register/api.json)")
-        self.assertEqual(failed["scope"], "not checked: no registration names the issue")
+    def test_the_issue_comes_from_the_start_subject_and_the_registration_from_its_comments(self):
+        """s2.ci.issue-from-subject: no registration, one for another plan or issue block, or a start that names
+        another issue fails; a later registration, the orchestrator's or another child's, does not count."""
+        self.comments = []
+        self.assertEqual(self.failed(), {"registered": "issue #41 holds no registration comment of api"})
+        self.comments = [registration(self.sha, **{"from": "orchestrator"}), registration(self.sha, child="web")]
+        self.assertEqual(self.failed(), {"registered": "issue #41 holds no registration comment of api"})
+        self.comments = [registration(self.sha, planSha="e" * 64), registration(self.sha, n=802)]  # the oldest counts
+        self.assertEqual(self.failed(), {"registered": "the registration is for another plan"})
+        self.comments = [registration("0" * 64)]
+        failed = self.failed()
+        self.assertIn("issue #41: its block is not the one the registration names", failed["issue"])
+        self.assertEqual(set(failed), {"issue", "base", "scope", "locked"})  # the block is not trusted
+        self.comments = [registration(self.sha, branch="orch/p7/web")]
+        self.assertIn("the registration orch/p7/web", self.failed()["branch"])
+        self.comments = [registration(self.sha)]
+        self.fresh_branch()
+        self.commit({}, "#42 api: start")  # another issue: GitHub knows no #42 here
+        self.commit({"app/orders.py": "ORDERS = []\n"}, "#42 api: List orders")
+        failed = self.failed()
+        self.assertIn("issue #42 cannot be read", failed["issue"])
+        self.assertIn("not checked: the comments of issue #42 cannot be read", failed["registered"])
+
+    def test_no_start_commit_or_no_repository_stops_the_rules(self):
+        """s2.ci.issue-from-subject: a start that changes a file is no start; with no start the issue is unknown."""
+        self.fresh_branch()
+        self.commit({"app/orders.py": "ORDERS = []\n"}, "#41 api: start")
+        failed = self.failed()
+        self.assertEqual(failed["issue"], "no start commit '#<issue> api: start' over plan/p7 names the issue")
+        self.assertEqual(failed["scope"], "not checked: no start commit names the issue")
         self.assertEqual((len(failed), self.calls), (len(ci.RULES), []))
-        self.commit({".harness/register/api.json": record}, "#41 api: register late")
-        self.assertEqual(self.failed(), {"registered": "orch/p7/api does not start with its registration: its first "
-                                                       "commit over plan/p7 changes app/orders.py"})
+        self.setUp()
+        self.assertEqual(self.failed(slug="")["issue"], "not checked: the repository on GitHub is not known (--repo)")
+        git(self.repo, "remote", "add", "origin", URL)  # the slug is read from the origin's URL
+        self.assertEqual(self.failed(slug=""), {})
+
+    def test_a_harness_file_on_the_branch_is_outside_the_scope(self):
+        """s2.ci.issue-from-subject: the talk is in comments, so no .harness file is the child's own any more."""
+        self.commit({".harness/notes/api/question-1.md": "# Question\n"}, "#41 api: Question 1 of api (plan 7)")
+        self.commit({".harness/handback/api.json": "{}\n"}, "#41 api: Handback of api (plan 7)")
+        self.assertEqual(self.failed(), {"scope": "outside the scope of the issue: .harness/handback/api.json, "
+                                                  ".harness/notes/api/question-1.md"})
 
     def test_an_edited_issue_a_wrong_base_or_head_fails(self):
         self.body = self.body.replace('"tests/test_orders.py"', '"tests/"')  # the block edited by hand
@@ -104,32 +152,25 @@ class CiTest(unittest.TestCase):
         self.assertIn("work is not the plan branch plan/p7", self.failed(base="work")["base"])
         self.assertEqual(self.failed(head="feature")["branch"], "feature is no branch of a child (orch/p<plan>/<name>)")
 
-    def test_the_start_commit_of_the_parent_waits_then_is_skipped(self):
-        """s1.ci.waiting: the start commit alone is WAITING (exit 0); later the registration still comes first."""
-        record = (self.repo / ".harness" / "register" / "api.json").read_text(encoding="utf-8")
-        git(self.repo, "switch", "-q", "plan/p7")
-        git(self.repo, "branch", "-q", "-D", "orch/p7/api")
-        git(self.repo, "switch", "-q", "-c", "orch/p7/api")
-        self.commit({".harness/notes/api/start.md": "# Start of api\n"}, "#41 api: start")
-        ok, text = ci.report(str(self.repo), "plan/p7", "orch/p7/api", self.github)
+    def test_a_branch_whose_commits_change_no_file_waits(self):
+        """s1.ci.waiting: the start and empty signal commits alone are WAITING (exit 0), and nothing is read."""
+        self.fresh_branch()
+        self.commit({}, "#41 api: start")
+        self.commit({}, "#41 api: Registration of api failed (plan 7)")
+        ok, text = ci.report(str(self.repo), "plan/p7", "orch/p7/api", self.github, slug="o/r")
         self.assertTrue(ok)
         self.assertEqual(text.splitlines()[1:], [f"WAIT: {ci.WAITING}.", "Result: WAITING, nothing to check yet."])
         self.assertEqual(self.calls, [])
-        self.commit({".harness/register/api.json": record}, "#41 api: register (issue x, ticket y)")
         self.commit({"app/orders.py": "ORDERS = []\n"}, "#41 api: List orders")
         self.assertEqual(self.failed(), {})
-        self.assertIn("registers api for issue #41", self.results()["registered"][1])
 
-    def test_has_code_once_a_commit_follows_the_start_and_the_registration(self):
-        """s5.ci.has-code: false for the start and the registration alone, true with a later commit."""
-        record = (self.repo / ".harness" / "register" / "api.json").read_text(encoding="utf-8")
-        self.assertTrue(ci.has_code(str(self.repo), "plan/p7", "orch/p7/api"))  # code and handback on it
-        git(self.repo, "switch", "-q", "plan/p7")
-        git(self.repo, "branch", "-q", "-D", "orch/p7/api")
-        git(self.repo, "switch", "-q", "-c", "orch/p7/api")
+    def test_has_code_once_a_commit_changes_a_file(self):
+        """s5.ci.has-code: false while every commit is empty, true once one changes a file."""
+        self.assertTrue(ci.has_code(str(self.repo), "plan/p7", "orch/p7/api"))
+        self.fresh_branch()
         self.assertFalse(ci.has_code(str(self.repo), "plan/p7", "orch/p7/api"))  # nothing over the base
-        self.commit({".harness/notes/api/start.md": "# Start of api\n"}, "#41 api: start")
-        self.commit({".harness/register/api.json": record}, "#41 api: register (issue x, ticket y)")
+        self.commit({}, "#41 api: start")
+        self.commit({}, "#41 api: Question 1 of api (plan 7)")
         self.assertFalse(ci.has_code(str(self.repo), "plan/p7", "orch/p7/api"))
         self.commit({"app/orders.py": "ORDERS = []\n"}, "#41 api: List orders")
         self.assertTrue(ci.has_code(str(self.repo), "plan/p7", "orch/p7/api"))
@@ -137,16 +178,16 @@ class CiTest(unittest.TestCase):
         self.assertTrue(ci.has_code(str(self.repo), "no-such-base", "orch/p7/api"))  # not readable: they run
 
     def test_check_and_has_code_judge_the_commit_under_test(self):
-        """s2.ci.commit-under-test: live run 5 ran the tests of the registration commit after code was pushed."""
-        registration = git(self.repo, "rev-parse", "HEAD~2").strip()  # under it: code, then the handback
-        self.assertTrue(ci.has_code(str(self.repo), "plan/p7", "orch/p7/api"))  # the tip has code
-        self.assertFalse(ci.has_code(str(self.repo), "plan/p7", "orch/p7/api", registration))
-        results = {rule: (ok, why) for rule, ok, why in ci.check(str(self.repo), "plan/p7", "orch/p7/api", self.github,
-                                                                  registration)}
-        self.assertEqual([rule for rule, (ok, _) in results.items() if not ok], [])
+        """s2.ci.commit-under-test: live run 5 ran the tests of an older commit after code was pushed."""
+        start, code = git(self.repo, "rev-parse", "HEAD~1").strip(), git(self.repo, "rev-parse", "HEAD").strip()
+        self.assertFalse(ci.has_code(str(self.repo), "plan/p7", "orch/p7/api", start))
+        self.assertTrue(ci.has_code(str(self.repo), "plan/p7", "orch/p7/api", code))
         self.commit({"app/other.py": "1\n"}, "#41 api: out of scope")  # a later push on the tip
-        self.assertIn("scope", [r for r, ok, _ in ci.check(str(self.repo), "plan/p7", "orch/p7/api", self.github) if not ok])
-        ok, _ = ci.report(str(self.repo), "plan/p7", "orch/p7/api", self.github, registration)
+        self.assertIn("scope", [r for r, ok, _ in ci.check(str(self.repo), "plan/p7", "orch/p7/api", self.github,
+                                                           slug="o/r") if not ok])
+        results = ci.check(str(self.repo), "plan/p7", "orch/p7/api", self.github, code, "o/r")
+        self.assertEqual([rule for rule, ok, _ in results if not ok], [])
+        ok, _ = ci.report(str(self.repo), "plan/p7", "orch/p7/api", self.github, code, "o/r")
         self.assertTrue(ok)  # the commit under test is judged, not the later tip
 
 

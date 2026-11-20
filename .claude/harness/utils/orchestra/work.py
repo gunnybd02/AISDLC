@@ -3,12 +3,13 @@ through the model's shell.
 
 - take: open the card plan, approved by the grant of the parent plan (no form), on the child's own branch.
 - push: push the child's own branch, judged by the git rules; it pushes after every step, since its machine dies.
-- ask: a question for the parent, committed as a numbered note on the child's branch and pushed; then the child stops.
+- ask: a question for the parent: a comment on the child's draft and an empty signal commit, pushed; then it stops.
 - handback: the child's report and what harness code reads itself (commits, verify, behaviours, uncommitted files),
-  written as .harness/handback/<name>.json, committed through the commit gate and pushed with the branch.
+  posted as a comment on its draft (the receipt, a json block) with an empty signal commit, pushed with the branch.
 
-A child sends no message and gets none: a cloud child cannot message its parent (auto mode refuses it, the other
-modes wait for an approval nobody gives; live checks of 2026-11-17). Parent and child talk through the branch."""
+A child sends no message: a cloud child cannot message its parent (auto mode refuses it, the other modes wait for an
+approval nobody gives; live checks of 2026-11-17). Parent and child talk in comments (utils/orchestra/talk.py); the
+signal commit's push runs CI, whose result wakes the parent. No file of the talk is committed."""
 from __future__ import annotations
 
 import json
@@ -18,12 +19,9 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Optional
 
 from harness.utils.contracts import asked, now, refused
-from harness.utils.git.commit import commit
 from harness.utils.git.facts import head, top
 from harness.utils.git.run import GitError, git, run_git
-from harness.utils.orchestra import child
-from harness.utils.orchestra.brief import NOTES, child_subject
-from harness.utils.orchestra.catchup import CatchUpError, taken
+from harness.utils.orchestra import child, talk
 from harness.utils.plan import tickets
 from harness.utils.plan.ship import audit
 from harness.utils.shapes import ChildRole, CommitJudge, GitJudge, PlanStore, Ticket
@@ -31,8 +29,7 @@ from harness.utils.shapes import ChildRole, CommitJudge, GitJudge, PlanStore, Ti
 if TYPE_CHECKING:
     from harness.utils.ledger.recorder import Recorder
 
-RECEIPTS = ".harness/handback"
-STOP = "Then stop: end your turn. You send no message; the orchestrator reads your branch."
+STOP = "Then stop: end your turn. You send no message; the orchestrator reads your draft and your branch."
 LISTS = ("changed", "checked", "notChecked", "risks")
 PAIRS = {"testsChanged": ("test", "why"), "added": ("file", "why"), "faults": ("what", "where")}
 MOST, LONGEST, LONGEST_PAIR = 10, 200, 400
@@ -120,8 +117,9 @@ def take(port: PlanStore, sid: str, root: str, first: Optional[Callable[[str], A
         port: the ledger port.
         sid: the child's session.
         root: the folder the session works in (the repository is the one holding it).
-        first: first(repo) commits the registration on the branch before the plan opens (register.on_branch) and
-            gives its record {issue, sha}, which the approval names; None, or a None record, names none.
+        first: first(repo) posts the registration as a comment on the issue before the plan opens (register.on_issue)
+            and gives {issue, comment}, which the approval names; None, or a None answer, names none. It commits
+            nothing: the plan's base is the branch as the parent's start commit left it.
 
     Returns:
         The text for the model: the plan, the branch, the behaviour ids and the loop.
@@ -147,17 +145,15 @@ def take(port: PlanStore, sid: str, root: str, first: Optional[Callable[[str], A
     folder = child.unit_root(role, repo)
     if not Path(folder).is_dir():
         raise WorkError(f"the unit's folder {role['unit']['path']} is not in this clone ({repo})")
-    notes = sorted(p.relative_to(repo).as_posix() for p in (Path(repo) / NOTES / role["name"]).glob("*.md"))
-    record = first(repo) if first else None  # the registration, committed before the plan's base is taken
+    record = first(repo) if first else None  # the registration, a comment on the issue, before the plan opens
     plan_id, _, _ = port.present(child.card_plan(role, folder), sid=sid)
     by = f"grant of plan {role['plan']} ({role['parent']})" + (
-        f", registration #{record['issue']} in {record['sha'][:12]}" if record else "")
+        f", registration #{record['issue']} in comment {record['comment']}" if record else "")
     number = port.approve(sid, port.revision(plan_id), by=by)
     return (f"Card plan {plan_id} (plan {number}) is open, approved by the grant of plan {role['plan']}; you are on "
             f"{role['branch']} ({how}). Files: {', '.join(role['card']['change'])}. Behaviours: "
             f"{', '.join(role['behaviours'])}. Loop: write the tests, make them pass, verify bare, "
-            "run('plan', 'step_done', {message}), run('orchestra', 'push'); then run('orchestra', 'handback', {...})."
-            + (f" Notes on your branch, read them first: {', '.join(notes)}." if notes else ""))
+            "run('plan', 'step_done', {message}), run('orchestra', 'push'); then run('orchestra', 'handback', {...}).")
 
 
 def push(port: PlanStore, sid: str, judge: GitJudge) -> str:
@@ -182,10 +178,6 @@ def push(port: PlanStore, sid: str, judge: GitJudge) -> str:
     on = git(repo, "branch", "--show-current").strip()
     if on != role["branch"]:
         raise WorkError(f"you are on {on or 'a detached HEAD'}; a child pushes only {role['branch']}")
-    try:  # the orchestrator's note commits on origin first (live run 4), so the push is a fast-forward
-        took = taken(port, sid, repo, role["branch"], role["name"])
-    except CatchUpError as e:
-        raise WorkError(str(e)) from e
     verdict = judge(repo, ["push", "-u", "origin", role["branch"]])
     if stopped(verdict):
         raise WorkError(verdict.reason)
@@ -193,11 +185,12 @@ def push(port: PlanStore, sid: str, judge: GitJudge) -> str:
     if code != 0:
         raise WorkError(f"git push failed (exit {code}): {out.strip()[-500:]}")
     audit(port, sid, ticket, "push", repo, role["branch"], head(repo))
-    return (f"{took}\n" if took else "") + f"Pushed {role['branch']} ({(head(repo) or '')[:12]}) to origin.\n{out.strip()[-600:]}"
+    return f"Pushed {role['branch']} ({(head(repo) or '')[:12]}) to origin.\n{out.strip()[-600:]}"
 
 
-def ask(port: PlanStore, sid: str, question: str, commit_judge: CommitJudge, git_judge: GitJudge) -> str:
-    """Write a question of the child for its parent as a numbered note on its branch, commit it and push the branch.
+def ask(port: PlanStore, sid: str, question: str, commit_judge: CommitJudge, git_judge: GitJudge,
+        github: Callable[..., Any]) -> str:
+    """Post a question of the child for its parent as a comment on its draft, with an empty signal commit, and push.
 
     Args:
         port: the ledger port.
@@ -205,13 +198,14 @@ def ask(port: PlanStore, sid: str, question: str, commit_judge: CommitJudge, git
         question: one question, at most 400 characters.
         commit_judge: the rules' verdict on a commit.
         git_judge: the rules' verdict on a git command.
+        github: call(method, path, fields?) -> the JSON answer.
 
     Returns:
         Where the question is, and that the child stops now.
 
     Raises:
-        WorkError: no child, an empty or too long question, no card plan, not on its branch, or a rule stops the
-            commit or the push.
+        WorkError: no child, an empty or too long question, no card plan, not on its branch, no draft, a rule that stops
+            the commit or the push, or a comment that was not posted (its commit is taken back).
     """
     text = " ".join(str(question).split())
     if not text or len(text) > LONGEST_PAIR:
@@ -219,24 +213,19 @@ def ask(port: PlanStore, sid: str, question: str, commit_judge: CommitJudge, git
     ticket, role = mine(port, sid)
     repo = on_branch(ticket, role, "put a question")
     n = len(ticket.get("asks", [])) + 1
-    rel = f"{NOTES}/{role['name']}/question-{n}.md"
-    path = Path(repo) / rel
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(f"# Question {n} from {role['name']} (plan {role['plan']})\n\n{text}\n", encoding="utf-8")
-    message = child_subject(role, f"Question {n} of {role['name']} (plan {role['plan']})")
-    verdict = commit_judge(repo, [rel], message)
-    if stopped(verdict):
-        raise WorkError(f"the question's commit is stopped: {verdict.reason}")
-    sha = commit(repo, [rel], message)
+    try:
+        made = talk.tell(port, sid, github, role, repo, "question", [text], commit_judge, n)
+    except (ValueError, GitError) as e:
+        raise WorkError(str(e)) from e
 
     def change(con: sqlite3.Connection, rec: Recorder) -> None:
         fresh = tickets.latest(con, sid)
         tickets.save(con, {**fresh, "asks": list(fresh.get("asks", [])) + [{"n": n, "text": text, "at": now(),
-                                                                            "sha": sha}]})
+                                                                            "sha": made["sha"]}]})
     port.write(change)
     pushed = push(port, sid, git_judge)
-    return (f"Question {n} is in {rel} on {role['branch']} ({sha[:12]}). {pushed.splitlines()[0]} {STOP} The "
-            "orchestrator answers with a note on your branch, and a fresh session goes on from there.")
+    return (f"Question {n} is the comment {made['url']} on your draft ({made['sha'][:12]}). {pushed.splitlines()[0]} "
+            f"{STOP} The orchestrator answers with a comment there, and a fresh session goes on from it.")
 
 
 def on_branch(ticket: Ticket, role: ChildRole, what: str) -> str:
@@ -319,8 +308,7 @@ def facts(port: PlanStore, ticket: Ticket, role: ChildRole, repo: str) -> dict[s
     prefix = f"p{role['plan']}.{role['name']}.ac"
     behaviours = {k: {"what": v.get("what"), "tests": v.get("tests", []), "status": v.get("status")}
                   for k, v in (port.registry(plan) if plan else {}).items() if k.startswith(prefix)}
-    dirty = [line[3:] for line in git(repo, "status", "--porcelain").splitlines()
-             if line[3:].strip() and not line[3:].startswith(RECEIPTS)]
+    dirty = [line[3:] for line in git(repo, "status", "--porcelain").splitlines() if line[3:].strip()]
     refused = [r["detail"] for r in port.rows("SELECT detail FROM act_rule_decisions WHERE sid = ? AND rule = ? "
                                                "ORDER BY at", (ticket["sid"], "child.no_keyboard"))]
     return {"commits": commits, "verify": verify, "behaviours": behaviours, "uncommitted": dirty,
@@ -328,8 +316,8 @@ def facts(port: PlanStore, ticket: Ticket, role: ChildRole, repo: str) -> dict[s
 
 
 def handback(port: PlanStore, sid: str, report: dict[str, Any], commit_judge: CommitJudge, git_judge: GitJudge,
-             store_on: bool = False) -> str:
-    """Write the child's receipt on its branch, commit it through the commit gate and push the branch.
+             github: Callable[..., Any], store_on: bool = False) -> str:
+    """Post the child's report and its receipt as a comment on its draft, with an empty signal commit, and push.
 
     Args:
         port: the ledger port.
@@ -337,14 +325,16 @@ def handback(port: PlanStore, sid: str, report: dict[str, Any], commit_judge: Co
         report: changed, checked, notChecked, risks, testsChanged, and added and faults when there are any.
         commit_judge: the rules' verdict on a commit.
         git_judge: the rules' verdict on a git command.
+        github: call(method, path, fields?) -> the JSON answer.
         store_on: whether a store folder is set; then the child saves its ledger to the store before it stops
             (the parent's plan is done only when every child's database is there).
 
     Returns:
-        What was kept and pushed, and that the child stops now.
+        What was posted and pushed, and that the child stops now.
 
     Raises:
-        WorkError: no child, no card plan, a bad report, not on its branch, a rule stops the commit or the push.
+        WorkError: no child, no card plan, a bad report, not on its branch, no draft, a rule that stops the commit or
+            the push, or a comment that was not posted (its commit is taken back).
     """
     problems = report_problems(report)
     if problems:
@@ -357,33 +347,16 @@ def handback(port: PlanStore, sid: str, report: dict[str, Any], commit_judge: Co
             "branch": role["branch"], "unit": {"name": role["card"].get("unit"), **role.get("unit", {})},
             "cardPlan": plan["id"], "at": now(),
             "report": {k: report.get(k, []) for k in LISTS + tuple(PAIRS)}, **facts(port, ticket, role, repo)}
-    rel = f"{RECEIPTS}/{role['name']}.json"
-    path = Path(repo) / rel
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(body, ensure_ascii=False, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-    message = child_subject(role, f"Handback of {role['name']} (plan {role['plan']})")
-    verdict = commit_judge(repo, [rel], message)
-    if stopped(verdict):
-        raise WorkError(f"the receipt's commit is stopped: {verdict.reason}")
-    sha = commit(repo, [rel], message)
-    port.write(lambda con, rec: tickets.save(con, {**tickets.latest(con, sid), "handback": {"sha": sha, "at": now()}}))
+    lines = [f"{label}: " + ("; ".join(str(x) for x in report.get(key) or []) or "none") for label, key in
+             (("Changed", "changed"), ("Checked", "checked"), ("Not checked", "notChecked"), ("Risks", "risks"))]
+    try:
+        made = talk.tell(port, sid, github, role, repo, "handback", lines + [talk.receipt_text(body)], commit_judge)
+    except (ValueError, GitError) as e:
+        raise WorkError(str(e)) from e
+    port.write(lambda con, rec: tickets.save(con, {**tickets.latest(con, sid), "handback": {"sha": made["sha"],
+                                                                                           "at": now()}}))
     pushed = push(port, sid, git_judge)
     save = ("Save your ledger to the store: run('ledger', 'export', {reason: 'handback'}) and upload the copy as its "
             "answer says (guide('store', 'skills')). " if store_on else "")
-    return f"Handback kept in {rel} on {role['branch']} ({sha[:12]}). {pushed.splitlines()[0]} {save}{STOP}"
-
-
-def find_receipt(repo: str, name: str) -> Optional[dict[str, Any]]:
-    """The receipt of a child in a checkout, for a reader (the parent's check comes in part 3).
-
-    Args:
-        repo: the repository's root.
-        name: the child's name.
-
-    Returns:
-        The receipt, or None when there is none or it does not read.
-    """
-    try:
-        return json.loads((Path(repo) / RECEIPTS / f"{name}.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
+    return (f"Handback posted as the comment {made['url']} on your draft ({made['sha'][:12]}). "
+            f"{pushed.splitlines()[0]} {save}{STOP}")

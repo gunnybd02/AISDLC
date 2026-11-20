@@ -122,5 +122,33 @@ class CloudIdTest(unittest.TestCase):
         self.assertEqual(brief.brief(7, "pd-x", CARD, "session_parent01", rounds=3, cloud="session_parent01"), BRIEF)
 
 
+class ExpectedAfterTest(unittest.TestCase):
+    """No catch-up: the parent never writes on a child's branch after the start, so step_done follows only the
+    child's own empty signal commits (child.expected_after)."""
+
+    def test_only_the_childs_own_signal_commits_move_what_step_done_expects(self):
+        """s5.catchup.gone: a question then a handback, each on its parent, are followed in time order; a commit
+        nobody of these made is no move; no catch-up module is left."""
+        import importlib.util
+        import subprocess
+        from harness.tests.e2e import git_repo
+        repo = git_repo(self, {"a.py": "X = 1\n"})
+
+        def run(*args):
+            return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True,
+                                  text=True).stdout.strip()
+        base = run("rev-parse", "HEAD")
+        run("commit", "-q", "--allow-empty", "-m", "Question 1 of api")
+        asked = run("rev-parse", "HEAD")
+        run("commit", "-q", "--allow-empty", "-m", "Handback of api")
+        handed = run("rev-parse", "HEAD")
+        ticket = {"asks": [{"n": 1, "sha": asked, "at": 1}], "handback": {"sha": handed, "at": 2}}
+        self.assertEqual(child.expected_after(str(repo), ticket, base), handed)
+        self.assertEqual(child.expected_after(str(repo), {"handback": {"sha": handed, "at": 2}}, base), base)
+        self.assertEqual(child.expected_after(str(repo), {}, base), base)
+        self.assertEqual(child.expected_after(str(repo), {"asks": [{"sha": "f" * 40, "at": 1}]}, base), base)
+        self.assertIsNone(importlib.util.find_spec("harness.utils.orchestra.catchup"))
+
+
 if __name__ == "__main__":
     unittest.main()

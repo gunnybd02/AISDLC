@@ -1,20 +1,17 @@
-"""Draft: the draft pull request of a child of a plan with locked tests (docs/system.md section 13, part 5). At spawn,
-the parent's harness makes the child's branch from the plan branch with one start commit (START, a note with the
-issue's link: GitHub opens no pull request without a commit) and opens one draft pull request from it into the plan
-branch, kept in the ticket (DRAFTS). The parent watches it (mcp__claude-code-remote__subscribe_pr_activity), so a CI
-result on any push of the child wakes it: the hook records that watch from the tool's answer (watch_seen), and
-started waits for it (unwatched). The child's registration is the first commit after the start commit; harness ci
-(utils/orchestra/ci.py) skips the start commit, and a branch holding only it is waiting. accept turns the draft into
-the pull request land merges (ready). A child cannot message its parent (auto mode refuses it, probes of 2026-11-19):
-its harness posts its question and its handback as comments on the draft (say), with MARK for the parent's doorbell
-(utils/orchestra/doorbell.py), and the push that goes with them runs CI, whose result wakes the parent."""
+"""Draft: the draft pull request of a child (docs/system.md section 13, part 5), the place of its talk with the
+parent (comments, utils/orchestra/talk.py). At spawn, the parent's harness makes the child's branch with one empty
+start commit (GitHub opens no pull request without a commit; the branch holds no file of the talk) and opens one
+draft pull request from it, into the plan branch when the plan is locked, else into the unit's base; it is kept in
+the ticket (DRAFTS). The parent watches it (mcp__claude-code-remote__subscribe_pr_activity), so a CI result on any
+push of the child wakes it: the hook records that watch from the tool's answer (watch_seen), and started waits for
+it when the plan is locked (unwatched). harness ci (utils/orchestra/ci.py) reads the issue from the start commit's
+subject; a branch whose commits change no file is waiting. accept turns the draft into the pull request land merges
+(ready)."""
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 import sqlite3
-import time
 from collections.abc import Callable
 from typing import Any, Optional
 
@@ -23,7 +20,6 @@ from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError, repo_of
 from harness.utils.git.run import git
 from harness.utils.ledger.recorder import Recorder
-from harness.utils.ledger.store import note
 from harness.utils.orchestra.brief import branch, subject
 from harness.utils.orchestra.fetch import FetchError, put_files
 from harness.utils.orchestra.issues import ISSUES
@@ -32,13 +28,10 @@ from harness.utils.plan import tickets
 from harness.utils.shapes import Card, PlanStore, Ticket
 
 DRAFTS = "drafts"  # the ticket's key: {name: {repo, number, url, node, watched?}}
-START = ".harness/notes/{name}/start.md"
 WATCH = "mcp__claude-code-remote__subscribe_pr_activity"
 OTHER = re.compile(r"already\s+watch|another\s+(?:claude\s+)?(?:session|agent)", re.I)  # the events go elsewhere
 READY = "mutation {{ markPullRequestReadyForReview(input: {{pullRequestId: \"{node}\"}}) {{ pullRequest {{ isDraft }} }} }}"
 READY_ROUTE = "repos/{repo}/pulls/{number}/ccr/ready_for_review"  # the cloud proxy's route when it refuses GraphQL
-MARK = "<!-- harness-comment {meta} -->"  # the last line of a comment the harness of a child posts
-SAID = "child.said"  # pl_notes of the child: target = the comment's URL, key = its kind, text = {id, sha256}
 
 
 class DraftError(ValueError):
@@ -46,7 +39,8 @@ class DraftError(ValueError):
 
 
 def open_draft(port: PlanStore, sid: str, card: Card, unit: dict[str, Any], github: Callable[..., Any]) -> dict[str, Any]:
-    """The child's draft pull request into the plan branch: opened once, after the start commit, and kept.
+    """The child's draft pull request: opened once, after the empty start commit, and kept. Every child gets one: into
+    the plan branch when the plan is locked, else into its unit's base.
 
     Args:
         port: the ledger port.
@@ -59,33 +53,35 @@ def open_draft(port: PlanStore, sid: str, card: Card, unit: dict[str, Any], gith
         The draft {repo, number, url, node}.
 
     Raises:
-        DraftError: no lock or no issue yet, no repository URL, the start commit cannot be pushed, or GitHub refuses.
+        DraftError: a locked plan's child with no issue yet, no repository URL, the start commit cannot be pushed, or
+            GitHub refuses.
     """
     ticket, name = port.ticket(sid), card["name"]
     held = (ticket.get(DRAFTS) or {}).get(name)
     if held:
         return dict(held)
-    into = (ticket.get(LOCK) or {}).get("branch")
-    issue = ((ticket.get(ISSUES) or {}).get("children") or {}).get(name)
-    if not into or not issue:
-        raise DraftError(f"{name} has no {'plan branch' if not into else 'issue'} yet: lock, then tickets, then spawn")
+    lock = (ticket.get(LOCK) or {}).get("branch")
+    issue = ((ticket.get(ISSUES) or {}).get("children") or {}).get(name) or {}
+    if lock and not issue:
+        raise DraftError(f"{name} has no issue yet: lock, then tickets, then spawn")
+    into = lock or unit.get("base") or "main"
     plan, root = ticket["plan"], top(ticket["plan"]["root"]) or ""
     url = unit.get("repo") or (git(root, "config", "--get", "remote.origin.url").strip() if root else "")
-    ref = branch(plan["id"], name)
+    ref, number = branch(plan["id"], name), issue.get("number")
     if not on_origin(unit, root, ref):
-        note = (f"# Start of {name} (plan {plan['id']})\n\nIssue #{issue['number']}: {issue.get('url')}\n\nThe "
-                f"orchestrator made this branch from {into} so its draft pull request could open. Your registration "
-                "comes next: run('orchestra', 'take').\n")
+        message = (f"{subject(number, name, 'start') if number else name + ': start'}\n\nThe orchestrator made this "
+                   f"branch from {into} so its draft pull request could open; it changes no file."
+                   + (f" Issue #{number}: {issue.get('url')}" if number else ""))
         try:
-            put_files(unit, root, into, {START.format(name=name): note}, subject(issue["number"], name, "start"),
-                      target=ref)
+            put_files(unit, root, into, {}, message, target=ref)  # empty: GitHub needs a commit to open the draft
         except FetchError as e:
             raise DraftError(f"the start commit of {name} was not pushed: {str(e)[-300:]}") from e
     try:
         made = github("POST", f"repos/{repo_of(url)}/pulls", {
             "head": ref, "base": into, "title": f"[p{plan['id']}] {name}: {card['goal']}"[:200], "draft": True,
-            "body": f"The work of child {name} for issue #{issue['number']}, into {into}. A draft until the "
-                    "orchestrator accepts it; harness ci runs on each push."})
+            "body": f"The work of child {name}" + (f" for issue #{number}" if number else "") + f", into {into}. A "
+                    "draft until the orchestrator accepts it; the talk of child and orchestrator is in its comments"
+                    + ("; harness ci runs on each push." if lock else ".")})
     except GitHubError as e:
         raise DraftError(f"the draft pull request of {name} was not opened: {str(e)[-300:]}") from e
     entry = {"repo": repo_of(url), "number": made.get("number"), "url": made.get("html_url"), "node": made.get("node_id")}
@@ -179,36 +175,6 @@ def ready(ticket: Ticket, name: str, github: Callable[..., Any]) -> Optional[dic
                 raise
             github("POST", READY_ROUTE.format(repo=held["repo"], number=held["number"]), {})
     return {"number": held.get("number"), "html_url": held.get("url")}
-
-
-def say(port: PlanStore, sid: str, kind: str, lines: list[str], github: Callable[..., Any]) -> str:
-    """Post the words of a child on its draft pull request as one comment ending with MARK, and record it.
-
-    Args:
-        port: the ledger port.
-        sid: the child's session.
-        kind: "question" or "handback".
-        lines: the words, one paragraph each.
-        github: call(method, path, fields?) -> the JSON answer.
-
-    Returns:
-        A sentence for the answer; "" for a child whose brief names no draft.
-    """
-    role = (port.ticket(sid) or {}).get("child") or {}
-    pr = (role.get("record") or {}).get("pr") or {}
-    if not pr.get("number"):
-        return ""
-    meta = json.dumps({"kind": kind, "child": role.get("name"), "plan": role.get("plan")}, sort_keys=True)
-    body = "\n\n".join([f"**{kind.capitalize()} of {role.get('name')}** (plan {role.get('plan')})", *lines,
-                        MARK.format(meta=meta)])
-    try:
-        made = github("POST", f"repos/{pr['repo']}/issues/{pr['number']}/comments", {"body": body})
-    except GitHubError as e:
-        return f"The comment was not posted on #{pr['number']} ({str(e)[-200:]}); your push carries the words anyway."
-    kept = json.dumps({"id": made.get("id"), "sha256": hashlib.sha256(body.encode("utf-8")).hexdigest()})
-    port.write(lambda con, rec: note(con, SAID, str(made.get("html_url") or pr.get("url")), kind, kept, sid,
-                                     int(time.time() * 1000)))
-    return f"It is posted on your draft pull request #{pr['number']} as a comment, for the orchestrator."
 
 
 def watch_call(entry: dict[str, Any]) -> dict[str, Any]:

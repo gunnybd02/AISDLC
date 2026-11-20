@@ -13,10 +13,11 @@ says). The user approved the plan with its children once, in the form; these act
 A child (a session opened from a brief, utils/orchestra/child.py) runs the rest (utils/orchestra/work.py):
 - take: its card plan opens, approved by the parent's grant, on its branch orch/p<plan>/<name>;
 - push: its own branch, after every step;
-- question {question}: a note on its branch, pushed; then it stops;
-- handback {changed, checked, notChecked, risks, testsChanged, added?, faults?}: the receipt on its branch, pushed.
+- question {question}: a comment on its draft and an empty commit, pushed; then it stops;
+- handback {changed, checked, notChecked, risks, testsChanged, added?, faults?}: its report and receipt as a comment
+  on its draft, and an empty commit, pushed.
 
-Parent and child talk through the child's branch, never by message (utils/orchestra/work.py).
+Parent and child talk in comments on the child's draft, never by message (utils/orchestra/talk.py).
 
 The parent's check, accept and reject come in part 3."""
 from __future__ import annotations
@@ -93,14 +94,14 @@ class Spawn(McpAction):
     """orchestra.spawn: the brief of a child and the create_session call that opens it."""
     block, name, effect = "orchestra", "spawn", WRITE
     summary = ("Start a child of the delegated plan in force: the answer is its brief and the create_session call to "
-               "make (with locked tests, first the watch of its draft pull request); then record it with started")
+               "make (first the watch of its draft pull request); then record it with started")
     args_schema = {"type": "object", "properties": {"name": NAME_ARG, "model": {"type": "string"}},
                    "required": ["name"]}
     needs = ("plans", "session", "units", "limits", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """The brief and the create_session call of the named child. With locked tests its draft pull request is opened
-        first, once (utils/orchestra/draft.py), and the answer gives the call that watches it. A child that waits for a
+        """The brief and the create_session call of the named child. Its draft pull request is opened first, once
+        (utils/orchestra/draft.py), and the answer gives the call that watches it. A child that waits for a
         fresh session (a note on its branch) gets the brief of a fresh session. ActionError when no approved delegated
         plan is in force, the name is no child of it, it has started, limits.children run, its card names no change
         paths or an open session to adopt, or the draft cannot be opened."""
@@ -124,14 +125,12 @@ class Spawn(McpAction):
         fresh = ((ticket.get("crew") or {}).get(card["name"]) or {}).get("fresh") or {}
         start = (ticket.get(locked.LOCK) or {}).get("branch", "")  # with a lock, every child starts from the plan branch
         issue, made = self.recorded(ctx.ports["plans"], ticket, card["name"]) if start else ({}, {})
-        watch, pr = "", None
-        if start:  # the draft comes first: the brief names it, and the child's comments go there
-            try:
-                pr = drafts.open_draft(ctx.ports["plans"], sid, card, unit, ctx.ports["github"])
-            except drafts.DraftError as e:
-                raise ActionError(str(e)) from e
-            watch = (f"First watch its draft pull request #{pr['number']} ({pr['url']}), so a CI result of any push "
-                     f"wakes you: {drafts.WATCH} {json.dumps(drafts.watch_call(pr))}. Then ")
+        try:  # the draft comes first, for every child: the brief names it, and the talk goes there (talk.py)
+            pr = drafts.open_draft(ctx.ports["plans"], sid, card, unit, ctx.ports["github"])
+        except drafts.DraftError as e:
+            raise ActionError(str(e)) from e
+        watch = (f"First watch its draft pull request #{pr['number']} ({pr['url']}), so a CI result of any push "
+                 f"wakes you: {drafts.WATCH} {json.dumps(drafts.watch_call(pr))}. Then ")
         prompt = briefs.brief(plan, draft, card, sid, unit, fresh.get("note", ""), rounds=limits["rounds"], start=start,
                               issue=issue, ticket_file=made, pr=pr, cloud=briefs.cloud_id(),
                               key=orders.key_for(ctx.ports["plans"], sid, card["name"]))
@@ -276,28 +275,22 @@ class Take(McpAction):
     summary = ("A child's first call: it registers against its issue and ticket when its brief names them, then its "
                "card plan opens, approved by the grant of the parent plan (no form), on its branch orch/p<plan>/<name>")
     args_schema = {"type": "object", "properties": {}}
-    needs = ("plans", "session", "github", "commit_judge", "git_judge")
+    needs = ("plans", "session", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Register the child (utils/orchestra/register.check), then open its card plan in the server's folder
-        (utils/orchestra/work.take), its registration committed first on its branch (register.on_branch) and pushed.
-        ActionError for a ticket not checked yet, records that disagree with the brief, a session that is no child, a
-        card without change paths, another plan in force, git refusing the branch, or the rules stopping the record."""
+        (utils/orchestra/work.take), its registration posted first as a comment on its issue (register.on_issue): the
+        branch holds no file of it. ActionError for a ticket not checked yet, records that disagree with the brief, a
+        session that is no child, a card without change paths, another plan in force, git refusing the branch, or
+        GitHub refusing the registration's comment."""
         sid, port = session_of(ctx), ctx.ports["plans"]
 
         def go() -> str:
-            line, made = register.check(port, sid, os.getcwd(), ctx.ports["github"]), []
+            line = register.check(port, sid, os.getcwd(), ctx.ports["github"])
 
             def first(repo: str) -> Optional[dict[str, Any]]:
-                made.append(register.on_branch(port, sid, repo, ctx.ports["commit_judge"]))
-                return made[-1]
-            text = (line + "\n" if line else "") + work.take(port, sid, os.getcwd(), first)
-            if not any(made):
-                return text
-            try:
-                return f"{text}\n{work.push(port, sid, ctx.ports['git_judge']).splitlines()[0]}"
-            except work.WorkError as e:
-                return f"{text}\nThe registration is not pushed yet ({e}): run('orchestra', 'push')."
+                return register.on_issue(port, sid, ctx.ports["github"])
+            return (line + "\n" if line else "") + work.take(port, sid, os.getcwd(), first)
         return answered(CHILD_ERRORS + (register.RegisterError,), go)
 
 
@@ -318,28 +311,24 @@ class Push(McpAction):
 class Question(McpAction):
     """orchestra.question: a child's question for its parent."""
     block, name, effect = "orchestra", "question", WRITE
-    summary = "A child's question outside its card: a note on its branch, pushed; then the child stops"
+    summary = "A child's question outside its card: a comment on its draft with an empty commit, pushed; then it stops"
     args_schema = {"type": "object", "properties": {"question": {"type": "string"}}, "required": ["question"]}
     needs = ("plans", "session", "commit_judge", "git_judge", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Commit the question as a note on the child's branch and push it (utils/orchestra/work.ask), then post it on
-        the child's draft pull request (utils/orchestra/draft.say). ActionError for a session that is no child, a
-        question empty or longer than 400 characters, no card plan, another branch, or a rule that stops the commit or
-        the push."""
+        """Post the question on the child's draft with an empty signal commit and push it (utils/orchestra/work.ask).
+        ActionError for a session that is no child, a question empty or longer than 400 characters, no card plan,
+        another branch, no draft, a comment not posted, or a rule that stops the commit or the push."""
         sid, port = session_of(ctx), ctx.ports["plans"]
-
-        def go() -> str:
-            text = work.ask(port, sid, args["question"], ctx.ports["commit_judge"], ctx.ports["git_judge"])
-            return f"{drafts.say(port, sid, 'question', [str(args['question'])], ctx.ports['github'])} {text}".strip()
-        return answered(CHILD_ERRORS, go)
+        return answered(CHILD_ERRORS, lambda: work.ask(port, sid, args["question"], ctx.ports["commit_judge"],
+                                                       ctx.ports["git_judge"], ctx.ports["github"]))
 
 
 class Handback(McpAction):
-    """orchestra.handback: a child's report, kept as a receipt on its branch."""
+    """orchestra.handback: a child's report and receipt, a comment on its draft."""
     block, name, effect = "orchestra", "handback", WRITE
     summary = ("A child's last call: its report (changed, checked, notChecked, risks, testsChanged, added?, faults?) "
-               "and what the harness reads (commits, verify, behaviours) written on its branch and pushed")
+               "and what the harness reads (commits, verify, behaviours) posted on its draft, with an empty commit")
     points = {"type": "array", "items": {"type": "string"}}
     pairs = {"type": "array", "items": {"type": "object"}}
     args_schema = {"type": "object", "properties": {"changed": points, "checked": points, "notChecked": points,
@@ -349,16 +338,10 @@ class Handback(McpAction):
     needs = ("plans", "session", "commit_judge", "git_judge", "store", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Write, commit and push the child's receipt (utils/orchestra/work.handback), then post its report on the
-        child's draft pull request (utils/orchestra/draft.say). ActionError for a bad report, a session that is no
-        child, no card plan, another branch, or a rule that stops the commit or the push."""
+        """Post the child's report and receipt on its draft with an empty signal commit, and push
+        (utils/orchestra/work.handback). ActionError for a bad report, a session that is no child, no card plan,
+        another branch, no draft, a comment not posted, or a rule that stops the commit or the push."""
         sid, port = session_of(ctx), ctx.ports["plans"]
-
-        def go() -> str:
-            text = work.handback(port, sid, args, ctx.ports["commit_judge"], ctx.ports["git_judge"],
-                                 bool(ctx.ports["store"]()))
-            lines = [f"{label}: " + ("; ".join(str(x) for x in args.get(key) or []) or "none")
-                     for label, key in (("Changed", "changed"), ("Checked", "checked"),
-                                        ("Not checked", "notChecked"), ("Risks", "risks"))]
-            return f"{drafts.say(port, sid, 'handback', lines, ctx.ports['github'])} {text}".strip()
-        return answered(CHILD_ERRORS, go)
+        return answered(CHILD_ERRORS, lambda: work.handback(port, sid, args, ctx.ports["commit_judge"],
+                                                            ctx.ports["git_judge"], ctx.ports["github"],
+                                                            bool(ctx.ports["store"]())))

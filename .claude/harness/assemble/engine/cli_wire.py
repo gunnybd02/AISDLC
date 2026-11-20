@@ -76,6 +76,7 @@ def parser() -> argparse.ArgumentParser:
     check.add_argument("--base", default="")
     check.add_argument("--head", default="")
     check.add_argument("--sha", default="")
+    check.add_argument("--repo", default="")
     check.add_argument("--in", dest="folder")
     cli_tool.add_parser(doors)
     return top
@@ -86,8 +87,9 @@ def ci_door(args: argparse.Namespace) -> tuple[int, str]:
 
     Args:
         args: the parsed command line of the door ci: --base and --head (else GitHub Actions' GITHUB_BASE_REF and
-            GITHUB_HEAD_REF), --sha the commit under test (else the head's tip on origin), --in the clone (else the
-            current folder).
+            GITHUB_HEAD_REF), --sha the commit under test (else the head's tip on origin), --repo the repository's
+            owner/name on GitHub, whose issue the start commit names (else GITHUB_REPOSITORY, else the origin's URL),
+            --in the clone (else the current folder).
 
     Returns:
         (exit code, text): 0 when every rule passed, 1 when one failed. In GitHub Actions it also writes code=yes or
@@ -102,14 +104,15 @@ def ci_door(args: argparse.Namespace) -> tuple[int, str]:
         raise Refused("ci needs --base and --head (in GitHub Actions: GITHUB_BASE_REF and GITHUB_HEAD_REF)")
     folder = os.path.abspath(args.folder or ".")
     try:
-        ok, text = ci.report(folder, base, head, github_call, args.sha)
+        ok, text = ci.report(folder, base, head, github_call, args.sha,
+                             args.repo or os.environ.get("GITHUB_REPOSITORY", ""))
     except GitError as e:
         raise Refused(f"git cannot read the clone: {str(e)[-300:]}") from e
     code = ci.has_code(folder, base, head, args.sha)  # the workflow's test steps run only when it is yes
     if os.environ.get("GITHUB_OUTPUT"):
         with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
             out.write(f"code={'yes' if code else 'no'}\n")
-    text += "\nTests: " + ("they run." if code else "they wait: no commit past the start and the registration yet.")
+    text += "\nTests: " + ("they run." if code else "they wait: no commit of the child changes a file yet.")
     return (0 if ok else 1), text
 
 

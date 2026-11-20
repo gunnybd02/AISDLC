@@ -22,7 +22,7 @@ class EndingTest(LockedScenario):
         branch and asks form 2. Its answer."""
         self.github = PlanGitHub(self.origin, tree(self, {}), {5: (f"orch/p{self.plan}/hello", f"plan/p{self.plan}")})
         self.hand_back()
-        review.check(self.port, "s1", "hello", LOCKED_UNITS, [])
+        self.check()
         review.accept(self.port, "s1", "hello", LOCKED_UNITS, self.github)
         self.port.write(lambda con, rec: tickets.save(con, {**self.port.ticket("s1"), "phase": "deliver"}))
         return land.land(self.port, "s1", LOCKED_UNITS, [], self.github)

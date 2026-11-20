@@ -118,7 +118,8 @@ class SkillsTest(unittest.TestCase):
         """s5.docs.ci: a child reads its rules in the work skill; the parent reads the issue format in orchestrate."""
         lib = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs")
         work = " ".join(lib.get("work").text.split())
-        for part in ("it starts `#N <name>: `", "registration commit", "`harness ci`", "cli ci --base"):
+        for part in ("it starts `#N <name>: `", "registration as a comment on your issue", "`harness ci`",
+                     "cli ci --base"):
             self.assertIn(part, work)
         orchestrate = " ".join(lib.get("orchestrate").text.split())
         for part in ("harness-issue/1", "`[p<plan>] <name>: <goal>`", "`harness ci`"):
@@ -204,6 +205,26 @@ class OrdersDocsTest(unittest.TestCase):
         for words in ("signed order", "Form 2", "Stop orders"):
             self.assertIn(words, orchestrate)
         self.assertIn("form 2", work)
+
+
+class TalkDocsTest(unittest.TestCase):
+    def test_the_skills_say_the_talk_is_in_comments_and_name_no_harness_path(self):
+        """s6.docs.comments: the work and orchestrate skills and the cloud spec name no .harness/ file of a child."""
+        from pathlib import Path
+        from harness.tests import CLAUDE_DIR
+        root = Path(CLAUDE_DIR)
+        skills = root / "harness" / "mcp" / "skill_docs"
+        work = (skills / "work" / "SKILL.md").read_text(encoding="utf-8")
+        orchestrate = (skills / "orchestrate" / "SKILL.md").read_text(encoding="utf-8")
+        for text in (work, orchestrate):
+            for path in (".harness/notes", ".harness/register", ".harness/handback"):
+                self.assertNotIn(path, text)
+        self.assertIn("comments your\nharness posts on your draft", work)
+        self.assertIn("handback comment", orchestrate)
+        spec = (root / "docs" / "05b-orchestra-cloud.md").read_text(encoding="utf-8")
+        for path in (".harness/notes", ".harness/register", ".harness/handback"):
+            self.assertNotIn(path, spec)
+        self.assertIn("utils/orchestra/talk.py", (root / "docs" / "system.md").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

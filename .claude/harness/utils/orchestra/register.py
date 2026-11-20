@@ -7,10 +7,11 @@ content whose sha256 is the brief's is read, this child's row is compared with t
 the hashes are kept (pl_notes of kind child.ticket), never the file. The model only makes the Drive calls; the answer
 of the download stays in its conversation, which no harness can take back. Claude Code may keep the content out of
 the answer: it saves it to a file of a tool-results folder and the answer says "saved to <path>" (live run of
-2026-11-19). The hook reads such a file (saved_files, under SAVED_ROOT only), checks it the same way, and deletes it. take then reads the issue itself and, when
-both agree, keeps the registration in the ledger (pl_notes of kind child.registered) and commits it as the record
-RECORD, the first commit of the child's branch (on_branch), before the card plan opens: its approval names that
-commit, and harness ci (utils/orchestra/ci.py) sees on the branch that registration came before any code."""
+2026-11-19). The hook reads such a file (saved_files, under SAVED_ROOT only), checks it the same way, and deletes it.
+take then reads the issue itself and, when both agree, keeps the registration in the ledger (pl_notes of kind
+child.registered) and posts it as one comment on the issue (on_issue, utils/orchestra/talk.py), before the card plan
+opens: its approval names that comment, and harness ci (utils/orchestra/ci.py) reads it there (registration_of). The
+branch holds no file of the registration."""
 from __future__ import annotations
 
 import base64
@@ -25,20 +26,19 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, Optional
 
-from harness.utils.contracts import Event, asked, refused
-from harness.utils.git.commit import commit
+from harness.utils.contracts import Event
 from harness.utils.git.facts import top
-from harness.utils.git.run import git
 from harness.utils.git.github import GitHubError
 from harness.utils.ledger.store import note
-from harness.utils.orchestra.brief import NOTES, child_subject
+from harness.utils.orchestra import talk
+from harness.utils.orchestra.brief import child_subject
 from harness.utils.orchestra.fetch import FetchError, put_files
 from harness.utils.orchestra.issues import COLUMNS, format_problems, read_block
 from harness.utils.orchestra.locked import on_origin
-from harness.utils.shapes import ChildRole, CommitJudge, PlanStore
+from harness.utils.shapes import ChildRole, PlanStore
 
 RESULT = "child.ticket"  # pl_notes: target = the ticket file, key = ok or refused, text = {sha256, planSha, problems}
-RECORD, RECORD_FORMAT = ".harness/register/{name}.json", "harness-register/1"
+RECORD_FORMAT, REGISTER = "harness-register/1", "register"  # the format and the kind of the registration's comment
 SAVED = re.compile(r"saved to (/[^\s\"'<>]+)")  # Claude Code kept a tool's answer out of the conversation
 SAVED_ROOT = Path.home() / ".claude" / "projects"  # its tool-results folders are under here
 MOST_SAVED = 1_000_000  # bytes of a saved file read
@@ -209,30 +209,42 @@ class RegisterError(ValueError):
 REGISTERED = "child.registered"  # pl_notes: target = the child's branch, key = its issue number, text = the hashes
 
 
-def refuse(role: ChildRole, repo: str, problems: list[str]) -> str:
-    """Push one note on the child's branch saying why it stopped, as its first question, so the parent's check reads
-    it (review.asked_at_tip).
+def refuse(port: PlanStore, sid: str, role: ChildRole, repo: str, problems: list[str],
+           github: Callable[..., Any]) -> str:
+    """Say why the child stopped, as its first question: an empty commit pushed on its branch (its CI result wakes the
+    parent) and a question comment naming that commit on its draft (utils/orchestra/talk.py). No file is written.
 
     Args:
+        port: the ledger port.
+        sid: the child's session.
         role: the child's role.
         repo: the child's clone.
         problems: the disagreements.
+        github: call(method, path, fields?) -> the JSON answer.
 
     Returns:
-        Where the note is, or why it could not be pushed.
+        Where the reason is, or why it could not be given.
     """
-    rel = f"{NOTES}/{role['name']}/question-1.md"
-    text = (f"# Question 1 from {role['name']} (plan {role['plan']})\n\nRegistration failed, so no work was done: "
-            + "; ".join(problems) + "\n")
     unit = dict(role.get("unit") or {})
     start = role["branch"] if on_origin(unit, repo, role["branch"]) else role.get("start") or unit.get("base", "main")
     try:
-        sha = put_files(unit, repo, start, {rel: text},
-                        child_subject(role, f"Registration of {role['name']} failed (plan {role['plan']})"),
-                        target=role["branch"])
+        sha = put_files(unit, repo, start, {}, child_subject(role, f"Registration of {role['name']} failed (plan "
+                                                                   f"{role['plan']})"), target=role["branch"])
     except FetchError as e:
-        return f"The note could not be pushed ({str(e)[-200:]}): name it to the user."
-    return f"The reason is in {rel} on {role['branch']} ({sha[:12]}), for the orchestrator."
+        return f"The stop could not be pushed ({str(e)[-200:]}): name it to the user."
+    pr = (role.get("record") or {}).get("pr") or {}
+    if not pr.get("number"):
+        return (f"The stop is pushed on {role['branch']} ({sha[:12]}); your brief names no draft: name the reason to "
+                "the user.")
+    meta = {"child": role["name"], "plan": role["plan"], "from": talk.CHILD, "n": 1, "sha": sha}
+    try:
+        talk.post(port, sid, github, pr, "question", meta, ["Registration failed, so no work was done: "
+                                                            + "; ".join(problems)])
+    except GitHubError as e:
+        return (f"The stop is pushed ({sha[:12]}), but the comment was not posted ({str(e)[-200:]}): name it to the "
+                "user.")
+    return (f"The reason is a comment on your draft pull request #{pr['number']}, with the stop {sha[:12]} on "
+            f"{role['branch']}, for the orchestrator.")
 
 
 def check(port: PlanStore, sid: str, root: str, github: Callable[..., Any]) -> str:
@@ -251,7 +263,7 @@ def check(port: PlanStore, sid: str, root: str, github: Callable[..., Any]) -> s
 
     Raises:
         RegisterError: the ticket is not checked yet (with the Drive calls to make), or a record disagrees (the
-            reason is pushed on the child's branch first).
+            reason is posted first: refuse).
     """
     role = (port.ticket(sid) or {}).get("child") or {}
     record = role.get("record") or {}
@@ -272,7 +284,7 @@ def check(port: PlanStore, sid: str, root: str, github: Callable[..., Any]) -> s
         problems.append(f"the ticket row and issue #{record['issue'].get('number')} name different plans")
     repo = top(root) or root
     if problems:
-        where = refuse(role, repo, problems)
+        where = refuse(port, sid, role, repo, problems, github)
         raise RegisterError("Registration failed, so you may not work on this card: " + "; ".join(problems) + f". {where}"
                             " Stop now: end your turn. The orchestrator decides.")
     kept = {"issue": record["issue"].get("sha"), "ticket": made.get("sha256"), "plan": block.get("planSha")}
@@ -282,22 +294,39 @@ def check(port: PlanStore, sid: str, root: str, github: Callable[..., Any]) -> s
             f"Every commit of yours names #{record['issue'].get('number')}.")
 
 
-def on_branch(port: PlanStore, sid: str, repo: str, judge: CommitJudge) -> Optional[dict[str, Any]]:
-    """Commit the child's registration as RECORD on the branch it stands on, through the commit gate: the next commit,
-    so the first of its branch when take calls it. A branch that holds the same record already gets no commit.
+def registration_of(comments: list[dict[str, Any]], name: str) -> dict[str, Any]:
+    """The registration of a child on its issue: the OLDEST harness comment of kind REGISTER the child posted (a later
+    one cannot replace it).
+
+    Args:
+        comments: the issue's comments, oldest first, as GitHub gives them.
+        name: the child's name.
+
+    Returns:
+        Its meta (talk.read: format, child, plan, draft, branch, issueSha, ticketSha256, planSha, id, url); {} when
+        there is none.
+    """
+    for c in comments or []:
+        meta = talk.read(c) if isinstance(c, dict) else None
+        if meta and meta.get("child") == name and meta.get("kind") == REGISTER and meta.get("from") == talk.CHILD:
+            return meta
+    return {}
+
+
+def on_issue(port: PlanStore, sid: str, github: Callable[..., Any]) -> Optional[dict[str, Any]]:
+    """Post the child's registration as one comment on its issue (talk.post, kind REGISTER), before its card plan
+    opens; an issue that holds this child's registration already gets none. The branch holds no file of it.
 
     Args:
         port: the ledger port.
         sid: the child's session.
-        repo: the child's clone, on its branch.
-        judge: the rules' verdict on a commit.
+        github: call(method, path, fields?) -> the JSON answer.
 
     Returns:
-        The record {format, plan, child, branch, repo, issue, issueSha, ticketSha256, planSha} with the sha of the
-        commit that holds it; None for a child without an issue or not registered in this session.
+        {issue, comment, url} of the registration; None for a child without an issue or not registered in this session.
 
     Raises:
-        RegisterError: the rules stop the commit.
+        RegisterError: GitHub refuses to read the issue's comments or to take the comment.
     """
     role = (port.ticket(sid) or {}).get("child") or {}
     issue = (role.get("record") or {}).get("issue") or {}
@@ -305,23 +334,22 @@ def on_branch(port: PlanStore, sid: str, repo: str, judge: CommitJudge) -> Optio
                      (REGISTERED, sid))
     if not issue or not rows:
         return None
-    kept = json.loads(rows[0]["text"])
-    body = {"format": RECORD_FORMAT, "plan": role["draft"], "child": role["name"], "branch": role["branch"],
-            "repo": issue.get("repo"), "issue": issue.get("number"), "issueSha": kept.get("issue"),
-            "ticketSha256": kept.get("ticket"), "planSha": kept.get("plan")}
-    rel, text = RECORD.format(name=role["name"]), json.dumps(body, indent=1, sort_keys=True) + "\n"
-    path = Path(repo) / rel
-    if path.is_file() and path.read_text(encoding="utf-8") == text:
-        return {**body, "sha": git(repo, "log", "-1", "--format=%H", "--", rel).strip()}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-    message = child_subject(role, f"register (issue {str(body['issueSha'])[:12]}, ticket "
-                                  f"{str(body['ticketSha256'])[:12]})")
-    verdict = judge(repo, [rel], message)
-    if refused(verdict) or asked(verdict):
-        path.unlink()
-        raise RegisterError(f"the registration's commit is stopped: {verdict.reason}")
-    return {**body, "sha": commit(repo, [rel], message)}
+    number, kept = issue.get("number"), json.loads(rows[0]["text"])
+    try:
+        held = registration_of(github("GET", f"repos/{issue.get('repo')}/issues/{number}/comments?per_page=100"),
+                               role["name"])
+        if held:
+            return {"issue": number, "comment": held.get("id"), "url": held.get("url")}
+        meta = {"child": role["name"], "plan": role["plan"], "from": talk.CHILD, "format": RECORD_FORMAT,
+                "draft": role["draft"], "branch": role["branch"], "issueSha": kept.get("issue"),
+                "ticketSha256": kept.get("ticket"), "planSha": kept.get("plan")}
+        made = talk.post(port, sid, github, issue, REGISTER, meta, [
+            f"{role['name']} registers for issue #{number} on {role['branch']}: the issue's block "
+            f"{str(kept.get('issue'))[:12]}, its row of the ticket file {str(kept.get('ticket'))[:12]} and the plan "
+            f"{str(kept.get('plan'))[:12]} match its brief."])
+    except GitHubError as e:
+        raise RegisterError(f"the registration was not posted on issue #{number}: {str(e)[-200:]}") from e
+    return {"issue": number, "comment": made.get("id"), "url": made.get("html_url")}
 
 
 def ticket_result(port: PlanStore, sid: str, title: str) -> Optional[dict[str, Any]]:

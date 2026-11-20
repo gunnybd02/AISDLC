@@ -6,7 +6,7 @@ import unittest
 
 from harness.mcp.actions.orchestra import Spawn, Tickets
 from harness.utils.contracts import ActionContext
-from harness.utils.orchestra import draft
+from harness.utils.orchestra import draft, talk
 from harness.utils.plan import tickets as plan_tickets
 from harness.tests import tree
 from harness.tests.utils.test_review import LOCKED_UNITS, LockedScenario, git
@@ -48,14 +48,15 @@ class DraftScenario(LockedScenario):
 
 class DraftTest(DraftScenario):
     def test_spawn_opens_one_draft_after_a_start_commit_and_gives_the_watch_call(self):
-        """s1.draft.open: the start commit on the child's branch, then one draft into the plan branch, kept."""
+        """s2.start.empty: the start commit on the child's branch changes no file; then one draft into the plan
+        branch, kept."""
         text = self.spawn()
         ref, into = f"orch/p{self.plan}/hello", f"plan/p{self.plan}"
         self.assertEqual(git(self.origin, "log", "--format=%s", f"{into}..{ref}").splitlines(), ["#41 hello: start"])
-        self.assertEqual(git(self.origin, "show", "--name-only", "--format=", ref).split(),
-                         [".harness/notes/hello/start.md"])
-        self.assertIn("Issue #41: https://github.com/o/r/issues/41",
-                      git(self.origin, "show", f"{ref}:.harness/notes/hello/start.md"))
+        self.assertEqual(git(self.origin, "show", "--name-only", "--format=", ref).split(), [])  # an empty commit
+        self.assertEqual(git(self.origin, "ls-tree", "-r", "--name-only", ref),
+                         git(self.origin, "ls-tree", "-r", "--name-only", into))  # no .harness file
+        self.assertIn("Issue #41: https://github.com/o/r/issues/41", git(self.origin, "log", "-1", "--format=%B", ref))
         (method, path, fields), = self.github.pulls()
         self.assertEqual((method, path), ("POST", "repos/o/r/pulls"))
         self.assertEqual((fields["head"], fields["base"], fields["draft"]), (ref, into, True))
@@ -69,6 +70,23 @@ class DraftTest(DraftScenario):
         self.spawn()  # a second spawn reuses the draft: no new pull request, no new start commit
         self.assertEqual(len(self.github.pulls()), 1)
         self.assertEqual(len(git(self.origin, "log", "--format=%s", f"{into}..{ref}").splitlines()), 1)
+
+    def test_a_child_of_a_plan_without_locked_tests_gets_a_draft_into_its_base(self):
+        """s2.start.empty: no lock and no issue: the empty start is "<name>: start" and the draft goes into the base."""
+        from harness.tests.utils.test_review import LOCKED_UNITS
+        from harness.utils.orchestra.issues import ISSUES
+        from harness.utils.orchestra.locked import LOCK
+        ticket = self.port.ticket("s1")
+        self.port.write(lambda con, rec: plan_tickets.save(con, {**ticket, LOCK: {}, ISSUES: {}}))
+        card = {"name": "hello", "goal": "Add a hello module", "change": ["hello.py"]}
+        pr = draft.open_draft(self.port, "s1", card, LOCKED_UNITS["probe"], self.github)
+        ref = f"orch/p{self.plan}/hello"
+        self.assertEqual(git(self.origin, "log", "--format=%s", f"work..{ref}").splitlines(), ["hello: start"])
+        self.assertEqual(git(self.origin, "show", "--name-only", "--format=", ref).split(), [])
+        (_, _, fields), = self.github.pulls()
+        self.assertEqual((fields["head"], fields["base"], fields["draft"]), (ref, "work", True))
+        self.assertNotIn("issue", fields["body"])
+        self.assertEqual(pr["number"], 5)
 
     def watch(self, response, number=5, repo="r"):
         """The hook's Act on the answer of the watch call in the parent's session."""
@@ -182,19 +200,19 @@ class SayTest(unittest.TestCase):
         """s1.child.comment: each one comment with the harness marker; the child's ledger keeps its id and hash."""
         from harness.mcp.actions.orchestra import Handback, Question
         text = Question().run(self.ctx(), {"question": "Which status code for a closed account?"})
-        self.assertTrue(text.startswith("It is posted on your draft pull request #5 as a comment"))
+        self.assertIn("Question 1 is the comment https://github.com/o/r/pull/5#issuecomment-1 on your draft", text)
         Handback().run(self.ctx(), self.REPORT)
         (m1, p1, f1), (m2, p2, f2) = self.calls
         self.assertEqual((m1, p1, p2), ("POST", "repos/o/r/issues/5/comments", "repos/o/r/issues/5/comments"))
         self.assertEqual(f1["body"].split("\n\n")[:2], ["**Question of api** (plan 7)",
                                                          "Which status code for a closed account?"])
-        self.assertTrue(f1["body"].endswith('<!-- harness-comment {"child": "api", "kind": "question", "plan": 7} -->'))
+        meta = talk.read({"body": f1["body"]})
+        self.assertEqual((meta["kind"], meta["child"], meta["from"], meta["n"]), ("question", "api", "child", 1))
         self.assertIn("Changed: app/orders.py lists orders\n\nChecked: tests pass\n\nNot checked: none\n\n"
                       "Risks: paging is not done", f2["body"])
-        rows = self.port.rows("SELECT key, target, text FROM pl_notes WHERE kind = 'child.said' ORDER BY rowid")
+        rows = self.port.rows("SELECT key, target, text FROM pl_notes WHERE kind = 'talk.said' ORDER BY rowid")
         self.assertEqual([r["key"] for r in rows], ["question", "handback"])
         self.assertEqual(json.loads(rows[0]["text"])["id"], 901)
-        self.assertEqual(draft.say(self.port, "c2", "question", ["x"], self.github), "")  # no draft: nothing posted
         self.assertEqual(len(self.calls), 2)
 
 
