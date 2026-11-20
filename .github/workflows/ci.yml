@@ -1,0 +1,42 @@
+# The project CI of AISDLC: the predefined rule every pull request into main must pass.
+# The harness parent waits for it, then runs its own acceptance tests before it merges.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+
+  nets:
+    name: harness nets and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: A name and email for the tests that commit
+        run: |
+          git config --global user.name "ci"
+          git config --global user.email "ci@users.noreply.github.com"
+          git config --global init.defaultBranch main
+      - name: Doctor (0 errors)
+        run: python3 .claude/harness/entry/doctor.py
+      - name: Test suite
+        run: python3 -m unittest discover -s .claude/harness/tests -t .claude
