@@ -113,26 +113,6 @@ def publish_main(home: str | Path) -> tuple[int, str]:
     return 0, f"Release {sha} is in force: hooks run it at once, MCP servers at their next call."
 
 
-def source(home: str | Path) -> dict[str, str]:
-    """The harness a plan's CI workflow pins (utils/orchestra/workflow.py): the https URL of the clone's origin (with
-    no credentials) and the commit of main as the clone last fetched it.
-
-    Args:
-        home: the home, the .claude folder of the harness's clone.
-
-    Returns:
-        {url, sha}; {} when the home is in no clone, or the clone has no origin or no origin main.
-    """
-    try:
-        root = clone_root(home)
-        remote = git(root, "remote", "get-url", "origin").strip()
-        sha = git(root, "rev-parse", "--verify", "refs/remotes/origin/main").strip()
-    except (PullError, GitError):
-        return {}
-    named = slug(remote)
-    return {"url": f"https://github.com/{named}" if "github.com" in remote and named else remote, "sha": sha}
-
-
 def slug(url: str) -> str:
     """The last two parts of a remote's URL or path, lower case: "owner/name" (".git" left out).
 

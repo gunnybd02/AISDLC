@@ -89,12 +89,12 @@ class SkillsTest(unittest.TestCase):
             self.assertIn("auto mode", lib.get(name).text)
             self.assertIn("cli verify", lib.get(name).text)
 
-    def test_the_orchestrate_skill_names_the_lock_and_the_plan_branch(self):
-        """s6.docs.orchestra: the parent writes acTests, locks them, and children work on plan/p<plan>."""
+    def test_the_orchestrate_skill_names_the_lock_and_the_parents_own_copy(self):
+        """s6.docs.orchestra: the parent writes acTests, locks them, and runs its own copy at check."""
         lib = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs")
         for name in ("orchestrate", "work"):
             text = lib.get(name).text
-            for part in ("acTests", 'run("orchestra", "lock", {})', "plan/p<plan>"):
+            for part in ("acTests", 'run("orchestra", "lock", {})', "own copy"):
                 self.assertIn(part, text, name)
 
     def test_the_skills_name_the_tickets_and_the_stores_folders(self):
@@ -118,24 +118,24 @@ class SkillsTest(unittest.TestCase):
         """s5.docs.ci: a child reads its rules in the work skill; the parent reads the issue format in orchestrate."""
         lib = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs")
         work = " ".join(lib.get("work").text.split())
-        for part in ("it starts `#N <name>: `", "registration as a comment on your issue", "`harness ci`",
-                     "cli ci --base"):
+        for part in ("it starts `#N <name>: `", "registration as a comment on your issue",
+                     "Your merge request goes into main"):
             self.assertIn(part, work)
         orchestrate = " ".join(lib.get("orchestrate").text.split())
-        for part in ("harness-issue/1", "`[p<plan>] <name>: <goal>`", "`harness ci`"):
+        for part in ("harness-issue/1", "`[p<plan>] <name>: <goal>`", "CI is the project's own"):
             self.assertIn(part, orchestrate)
 
-    def test_the_orchestrate_skill_says_lock_pushes_the_ci_workflow(self):
-        """s3.docs.workflow: the file, its pin, that it is locked, and the required check the user may turn on."""
+    def test_the_orchestrate_skill_says_ci_is_the_projects_own(self):
+        """s3.docs.workflow: lock pushes nothing; the harness never adds a CI file; a plan may write one; no CI skips."""
         text = " ".join(Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs").get("orchestrate").text.split())
-        for part in ("`.github/workflows/harness-ci.yml`", "pinned at its main commit", "locked like the tests",
-                     "required check of the plan branch"):
+        for part in ("pushes nothing (no branch, no CI file)", "The harness never adds a CI file by itself",
+                     "a plan may write one", "A repository with no CI skips the CI phase"):
             self.assertIn(part, text)
 
     def test_the_orchestrate_skill_says_spawn_opens_a_draft_and_started_waits_for_the_watch(self):
         """s4.docs.draft: the start commit, the draft pull request, the watch call first, and started waiting."""
         text = " ".join(Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs").get("orchestrate").text.split())
-        for part in ("opens its draft pull request into the plan branch, once", "begins with the watch call",
+        for part in ("opens its draft pull request into the base, once", "begins with the watch call",
                      "`mcp__claude-code-remote__subscribe_pr_activity {owner, repo, pullNumber}`",
                      "started waits for it", "Accept later makes that draft ready"):
             self.assertIn(part, text)
@@ -146,8 +146,8 @@ class SkillsTest(unittest.TestCase):
         lib = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs")
         orchestrate = " ".join(lib.get("orchestrate").text.split())
         for part in ('`run("orchestra", "doorbell", {})`', "A child cannot message you (auto mode refuses it)",
-                     "| CI is RED with failed rules | `reject` with those rules |",
-                     "| it handed back and CI is green | `check`, then `accept` |"):
+                     "| CI is RED after its handback, the failed checks named | `reject` with those checks |",
+                     "| it handed back and CI is green, or there is no CI | `check`, then `accept` |"):
             self.assertIn(part, orchestrate)
         work = " ".join(lib.get("work").text.split())
         for part in ("the harness posts each as a comment on your draft pull request",
@@ -185,7 +185,7 @@ class SkillsTest(unittest.TestCase):
 
 
 class OrdersDocsTest(unittest.TestCase):
-    def test_no_text_tells_a_child_to_send_message_and_the_skills_name_orders_and_form_2(self):
+    def test_no_text_tells_a_child_to_send_message_and_the_skills_name_orders_and_close(self):
         """s8.docs.orders: a child that sends a message is refused by auto mode; the parent sends signed orders."""
         import json
         from pathlib import Path
@@ -202,9 +202,9 @@ class OrdersDocsTest(unittest.TestCase):
         self.assertIn("Never `send_message` (auto mode refuses it)", child)
         self.assertIn("signed order", child)
         orchestrate = (harness / "mcp" / "skill_docs" / "orchestrate" / "SKILL.md").read_text(encoding="utf-8")
-        for words in ("signed order", "Form 2", "Stop orders"):
+        for words in ("signed order", "signed stop order", 'run("orchestra", "close", {})'):
             self.assertIn(words, orchestrate)
-        self.assertIn("form 2", work)
+        self.assertIn('run("orchestra", "close", {})', work)
 
 
 class TalkDocsTest(unittest.TestCase):
@@ -225,6 +225,21 @@ class TalkDocsTest(unittest.TestCase):
         for path in (".harness/notes", ".harness/register", ".harness/handback"):
             self.assertNotIn(path, spec)
         self.assertIn("utils/orchestra/talk.py", (root / "docs" / "system.md").read_text(encoding="utf-8"))
+
+
+
+class IntoMainDocsTest(unittest.TestCase):
+    def test_the_skills_say_a_child_merges_into_main_after_the_parents_tests(self):
+        """s8.docs.into-main: the orchestrate and work skills say the child merges into main after the parent's tests
+        and name no plan branch, no harness ci and no form 2."""
+        lib = Skills(CLAUDE_DIR / "harness" / "mcp" / "skill_docs")
+        orchestrate = " ".join(lib.get("orchestrate").text.split())
+        work = " ".join(lib.get("work").text.split())
+        self.assertIn("on pass accept merges it into main yourself", orchestrate)
+        self.assertIn("`accept` (it merges the child into main itself)", work)
+        for text in (orchestrate, work):
+            for old in ("plan branch", "plan/p<plan>", "harness ci", "cli ci", "form 2", "Form 2", '"land"'):
+                self.assertNotIn(old, text)
 
 
 if __name__ == "__main__":

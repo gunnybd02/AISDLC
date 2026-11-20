@@ -21,7 +21,7 @@ from harness.utils.plan.life import accepts as drop_accepts
 from harness.utils.plan.ship import mr_accepts
 from harness.utils.forge import merges, sessions
 from harness.utils.gateway.release import accepts as release_accepts
-from harness.utils.orchestra import child, doorbell, draft, ending, orders, register, synced
+from harness.utils.orchestra import child, doorbell, draft, orders, register, synced
 from harness.utils.orchestra.cleanup import removal_accepts
 from harness.utils.plan.request import FORM_ONLY
 from harness.utils.shapes import Facts
@@ -185,7 +185,6 @@ class Act:
             notes += drop_accepts(self.port, facts.get("answers") or {})
             notes += mr_accepts(self.port, facts.get("answers") or {})
             notes += merges.accepts(self.port, facts.get("answers") or {})  # the user allows one merge
-            notes += ending.accepts(self.port, event.session, facts.get("answers") or {})  # form 2: the end of a plan
             notes += merges.used(self.port, event)  # a merge ran: its pass is used
             notes += sessions.accepts(self.port, facts.get("answers") or {})  # the user allows one costly session
             notes += sessions.used(self.port, event)  # a session opened: its pass is used

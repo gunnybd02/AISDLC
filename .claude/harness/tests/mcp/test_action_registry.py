@@ -20,7 +20,7 @@ PINNED = {
     "orchestra.lock": WRITE, "orchestra.tickets": WRITE, "orchestra.spawn": WRITE, "orchestra.started": WRITE, "orchestra.status": READ, "orchestra.take": WRITE,
     "orchestra.push": WRITE, "orchestra.question": WRITE, "orchestra.handback": WRITE, "orchestra.check": WRITE,
     "orchestra.accept": WRITE, "orchestra.reject": WRITE, "orchestra.answer": WRITE, "orchestra.forget": WRITE,
-    "orchestra.read": READ, "orchestra.land": WRITE, "orchestra.release": WRITE, "orchestra.remove": WRITE,
+    "orchestra.read": READ, "orchestra.close": WRITE, "orchestra.release": WRITE, "orchestra.remove": WRITE,
     "orchestra.digest": READ, "orchestra.doorbell": WRITE,
 }
 

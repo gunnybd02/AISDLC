@@ -1,33 +1,27 @@
-"""Land: the final route of a delegated plan (docs/05b-orchestra-cloud.md part 3, the user's flow of 2026-11-16).
-When every child has ended (accepted, forgotten or released), the parent merges the accepted children's pull
-requests one by one, in the plan's order. A conflict stops it: the answer names the pull request and its files, and
-the parent resolves it (or sends the child back) and lands again. After the last merge each unit's tests run on its
-merged base; green, with nothing of the parent's own left, closes the delegated plan as delivered. When the parent
-locked acceptance tests (utils/orchestra/locked.py), the children merge into the plan branch, the tests run there, and
-one pull request takes the plan branch into the base: the plan is delivered only after the user merged it."""
+"""Land: how a delegated plan's children reach their base and how the plan ends (docs/05b-orchestra-cloud.md part 3,
+the user's flow of 2026-11-20). Each child merges on its own: once its check is green (the project's CI not red, the
+parent's own acceptance tests green on its pull request merged with the newest base), accept merges its pull request
+at the tested commit into the base, tells the child to stop and gives its archive call. There is no plan branch and
+no form 2: close ends the delegated plan when every child is merged or forgotten, its ledger copy is in the store, and
+the parent's own files are committed."""
 from __future__ import annotations
 
 import fnmatch
 import json
-import sys
-import time
-from pathlib import Path
 from typing import Any, Callable
 
 from harness.utils.contracts import now
-from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError
-from harness.utils.git.run import GitError, git, run_git
 from harness.utils.ledger import store
-from harness.utils.orchestra import crew, ending, locked, synced
-from harness.utils.orchestra.brief import branch
+from harness.utils.orchestra import crew, orders, synced
 from harness.utils.orchestra.card import unit_spec
-from harness.utils.orchestra.fetch import checkout, rerun, same_repo
-from harness.utils.orchestra.review import ReviewError, set_entry
+from harness.utils.orchestra.draft import DRAFTS, ready
+from harness.utils.orchestra.review import ReviewError, child_of, set_entry
 from harness.utils.shapes import Card, PlanStore, Ticket
 
 MERGED = "merged"
-TRIES, WAIT = 10, 3  # how often and how long apart land asks GitHub whether a pull request can merge
+ARCHIVE = "mcp__claude-code-remote__archive_session"
+GONE = (crew.FORGOTTEN, crew.RELEASED, crew.REMOVED)  # children that end without a merge
 
 
 def covers(card: Card, path: str) -> bool:
@@ -61,195 +55,100 @@ def own_files(ticket: Ticket) -> list[str]:
     return [f for f in plan.get("files", []) if not any(covers(c, f) or f in c.get("acTests", []) for c in cards)]
 
 
-def conflicts(repo: str, base: str, ref: str) -> list[str]:
-    """The files a merge of ref into base would conflict on, read locally (git merge-tree, git 2.38 or newer); [] when
-    it merges cleanly here or git cannot tell.
-
-    Args:
-        repo: the parent's repository root.
-        base: the base branch.
-        ref: the child's branch.
-
-    Returns:
-        The conflicted files, 20 at most.
-    """
-    try:
-        git(repo, "fetch", "-q", "origin", base, ref, timeout=300)
-    except GitError:
-        return []
-    code, out = run_git(repo, ["merge-tree", "--write-tree", "--name-only", "--no-messages", f"origin/{base}",
-                               f"origin/{ref}"])
-    if code != 1:
-        return []
-    return [line.strip() for line in out.splitlines()[1:] if line.strip()][:20]
-
-
-def merges_cleanly(repo: str, base: str, ref: str) -> bool:
-    """Whether ref merges into base without a conflict, tried locally (git merge-tree).
-
-    Args:
-        repo: the parent's repository root.
-        base: the base branch.
-        ref: the child's branch.
-
-    Returns:
-        True when the merge is clean here; False on a conflict or when git cannot tell.
-    """
-    try:
-        git(repo, "fetch", "-q", "origin", base, ref, timeout=300)
-        git(repo, "merge-tree", "--write-tree", "--name-only", "--no-messages", f"origin/{base}", f"origin/{ref}")
-        return True
-    except GitError:
-        return False
-
-
-def merge_one(github: Callable[..., Any], name: str, pr: dict[str, Any]) -> str:
-    """Merge one pull request, or find it merged already.
-
-    Args:
-        github: call(method, path, fields) -> the JSON answer.
-        name: the child's name.
-        pr: its pull request {number, url, repo, base}.
-
-    Returns:
-        The merge commit's sha.
-
-    Raises:
-        GitHubError: GitHub refuses (a conflict, a check, a protection).
-    """
-    path = f"repos/{pr['repo']}/pulls/{pr['number']}"
-    for _ in range(TRIES):  # right after a push GitHub has not decided yet (mergeable null)
-        seen = github("GET", path)
-        if seen.get("merged"):
-            return str(seen.get("merge_commit_sha") or "")
-        if seen.get("mergeable") is not None:
-            break
-        time.sleep(WAIT)
-    done = github("PUT", f"{path}/merge", {"merge_method": "merge",
-                                          "commit_title": f"Merge {name} (pull request #{pr['number']})"})
-    return str(done.get("sha") or "")
-
-
-def conflict_text(name: str, pr: dict[str, Any], ref: str, files: list[str], why: str) -> str:
-    """What the parent does when a pull request does not merge.
-
-    Args:
-        name: the child's name.
-        pr: its pull request.
-        ref: its branch.
-        files: the conflicted files, when known.
-        why: GitHub's words.
-
-    Returns:
-        The two ways on: resolve it here, or send the child back.
-    """
-    base = pr.get("base", "main")
-    where = f" Conflicts in: {', '.join(files)}." if files else ""
-    return (f"Pull request #{pr['number']} of {name} does not merge into {base} ({why[-300:]}).{where}\n"
-            f"Resolve it here, as the parent: fetch, stand on {ref}, merge origin/{base} into it, fix those files "
-            f"(they are files of the delegated plan), verify, commit with run('git', 'commit', {{files, message}}), "
-            f"push {ref} with run('git', 'run', {{repo, args: ['push', 'origin', '{ref}']}}), then run('orchestra', "
-            f"'land', {{}}) again.\nOr send the child back: run('orchestra', 'reject', {{name: '{name}', why: "
-            f"'your branch conflicts with {base}: merge {base} into it, fix, verify, hand back'}}), then check and "
-            "accept it again (its pull request stays the same).")
-
-
-def land(port: PlanStore, sid: str, units: dict[str, Any], verify: list[str], github: Callable[..., Any],
-         timeout_min: int = 10, folder: str = "") -> str:
-    """The final route: merge every accepted child's pull request, run each unit's tests on its merged base, and
-    close the delegated plan as delivered when all is green and nothing of the parent's own is left.
+def accept(port: PlanStore, sid: str, name: str, units: dict[str, Any], github: Callable[..., Any]) -> str:
+    """Merge a child whose check is green this round: its pull request, at the commit the check tested, into the base
+    it must go to (its unit's base). The user's approval of the
+    delegated plan covers this merge: it runs in harness code, so the merge gate (utils/forge/merges.py) writes no
+    pass and still asks the user for any merge by the merge tool. Then the child is told to stop.
 
     Args:
         port: the ledger port.
         sid: the parent's session.
+        name: the child's name.
         units: the declared units by name.
-        verify: the config's test command (the home's).
         github: call(method, path, fields) -> the JSON answer (utils/git/github.call).
-        timeout_min: the minutes each unit's test run may take (1 to 30).
-        folder: the store's Drive folder; when set, the plan is delivered only when every child that ended has its
-            database in the store (utils/orchestra/synced.py) or the user waived it.
 
     Returns:
-        What was merged, and the plan's state: delivered, waiting for the parent's own files or for the children's
-        databases, a conflict, or red.
+        What was merged, the stop order's call and the archive call.
 
     Raises:
-        ReviewError: no delegated plan, a child that has not ended, or nothing accepted.
+        ReviewError: no green check this round, no pull request, a head that moved since the check, another base, or
+            GitHub refuses.
+    """
+    ticket, card, entry = child_of(port, sid, name)
+    if entry.get("checkedAt") is None or entry.get("checkedAt") != entry.get("backs", 0):
+        raise ReviewError(f"{name} has not passed a check this round: run('orchestra', 'check', {{name}}) first")
+    tested = str((entry.get("lastCheck") or {}).get("sha") or "")
+    held = (ticket.get(DRAFTS) or {}).get(name) or entry.get("pr") or {}
+    if not held.get("repo") or not held.get("number"):
+        raise ReviewError(f"{name} has no pull request to merge (spawn opens one for every child)")
+    into = unit_spec(card, units).get("base", "main")  # no plan branch: a child merges into its unit base
+    path = f"repos/{held['repo']}/pulls/{held['number']}"
+    try:
+        pr = github("GET", path) or {}
+        head, base = str((pr.get("head") or {}).get("sha") or ""), str((pr.get("base") or {}).get("ref") or into)
+        if head != tested:
+            raise ReviewError(f"the head of #{held['number']} moved since the check ({tested[:12]} -> {head[:12]}): "
+                              f"run('orchestra', 'check', {{name: '{name}'}}) again")
+        if base != into:
+            raise ReviewError(f"#{held['number']} goes into {base}, not {into}: it is not merged")
+        if pr.get("draft"):
+            ready(ticket, name, github)
+        done = github("PUT", f"{path}/merge", {"merge_method": "merge", "sha": tested,
+                                               "commit_title": f"Merge {name} (pull request #{held['number']})"}) or {}
+    except GitHubError as e:
+        raise ReviewError(f"#{held['number']} of {name} was not merged ({str(e)[-200:]}): check it again, or send it "
+                          "back") from e
+    sha = str(done.get("sha") or "")
+    set_entry(port, sid, name, card, {"state": crew.ACCEPTED, MERGED: {"sha": sha, "at": now()},
+                                      "pr": {"number": held["number"], "url": held.get("url"), "repo": held["repo"],
+                                             "base": into}}, crew.ACCEPTED)
+    stop = orders.give(port, sid, name, "stop")
+    archive = (f"Once its ledger copy is in the store (it uploads it at the stop order), archive its session: {ARCHIVE} "
+               f"{json.dumps({'session_id': entry.get('sid')})}" if entry.get("sid") else "")
+    return " ".join(x for x in (f"{name} accepted and merged: #{held['number']} into {into} at {tested[:12]} "
+                                f"({sha[:12]}).", stop, archive) if x)
+
+
+def close(port: PlanStore, sid: str, folder: str = "") -> str:
+    """End the delegated plan: every child merged (accept) or forgotten, the parent's own files committed, and, with a
+    store, each child's ledger copy there (utils/orchestra/synced.py) or waived by the user. No form 2 is asked.
+
+    Args:
+        port: the ledger port.
+        sid: the parent's session.
+        folder: the store's Drive folder; "" when none is set.
+
+    Returns:
+        The plan delivered, with the archive call of each child session; or what it still waits for.
+
+    Raises:
+        ReviewError: no delegated plan, or a child neither merged nor forgotten.
     """
     ticket = port.ticket(sid)
     plan = crew.delegated(ticket)
     if plan is None:
         raise ReviewError("no delegated plan is in force in this session")
     team = ticket.get("crew") or {}
-    open_ones = [c["name"] for c in plan["children"] if team.get(c["name"], {}).get("state") not in crew.ENDED]
-    if open_ones:
-        raise ReviewError(f"these children have not ended: {', '.join(open_ones)}; accept or forget each first")
-    accepted = [c for c in plan["children"] if team[c["name"]].get("state") == crew.ACCEPTED]
-    if not accepted:
-        raise ReviewError("no child was accepted: there is nothing to merge")
-    repo, lines = top(plan["root"]), []
-    for card in accepted:
-        entry = team[card["name"]]
-        if entry.get(MERGED):
-            continue
-        pr, ref = entry["pr"], branch(plan["id"], card["name"])
-        try:
-            sha = merge_one(github, card["name"], pr)
-        except GitHubError as e:
-            files = conflicts(repo, pr.get("base", "main"), ref) if repo and same_repo(unit_spec(card, units), repo) \
-                else []
-            clean = not files and repo and same_repo(unit_spec(card, units), repo) and merges_cleanly(
-                repo, pr.get("base", "main"), ref)
-            if clean:
-                return "\n".join(lines + [f"Pull request #{pr['number']} of {card['name']} merges cleanly here, but "
-                                           f"GitHub refused it ({str(e)[-200:]}): it may not have finished checking it. "
-                                           "Run('orchestra', 'land', {}) again in a minute."])
-            return "\n".join(lines + [conflict_text(card["name"], pr, ref, files, str(e))])
-        set_entry(port, sid, card["name"], card, {MERGED: {"sha": sha, "at": now()}}, MERGED)
-        lines.append(f"Merged #{pr['number']} of {card['name']} into {pr.get('base', 'main')} ({sha[:12]}).")
-    red, held = [], (ticket.get(locked.LOCK) or {}).get("branch", "")  # with a lock, the children merged into it
-    for spec in {json.dumps(unit_spec(c, units), sort_keys=True): unit_spec(c, units) for c in accepted}.values():
-        command = [sys.executable if w == "{python}" else w for w in (spec.get("verify") or verify)]
-        if not command:
-            continue
-        target = held or spec.get("base", "main")
-        proofs = [p for c in accepted if unit_spec(c, units) == spec for p in c.get("acTests", [])]  # for a {test} command
-        with checkout(spec, repo, target) as tree:
-            root = tree if spec.get("path", ".") in ("", ".") else str(Path(tree) / spec["path"])
-            ok, tail = rerun(root, command, proofs, int(timeout_min) * 60)
-        lines.append(f"The tests of {spec.get('repo') or 'the home'} ({spec.get('path', '.')}) on the merged "
-                     f"{target}: {'green' if ok else 'RED'}.")
-        if not ok:
-            red.append(tail[-1500:])
-    if red:
-        return "\n".join(lines + ["Not delivered: a merged base is red. Fix it through a new plan, then land again."]
-                         + red)
-    lines += ending.stops(port, sid)  # every child's pull request is merged: each child is told to stop
-    if held:  # the plan branch goes into the base only by the user's word: form 2
-        try:
-            more, merged = locked.plan_prs(port, sid, github)
-        except locked.LockError as e:
-            return "\n".join(lines + [str(e)])
-        lines += more
-        if not merged:
-            return "\n".join(lines + [ending.form(port, sid, github)])
-    own = own_files(port.ticket(sid))
-    if own and port.ticket(sid).get("phase") != "deliver":
-        return "\n".join(lines + [f"Every pull request is merged. The plan waits for your own files ({', '.join(own)}): "
-                                  "commit them with step_done, then run('orchestra', 'land', {}) again."])
-    gaps = synced.missing(port, port.ticket(sid)) if folder else []
+    waiting = [c["name"] for c in plan["children"]
+               if not team.get(c["name"], {}).get(MERGED) and team.get(c["name"], {}).get("state") not in GONE]
+    if waiting:
+        raise ReviewError(f"these children are neither merged nor forgotten: {', '.join(waiting)}; check and accept "
+                          "each (accept merges it), or forget it")
+    own = own_files(ticket)
+    if own and ticket.get("phase") != "deliver":
+        return (f"Every child is merged or forgotten. The plan waits for your own files ({', '.join(own)}): commit them "
+                "with step_done, then run('orchestra', 'close', {}) again.")
+    gaps = synced.missing(port, ticket) if folder else []
     if gaps:
         db = store.place(port, "db") if folder == store.folder() else ""
-        return "\n".join(lines + ["Every pull request is merged and green. " + synced.ask_text(port.ticket(sid), folder,
-                                                                                            gaps, db)])
-    if held and not ending.allowed(port, port.ticket(sid)):  # merged without form 2: it still decides the rest
-        return "\n".join(lines + [ending.form(port, sid, github)])
-    lines += ending.finish(port, sid, github) if held else []
+        return "Every child is merged or forgotten. " + synced.ask_text(ticket, folder, gaps, db)
+    sessions = [e["sid"] for e in team.values() if e.get("sid") and e.get("state") != crew.REMOVED]
+    lines = [f"Archive the child session {s} now, if it is not archived yet: {ARCHIVE} {json.dumps({'session_id': s})}"
+             for s in sessions]
     port.close_plan(sid, port.ticket(sid), "delivered", lines)
-    rest = ("archive each child session as said above, and report to the user." if held else
-            "Then run('orchestra', 'remove', {}) for the child sessions, and report to the user; the merged branches "
-            "are left for the user to delete.")
-    return "\n".join(lines + [f"Plan {plan['id']} ({ticket['draft']}) is delivered. Delete the check-in if you set one "
-                              f"(delete_trigger). {rest[0].upper() + rest[1:]}"]
+    return "\n".join([f"Plan {plan['id']} ({ticket['draft']}) is delivered: every child is merged or forgotten."] + lines
+                     + ["Delete the check-in if you set one (delete_trigger), and report to the user. GitHub deletes "
+                        "each merged branch when the repository deletes head branches on merge."]
                      + ([f"Save your own ledger too: run('ledger', 'export', {{reason: 'plan-close'}}) and upload it "
                          f"(its name carries orch.{ticket['draft']}.parent)."] if folder else []))

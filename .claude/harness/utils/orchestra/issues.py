@@ -53,7 +53,7 @@ def block_of(plan: ApprovedPlan, draft: str, card: Card, repo: str, start: str, 
         draft: its desk id.
         card: the child's card.
         repo: the URL of the unit's repository.
-        start: the plan branch the child starts from ("" for the unit's base).
+        start: "" (no plan branch: the child starts from its unit's base); kept in the block for its format.
         path: the unit's folder in its repository ("." for the top); the card's paths are relative to it.
 
     Returns:
@@ -103,7 +103,8 @@ def issue_text(card: Card, block: dict[str, Any], plan: int) -> tuple[str, str, 
              + ". The child pushes only this branch.",
              "", commits, f"Every commit on the branch starts with this issue's number and the child's name: "
              f"`#<this issue> {name}: <what>`. The first one is the orchestrator's start, `#<this issue> {name}: "
-             "start`, which changes no file. Before any work the child registers with a comment on this issue; the "
+             "start`, made from the base, which adds the locked acceptance tests (or changes no file when there are "
+             "none). Before any work the child registers with a comment on this issue; the "
              "talk of child and orchestrator is in comments, never in files of the branch.",
              "", ISSUE_OPEN, json.dumps(block, sort_keys=True, ensure_ascii=False), f"sha256: {sha}", ISSUE_CLOSE]
     return f"[p{plan}] {name}: {card['goal']}"[:200], "\n".join(lines), sha
@@ -275,10 +276,10 @@ def open_issues(port: PlanStore, sid: str, units: dict[str, Any], github: Callab
     if ticket.get("crew"):
         raise IssueError("a child has started: its issue is the one it started with")
     if any(c.get("acTests") for c in plan["children"]) and not ticket.get(locked.LOCK):
-        raise IssueError("lock the acceptance tests first (run('orchestra', 'lock', {})): an issue names the branch its "
-                         "child starts from")
+        raise IssueError("lock the acceptance tests first (run('orchestra', 'lock', {})): an issue names its child's "
+                         "locked tests")
     root = top(plan["root"])
-    start, lines = (ticket.get(locked.LOCK) or {}).get("branch", ""), []
+    start, lines = "", []  # no plan branch: a child starts from its unit's base
     for card in plan["children"]:
         held = ((port.ticket(sid).get(ISSUES) or {}).get("children") or {}).get(card["name"])
         if held:

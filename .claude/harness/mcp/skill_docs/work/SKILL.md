@@ -82,32 +82,31 @@ one as superseded: to change work in hand, revise.
 short (`docs/05b-orchestra-cloud.md`): a full plan with `children`, each card
 `{name, unit, goal, ac, read?, change, tests?, acTests?, actions?}`; each AC names a visible case; a unit is `home`
 or a repo the plan names in `repos` (any repository, or a folder of a shared one). One "Approve" approves them all;
-then write the acceptance tests (`acTests`) and `run("orchestra", "lock", {})` pushes them on the plan branch
-`plan/p<plan>`; per child, `run("orchestra", "spawn", {"name"})` gives the brief and the `create_session` call, and
+then write the acceptance tests (`acTests`) and `run("orchestra", "lock", {})` keeps them (text and hash) in the
+ledger; per child, `run("orchestra", "spawn", {"name"})` gives the brief and the `create_session` call, and
 `run("orchestra", "started", {"name", "sid"})` records it (3 run at most; `run("orchestra", "status", {})`). While it
 runs no other plan opens in the session; revise it instead. When a child says "handed back":
-`run("orchestra", "check", {"name"})` (its receipt, the locked tests unchanged and run here), then `accept` (one pull
-request into the plan branch) or `reject` with why (3 rounds). A question: `answer`. Both post a comment on its draft and
+`run("orchestra", "check", {"name"})` (the project's CI not red, or no CI; then your own copy of the locked tests run
+on its pull request merged with the newest main), then `accept` (it merges the child into main itself) or `reject`
+with why (3 rounds). A question: `answer`. Both post a comment on its draft and
 give the signed order (fix or answer) for the child's running session: send it with `send_message` as given. When every child
-has ended: `run("orchestra", "land", {})` merges the pull requests into the plan branch; a conflict stops it with the
-two ways on (resolve it on the child's branch, or reject); green gives each child a signed stop order, opens one pull
-request of the plan branch into the base, and asks form 2 (merge it, delete the branches, archive the child sessions).
-On the user's Allow merge it with the merge tool, land again: it deletes the branches, gives the archive calls, closes.
+is merged or forgotten: `run("orchestra", "close", {})` closes the plan once each child's ledger copy is in the store.
+CI is the project's own: the harness never adds a CI file by itself (a plan may write one as normal work).
 
 **A child session** (its first prompt is a brief: `You are child session ...`): nobody is at its keyboard.
 `run("orchestra", "take", {})` first. When the brief names an issue and a ticket file, take registers you before any
 work: it gives two Drive calls (find the ticket file, download it once); the harness checks the file and the issue
 against the brief and keeps no copy; run take again. Registered, the harness posts your registration as a comment on your issue (no file,
-no commit); your card plan opens on your branch (the locked acceptance tests: make them pass, never change them; the doors refuse them, and any
-file outside your card's change and tests). Every commit names #N by itself: it starts `#N <name>: `. On the forge,
-`harness ci` checks the same rules again from your branch alone (`python3 <core>/anchor.py cli ci --base <plan branch>
---head <your branch>`). "Registration failed": the reason is a question comment on your draft; stop at once. You talk by comments your
+no commit); your card plan opens on your branch, cut from main by the orchestrator with the locked acceptance tests on it (make
+them pass, never change them: the doors refuse them, and any file outside your card's change and tests; take and push
+refuse a locked test that drifted). Every commit names #N by itself: it starts `#N <name>: `. Your merge request goes
+into main; you never push to main or merge. The orchestrator tests it with its own copy of the tests and merges it. "Registration failed": the reason is a question comment on your draft; stop at once. You talk by comments your
 harness posts on your draft (question, handback); the orchestrator's are there too. Nothing goes under `.harness/`.
 Then the loop of part 3, and
 `run("orchestra", "push", {})` after every step. A question: `run("orchestra", "question", {"question"})`. Last:
 `run("orchestra", "handback", {"changed", "checked", "notChecked", "risks", "testsChanged"})`. Both are pushed, and
 the harness posts each as a comment on your draft pull request: that is how your words reach the orchestrator, whom
-the CI result of your push wakes. Never `send_message` (auto mode refuses it), then stop: you wait, and the harness
+your push wakes. Never `send_message` (auto mode refuses it), then stop: you wait, and the harness
 lets you change nothing until a signed order of the orchestrator arrives in your notifications (ReadNotifications).
 A valid fix or answer opens one more round; stop: export and upload your ledger, then end. An order that does not
 check out is ignored. Never AskUserQuestion, a plan of its own, a merge or a close.

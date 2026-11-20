@@ -1,7 +1,7 @@
 """orchestra, the parent's review and final route (docs/05b-orchestra-cloud.md part 3; utils/orchestra/review.py,
-land.py). The parent reads no code: it checks each handed-back child by its receipt and a rerun of its tests,
-accepts it as one pull request into its unit's base, or sends it back (limits.rounds at most); land merges the pull
-requests at the end, the parent resolving conflicts there, and closes the plan as delivered.
+land.py). The parent reads no code: it checks each handed-back child by the project's CI and a rerun of its own
+acceptance tests, merges it into its base when green (accept), or sends it back (limits.rounds at most); close ends the
+plan as delivered when every child is merged or forgotten.
 
 - check {name, timeoutMin?}: fetch the child's branch, read its receipt, rerun its tests.
 - accept {name}: a green check this round; open its pull request (nothing is merged).
@@ -9,7 +9,7 @@ requests at the end, the parent resolving conflicts there, and closes the plan a
 - answer {name, text}: the reply to a child's question: an answer note on its branch, then a fresh session.
 - forget {name, why}: drop a child that will not come back.
 - read {name}: its receipt.
-- land {timeoutMin?}: merge every accepted pull request, run each unit's tests, close the plan delivered.
+- close: every child merged or forgotten, its ledger copy in the store: the plan is delivered (no form 2).
 - release {name, why}: give a child's session back to the user (utils/orchestra/cleanup.py).
 - remove: one checklist the user ticks, then the archive_session call of each ticked child.
 - digest: one line per child.
@@ -29,7 +29,7 @@ from harness.utils.orchestra.fetch import FetchError
 
 ACTIONS = [("orchestra.check", "Check"), ("orchestra.accept", "Accept"), ("orchestra.reject", "Reject"),
            ("orchestra.answer", "Answer"), ("orchestra.forget", "Forget"), ("orchestra.read", "Read"),
-           ("orchestra.land", "Land"), ("orchestra.release", "Release"), ("orchestra.remove", "Remove"),
+           ("orchestra.close", "Close"), ("orchestra.release", "Release"), ("orchestra.remove", "Remove"),
            ("orchestra.digest", "Digest"), ("orchestra.doorbell", "Doorbell")]
 PARENT_ERRORS = (review.ReviewError, FetchError, GitError, GitHubError)  # the refusals of its steps, answered as the action's error
 NAME = {"type": "string", "description": "the child's name, as its card names it"}
@@ -77,16 +77,17 @@ class Check(McpAction):
 
 
 class Accept(McpAction):
-    """orchestra.accept: open the child's pull request into its unit's base."""
+    """orchestra.accept: merge the child's pull request at the commit the check tested."""
     block, name, effect = "orchestra", "accept", WRITE
-    summary = "Accept a child whose check is green this round: one pull request from its branch into its unit's base"
+    summary = ("Accept a child whose check is green this round: merge its pull request into its base at the tested "
+               "commit, then the stop order")
     args_schema = {"type": "object", "properties": {"name": NAME}, "required": ["name"]}
     needs = ("plans", "session", "units", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Open the child's pull request (utils/orchestra/review.accept); nothing is merged."""
+        """Merge the child's pull request (utils/orchestra/land.accept)."""
         sid = session_of(ctx)
-        return answered(PARENT_ERRORS, lambda: review.accept(ctx.ports["plans"], sid, args["name"], units(ctx),
+        return answered(PARENT_ERRORS, lambda: land.accept(ctx.ports["plans"], sid, args["name"], units(ctx),
                                                 ctx.ports["github"]))
 
 
@@ -174,19 +175,18 @@ class Read(McpAction):
         return answered(PARENT_ERRORS, lambda: review.read(ctx.ports["plans"], sid, args["name"], ctx.ports["github"]))
 
 
-class Land(McpAction):
-    """orchestra.land: the final route."""
-    block, name, effect = "orchestra", "land", WRITE
-    summary = ("When every child has ended: merge each accepted pull request (a conflict stops it, for the parent to "
-               "resolve), run each unit's tests on its merged base, close the plan delivered")
-    args_schema = {"type": "object", "properties": {"timeoutMin": MINUTES}}
-    needs = ("plans", "session", "units", "verify_command", "github", "store")
+class Close(McpAction):
+    """orchestra.close: the end of the delegated plan."""
+    block, name, effect = "orchestra", "close", WRITE
+    summary = ("When every child is merged (accept merges it) or forgotten and its ledger copy is in the store: close "
+               "the delegated plan delivered and give each child's archive call")
+    args_schema = {"type": "object", "properties": {}}
+    needs = ("plans", "session", "store")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Merge, test and close (utils/orchestra/land.land)."""
+        """End the plan (utils/orchestra/land.close)."""
         sid = session_of(ctx)
-        return answered(PARENT_ERRORS, lambda: land.land(ctx.ports["plans"], sid, units(ctx), list(ctx.ports["verify_command"]()),
-                                            ctx.ports["github"], args.get("timeoutMin", 10), store_folder(ctx)))
+        return answered(PARENT_ERRORS, lambda: land.close(ctx.ports["plans"], sid, store_folder(ctx)))
 
 
 class Release(McpAction):

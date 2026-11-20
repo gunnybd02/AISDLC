@@ -11,7 +11,6 @@ from typing import Any, Optional, Protocol, TextIO
 
 from harness.assemble.engine.build import CLAUDE_DIR, build_runner, code_of, items_of, skill_docs
 from harness.assemble.engine.checks import doctor, report
-from harness.assemble.engine.cli_live import source
 from harness.assemble.engine.loader import Item, Loader
 from harness.assemble.engine.ports import SERVER_PORTS, LedgerPort
 from harness.utils.contracts import Event
@@ -78,7 +77,7 @@ def ports_of(items: dict[str, Item], claude_dir: str | Path) -> dict[str, Any]:
         (verify_command: no command, a plan carries its own; doctor, git_judge: GitJudge, session, commit_judge:
         CommitJudge, banned: the floor's words (none: a plan adds its own), store, units: no declared unit (a plan names
         its repos), github: call(method, path, fields) of GitHub REST, limits: the default orchestra limits {children,
-        rounds}, which a plan may lower, harness_source: the harness's {url, sha} a CI workflow pins, judge).
+        rounds}, which a plan may lower, judge).
     """
     ledger = LedgerPort(claude_dir)
     ports = {"plans": ledger, "ledger": ledger, "verify_command": lambda: [],
@@ -92,7 +91,6 @@ def ports_of(items: dict[str, Item], claude_dir: str | Path) -> dict[str, Any]:
              "units": lambda: {},
              "github": github.call,
              "limits": lambda: dict(LIMITS),
-             "harness_source": lambda: source(claude_dir),
              "judge": lambda event: build_runner(claude_dir, items).run(event).verdict}
     assert tuple(ports) == SERVER_PORTS, "ports_of builds exactly SERVER_PORTS"
     return ports

@@ -11,8 +11,6 @@ from harness.utils.ledger import store
 from harness.utils.orchestra import cleanup, crew, land, review, synced
 from harness.tests.utils.test_review import UNITS, FakeGitHub, Scenario
 
-land.WAIT = 0
-
 FOLDER = "1AbCdEfGhIjKlMnOpQrStUv"
 
 
@@ -66,9 +64,9 @@ class SyncedTest(Scenario):
         self.assertEqual(len(self.drive_answer([title("8aa3f275-9f8b-56b3", draft, "hello")])), 1)
         self.assertEqual(self.drive_answer([title("someone-else", draft, "hello")]), [])
 
-    def test_land_delivers_only_when_every_child_is_in_the_store(self):
-        github = self.accepted_and_merged()
-        text = land.land(self.port, "s1", UNITS, [], github, folder=FOLDER)
+    def test_close_delivers_only_when_every_child_is_in_the_store(self):
+        self.accepted_and_merged()
+        text = land.close(self.port, "s1", folder=FOLDER)
         self.assertIn("Not synced yet: hello (no copy found)", text)
         self.assertNotIn("send_message", text)  # no message reaches a child: search again, then ask the user
         self.assertIn("search again a little later", text)
@@ -76,35 +74,35 @@ class SyncedTest(Scenario):
         self.assertEqual(self.port.ticket("s1")["state"], "open")
         draft = self.port.ticket("s1")["draft"]
         self.drive_answer([title("session_child0001", draft, "hello", seconds=time.time() - 3600)])
-        self.assertIn("older than its handback", land.land(self.port, "s1", UNITS, [], github, folder=FOLDER))
+        self.assertIn("older than its handback", land.close(self.port, "s1", folder=FOLDER))
         self.drive_answer([title("session_child0001", draft, "hello")])
-        text = land.land(self.port, "s1", UNITS, [], github, folder=FOLDER)
+        text = land.close(self.port, "s1", folder=FOLDER)
         self.assertIn("is delivered", text)
         self.assertIn(f"orch.{draft}.parent", text)  # the parent saves its own ledger too
 
     def test_the_search_names_the_db_folder_and_the_store_folder(self):
         """s2.synced.db: new copies are in db; older ones stay in the store folder; db unknown, it is found first."""
-        github = self.accepted_and_merged()
+        self.accepted_and_merged()
         draft = self.port.ticket("s1")["draft"]
         with mock.patch.dict("os.environ", {store.ENV: FOLDER}):
-            text = land.land(self.port, "s1", UNITS, [], github, folder=FOLDER)
+            text = land.close(self.port, "s1", folder=FOLDER)
             self.assertIn(f"title = 'db' and parentId = '{FOLDER}'", text)
             self.port.write(lambda con, rec: store.note(con, store.FOLDER, "db", FOLDER, "1DbFolderId000001", "s1", 1))
-            text = land.land(self.port, "s1", UNITS, [], github, folder=FOLDER)
+            text = land.close(self.port, "s1", folder=FOLDER)
         self.assertIn(f"title contains 'orch.{draft}.' and parentId = '1DbFolderId000001'", text)
         self.assertIn(f"title contains 'orch.{draft}.' and parentId = '{FOLDER}'", text)
 
     def test_a_child_that_can_never_upload_passes_only_with_the_users_allow(self):
-        github = self.accepted_and_merged()
+        self.accepted_and_merged()
         draft = self.port.ticket("s1")["draft"]
         question = synced.waiver_question(draft, "hello")["question"]
         Act(self.port).run(Event("PostToolUse", "AskUserQuestion", {}, "s1", "/w"),
                            {"answers": {question: "Deny"}}, Verdict("allow"))
-        self.assertIn("Not synced yet", land.land(self.port, "s1", UNITS, [], github, folder=FOLDER))
+        self.assertIn("Not synced yet", land.close(self.port, "s1", folder=FOLDER))
         notes = Act(self.port).run(Event("PostToolUse", "AskUserQuestion", {}, "s1", "/w"),
                                    {"answers": {question: "Allow"}}, Verdict("allow"))
         self.assertIn("close without the database of hello", " ".join(notes))
-        self.assertIn("is delivered", land.land(self.port, "s1", UNITS, [], github, folder=FOLDER))
+        self.assertIn("is delivered", land.close(self.port, "s1", folder=FOLDER))
 
     def test_remove_archives_a_ticked_child_only_once_it_is_in_the_store(self):
         self.hand_back()

@@ -11,7 +11,7 @@ from harness.mcp.actions.orchestra import Spawn, Started
 from harness.utils.contracts import YES, ActionContext
 from harness.utils.git.github import GitHubError, repo_of
 from harness.utils.orchestra import locked, review, talk
-from harness.utils.plan import desk
+from harness.utils.plan import desk, tickets as plan_tickets
 from harness.utils.plan.approval import approvals
 from harness.tests import tree
 from harness.tests.e2e import copy_tree, git_repo
@@ -38,14 +38,27 @@ class FakeGitHub:
     request is opened; a merge merges its branch into its base on the real origin (through the parent's clone), or
     answers a conflict. A draft made ready merges the child's branch into the unit's base."""
 
-    def __init__(self, repo, conflict=False, comments=None):
+    def __init__(self, repo, conflict=False, comments=None, base="work"):
         self.repo, self.conflict, self.calls, self.merged = repo, conflict, [], False
-        self.comments, self.head, self.base = ([] if comments is None else comments), "", "work"
+        self.comments, self.head, self.base = ([] if comments is None else comments), "", base
+        self.runs, self.statuses, self.draft = [], [], False  # the project's CI on the head: none by default
+
+    def head_ref(self):
+        """The pull request's head: the child's branch."""
+        return self.head or next(r.split("refs/heads/", 1)[1] for r in git(self.repo, "ls-remote", "--heads", "origin")
+                                 .splitlines() if "refs/heads/orch/" in r)
 
     def __call__(self, method, path, fields=None):
         if method == "GET" and path.split("?")[0].endswith("/comments"):
             return list(self.comments)
+        if method == "GET" and "/check-runs" in path:
+            return {"check_runs": list(self.runs)}
+        if method == "GET" and path.endswith("/status"):
+            return {"state": "pending", "statuses": list(self.statuses), "total_count": len(self.statuses)}
         self.calls.append((method, path, dict(fields or {})))
+        if path == "graphql" or "ready_for_review" in path:  # the draft made ready
+            self.draft = False
+            return {"data": {"markPullRequestReadyForReview": {"pullRequest": {"isDraft": False}}}}
         if method == "POST" and path.endswith("/comments"):  # the talk: a comment on the draft
             n = len(self.calls)
             made = {"id": 700 + n, "html_url": f"{URL}/pull/5#issuecomment-{700 + n}", "body": fields["body"]}
@@ -56,18 +69,24 @@ class FakeGitHub:
             return {"number": 5, "html_url": f"{URL}/pull/5"}
         if method == "GET":
             self.gets = getattr(self, "gets", 0) + 1
+            tip = git(self.repo, "ls-remote", "origin", f"refs/heads/{self.head_ref()}").split("\t")[0]
+            pr = {"head": {"sha": tip}, "base": {"ref": self.base}, "draft": self.draft}
             if self.gets == 1 and not self.conflict:
-                return {"merged": False, "mergeable": None}  # GitHub has not decided yet, right after a push
-            return {"merged": self.merged, "mergeable": not self.conflict}
+                return {**pr, "merged": False, "mergeable": None}  # GitHub has not decided yet, right after a push
+            return {**pr, "merged": self.merged, "mergeable": not self.conflict}
         if self.conflict:
             raise GitHubError("gh api PUT: Pull Request is not mergeable (HTTP 405)")
-        head = self.head or next(r.split("refs/heads/", 1)[1] for r in git(self.repo, "ls-remote", "--heads", "origin")
-                                 .splitlines() if "refs/heads/orch/" in r)  # the draft's head: the child's branch
-        git(self.repo, "fetch", "-q", "origin", head)
-        git(self.repo, "merge", "-q", "--no-ff", "-m", "merge", "FETCH_HEAD")
-        git(self.repo, "push", "-q", "origin", self.base)
+        head, here = self.head_ref(), git(self.repo, "branch", "--show-current").strip()
+        git(self.repo, "fetch", "-q", "origin", head, self.base)
+        if here != self.base:  # merge on a detached copy of the base, then come back
+            git(self.repo, "switch", "-q", "--detach", f"origin/{self.base}")
+        git(self.repo, "merge", "-q", "--no-ff", "-m", "merge", f"origin/{head}")
+        git(self.repo, "push", "-q", "origin", f"HEAD:refs/heads/{self.base}")
+        sha = git(self.repo, "rev-parse", "HEAD").strip()
+        if here != self.base:
+            git(self.repo, "switch", "-q", here)
         self.merged = True
-        return {"sha": git(self.repo, "rev-parse", "HEAD").strip()}
+        return {"sha": sha}
 
 
 class Scenario(unittest.TestCase):
@@ -138,13 +157,12 @@ class Scenario(unittest.TestCase):
 
 
 LOCKED_UNITS = {"probe": {**UNITS["probe"], "verify": ["{python}", "{test}"]}}  # one locked test file per run
-HARNESS = {"url": "https://github.com/o/harness", "sha": "a" * 40}  # the harness the CI workflow pins
 AC_TEST = ("import unittest\nfrom hello import hello\n\nclass T(unittest.TestCase):\n    def test_ac1(self):\n"
            "        self.assertEqual(hello('Ann'), 'Hello, Ann')\n\nif __name__ == '__main__':\n    unittest.main()\n")
 
 
 class LockedScenario(Scenario):
-    """The same parent, with a card whose acceptance test the parent wrote and locked on the plan branch."""
+    """The same parent, with a card whose acceptance test the parent wrote and locked (in the ledger)."""
 
     def setUp(self):
         self.port = LedgerPort(copy_tree(self))
@@ -163,27 +181,25 @@ class LockedScenario(Scenario):
         self.plan = self.port.ticket("s1")["plan"]["id"]
         (self.repo / "orch-probe").mkdir()
         (self.repo / "orch-probe" / "test_hello_ac.py").write_text(AC_TEST, encoding="utf-8")
-        self.locked_text = locked.lock(self.port, "s1", LOCKED_UNITS, HARNESS)
-        from harness.utils.plan import tickets as plan_tickets
+        self.locked_text = locked.lock(self.port, "s1", LOCKED_UNITS)
         self.port.write(lambda con, rec: plan_tickets.save(con, {**plan_tickets.latest(con, "s1"), "drafts": {
             "hello": {"repo": "o/r", "number": 5, "url": f"{URL}/pull/5", "node": "PR_kw5", "watched": 1}}}))
         Started().run(ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3}}),
                       {"name": "hello", "sid": "session_child0001"})  # its draft is open and watched, as spawn leaves it
         self.said = []
-        self.gh = FakeGitHub(self.repo, comments=self.said)
+        self.gh = FakeGitHub(self.repo, comments=self.said)  # into the base: there is no plan branch
 
-    def hand_back(self, receipt=None, code=CODE, ac=AC_TEST, flow=None):
-        """Push the child's branch, made from the plan branch: its code (and the acceptance test as given, and the CI
-        workflow when flow is given), then its empty signal commit, and post its handback comment naming it."""
+    def hand_back(self, receipt=None, code=CODE, ac=AC_TEST):
+        """Push the child's branch, made from the base: its code (and the acceptance test as given), then its empty
+        signal commit, and post its handback comment naming it."""
         child = tree(self, {})
         git(child, "clone", "-q", str(self.origin), ".")
         git(child, "config", "user.name", "c")
         git(child, "config", "user.email", "c@c")
-        git(child, "switch", "-q", "-C", f"orch/p{self.plan}/hello", f"origin/plan/p{self.plan}")
+        git(child, "switch", "-q", "-C", f"orch/p{self.plan}/hello", "origin/work")
+        (child / "orch-probe").mkdir(exist_ok=True)
         (child / "orch-probe" / "hello.py").write_text(code, encoding="utf-8")
         (child / "orch-probe" / "test_hello_ac.py").write_text(ac, encoding="utf-8")
-        if flow is not None:
-            (child / ".github" / "workflows" / "harness-ci.yml").write_text(flow, encoding="utf-8")
         git(child, "add", "-A")
         git(child, "commit", "-q", "-m", "work")
         body = {"name": "hello", "parent": "s1", "at": int(time.time() * 1000), "verify": "ok", "uncommitted": [],
@@ -197,41 +213,25 @@ class LockedScenario(Scenario):
 
 
 class LockedCheckTest(LockedScenario):
-    def test_lock_pushes_the_ci_workflow_with_the_tests(self):
-        """s2.lock.workflow: the plan branch on origin holds the workflow, pinned; the lock keeps its sha256."""
-        import hashlib
-        flow = git(self.origin, "show", f"plan/p{self.plan}:.github/workflows/harness-ci.yml")
-        self.assertIn(f"checkout --quiet {'a' * 40}", flow)
-        self.assertIn(f"branches: ['plan/p{self.plan}']", flow)
-        self.assertIn(f"github.head_ref == 'orch/p{self.plan}/hello'", flow)
-        unit, = self.port.ticket("s1")[locked.LOCK]["units"]
-        self.assertEqual(unit["workflow"], hashlib.sha256(flow.encode("utf-8")).hexdigest())
-        self.assertIn("the CI workflow .github/workflows/harness-ci.yml pins the harness at aaaaaaaaaaaa", self.locked_text)
-
-    def test_accept_makes_the_draft_ready_and_names_the_issue_in_its_commit(self):
-        """s3.draft.ready: no new pull request; accept writes nothing on the child's branch (no receipt to take off)."""
-        from harness.utils.orchestra import issues
-        from harness.utils.plan import tickets as plan_tickets
-        self.port.write(lambda con, rec: plan_tickets.save(con, {**plan_tickets.latest(con, "s1"), issues.ISSUES: {
-            "children": {"hello": {"repo": "o/r", "number": 41, "url": f"{URL}/issues/41", "sha": "a" * 64}}}}))
-        calls = []
+    def test_check_waits_for_the_project_ci_and_skips_it_when_there_is_none(self):
+        """s4.check.ci-gate: red refuses naming the failed checks, running waits, none goes on; a draft that shows no
+        CI is made ready once, so a CI that skips drafts may run."""
         self.hand_back()
-        self.assertIn("Green", self.check())
-        text = review.accept(self.port, "s1", "hello", LOCKED_UNITS,
-                             lambda method, path, fields=None: calls.append((method, path, dict(fields or {}))) or {})
-        self.assertIn(f"pull request #5 ({URL}/pull/5) from orch/p{self.plan}/hello into plan/p{self.plan}", text)
-        (method, path, fields), = calls
-        self.assertEqual((method, path), ("POST", "graphql"))
-        self.assertIn('markPullRequestReadyForReview(input: {pullRequestId: "PR_kw5"})', fields["query"])
-        self.assertEqual(self.port.ticket("s1")["crew"]["hello"]["pr"]["number"], 5)
-        self.assertEqual(git(self.origin, "log", "-1", "--format=%s", f"orch/p{self.plan}/hello").strip(), "receipt")
-
-    def test_the_check_refuses_a_changed_workflow(self):
-        """s2.check.workflow: a child branch whose workflow is not the locked one is not green."""
-        self.hand_back(flow="name: nothing\n")
+        self.gh.runs = [{"name": "lint", "status": "completed", "conclusion": "failure", "html_url": "u/1"}]
+        with self.assertRaisesRegex(review.ReviewError, "project CI is red on .*lint"):
+            self.check()
+        self.gh.runs = [{"name": "lint", "status": "in_progress", "conclusion": None}]
+        with self.assertRaisesRegex(review.ReviewError, "has not finished"):
+            self.check()
+        self.gh.runs, self.gh.draft = [], True
+        with self.assertRaisesRegex(review.ReviewError, "it is ready now"):
+            self.check()
+        self.assertFalse(self.gh.draft)
+        self.assertIn("Green", self.check())  # no CI at all: the phase is skipped
+        self.gh.runs = [{"name": "lint", "status": "completed", "conclusion": "success"}]
         text = self.check()
-        self.assertIn("CHANGED: .github/workflows/harness-ci.yml", text)
-        self.assertNotIn("Green", text)
+        self.assertIn("merged with the newest work", text)
+        self.assertEqual(self.port.ticket("s1")["crew"]["hello"]["lastCheck"]["sha"], talk.read(self.said[-1])["sha"])
 
     def test_the_check_runs_the_locked_test_alone_and_needs_no_ac_behaviour(self):
         """s4.check.ac-only: the receipt names no AC behaviour; the locked test alone judges the code."""
@@ -249,8 +249,8 @@ class LockedCheckTest(LockedScenario):
         self.hand_back(code="def hello(name):\n    return 'Hi'\n", ac=AC_TEST.replace("Hello, Ann", "Hi"))
         text = self.check()
         self.assertIn("Not green", text)
-        self.assertIn("CHANGED: orch-probe/test_hello_ac.py", text)
-        self.assertIn("a locked acceptance test was changed", text)
+        self.assertIn("CHANGED on the branch (red; the parent's own copy ran): orch-probe/test_hello_ac.py", text)
+        self.assertIn("'Hi' != 'Hello, Ann'", text)  # s4.check.ci-gate: the parent's own copy decides
 
 
 class ReviewTest(Scenario):
@@ -261,15 +261,15 @@ class ReviewTest(Scenario):
         self.assertIn("AC 2 of 2 covered", text)
         github = FakeGitHub(self.repo)
         accepted = review.accept(self.port, "s1", "hello", UNITS, github)
-        self.assertIn("pull request #5", accepted)
-        self.assertEqual(github.calls, [])  # the draft is the pull request: none is opened, nothing is written
+        self.assertIn("accepted and merged: #5 into work", accepted)
+        self.assertEqual([c[0] for c in github.calls], ["GET", "PUT"])  # the draft is the pull request: it merges
         on_branch = git(self.origin, "ls-tree", "-r", "--name-only", f"orch/p{self.plan}/hello")
         self.assertNotIn(".harness", on_branch)
         self.assertIn("orch-probe/hello.py", on_branch)
         self.assertEqual(self.port.ticket("s1")["crew"]["hello"]["receipt"]["name"], "hello")
         entry = self.port.ticket("s1")["crew"]["hello"]
         self.assertEqual((entry["state"], entry["pr"]["number"]), ("accepted", 5))
-        self.assertFalse(github.merged)
+        self.assertTrue(github.merged)
 
     def test_a_check_fails_on_a_red_test_a_missing_ac_or_a_receipt_that_is_not_the_tip(self):
         self.hand_back(code="def hello(name):\n    return 'Hi'\n")
@@ -279,7 +279,7 @@ class ReviewTest(Scenario):
         self.hand_back(receipt={"behaviours": {}})
         self.assertIn("missing: AC1", self.check())
         self.hand_back(after="x")
-        with self.assertRaisesRegex(review.ReviewError, "tip of .* is not its receipt"):
+        with self.assertRaisesRegex(review.ReviewError, "is not its receipt's commit"):
             self.check()
 
     def ctx(self):

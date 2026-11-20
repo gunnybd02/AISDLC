@@ -9,7 +9,7 @@ repository's own CI and the harness check everything, and the user allows the re
 
 ## 1. Principles
 
-1. **Only the user's forms approve.** Two per piece of work: form 1 (start) and form 2 (end).
+1. **Only the user's forms approve.** Form 1 approves the plan and each merge of a child that passes its tests.
 2. **The repository describes itself.** Protected branches, CI pipeline, required checks and issues live in it.
 3. **The plan carries the rest.** Repository URL, folders, tests, children, limits: all shown in form 1.
 4. **The model calls, the harness decides.** No check rests on the model's word.
@@ -43,7 +43,7 @@ repository's own CI and the harness check everything, and the user allows the re
 | Part | Job |
 |---|---|
 | Sessions | start a child, send it a signed order, stop it, archive it; hosts: cloud and PC |
-| Plan | parent: one delegated plan, form 1 to form 2; child: its own plan, approved inside its scope by the grant |
+| Plan | parent: one delegated plan, form 1 to close; child: its own plan, approved inside its scope by the grant |
 | DB | each session's ledger records itself; copies go to Drive `db/` and are joined into one memory by row id |
 | MCP server | `find`, `guide`, `run`; plug-ins: the forge (GitHub, GitLab) and the tracker (issues, Jira) |
 
@@ -73,7 +73,7 @@ User              Parent              Drive             Repo+CI             Chil
 == 2. Set up =======================================================================
   |                  | tickets/ CSV     |                  |                  |
   |                  |----------------->|                  |                  |
-  |                  | issues, plan branch, AC tests       |                  |
+  |                  | issues, AC tests (ledger)           |                  |
   |                  |------------------------------------>|                  |
   |                  | draft PR, watch  |                  |                  |
   |                  |------------------------------------>|                  |
@@ -98,21 +98,15 @@ User              Parent              Drive             Repo+CI             Chil
   |                  |                  |                  | fix, push        |
   |                  |                  |                  |<-----------------|
 ==    green ========================================================================
-  |                  | merge to plan branch                |                  |
+  |                  | merge into main                     |                  |
   |                  |------------------------------------>|                  |
-== 5. End ==========================================================================
   |                  | order: stop (signed)                |                  |
   |                  |------------------------------------------------------->|
   |                  |                  | db/ ledger copy  |                  |
   |                  |                  |<------------------------------------|
-  | form 2: merge+delete                |                  |                  |
-  |<.................|                  |                  |                  |
-  | Allow            |                  |                  |                  |
-  |----------------->|                  |                  |                  |
-  |                  | plan branch -> base                 |                  |
-  |                  |------------------------------------>|                  |
   |                  | archive          |                  |                  |
   |                  |.......................................................>|
+== 5. End: close ===================================================================
   |                  | db/ own copy     |                  |                  |
   |                  |----------------->|                  |                  |
 ```
@@ -121,11 +115,11 @@ User              Parent              Drive             Repo+CI             Chil
 
 ## 6. The pieces of work
 
-**Form 1** shows: the repository URL, base and plan branch; the ready check; the test command and limits; per
+**Form 1** shows: the repository URL and base; the ready check; the test command and limits; per
 child its scope, steps in words, criteria, and its acceptance test files.
 
-**The acceptance tests** are written by the parent before any child starts, pushed on the plan branch, and locked:
-no child may change them (its harness and CI refuse it). A child's job is to make them pass.
+**The acceptance tests** are written by the parent before any child starts and locked: their text and hash in the
+ledger. The start commit adds a copy; the child's harness refuses any change; the parent runs its own copy.
 
 **Issue #N**, opened by the parent's harness in one format, `harness-issue/1` (`utils/orchestra/issues.py`):
 
@@ -139,11 +133,10 @@ no child may change them (its harness and CI refuse it). A child's job is to mak
 hash. The child's harness posts it at `take`, after the issue and the ticket row match, as one comment on the issue
 (`register.on_issue`; the oldest one counts). The ledger keeps it as a row; the card plan's approval names it.
 
-**The draft pull request** (`utils/orchestra/draft.py`): at spawn the parent's harness makes every child's branch from
-the plan branch (else the unit's base) with one empty start commit (`#N <name>: start`: GitHub opens no pull request
-without a commit) and opens one draft pull request. The parent watches it (`subscribe_pr_activity`); the hook records
-the watch and `started` waits for it. `harness ci` finds the issue from the start subject and the registration on the
-issue; a branch whose commits change no file is WAITING (exit 0). Accept makes the draft ready; land merges it.
+**The draft pull request** (`utils/orchestra/draft.py`): at spawn the parent's harness cuts every child's branch from
+the unit's base (main) with one start commit (`#N <name>: start`) that adds the locked tests, and opens one draft pull
+request into main. The parent watches it (`subscribe_pr_activity`); `started` waits for the watch. Accept makes it
+ready and merges it at the tested commit (`land.accept`); GitHub's automatic delete of head branches removes it.
 
 **The commit format**: every commit on a child's branch starts `#N <name>: `, written by the harness (the parent's
 start, steps, and the empty signal commits of questions and handbacks).
@@ -158,32 +151,25 @@ model only uploads it by reference):
 **The child's own plan**: its exact files, steps and tests; every commit names #N; approved by the parent's grant
 only inside the scope.
 
-**`harness ci`** (`python3 anchor.py cli ci --base <plan branch> --head <child branch>`, `utils/orchestra/ci.py`): the
-child's gate run again on the forge, from the branch and its issue alone (no session, no ledger). Rules: branch, base,
-issue, registered (first), subjects, marks, secrets, scope, locked. One line per rule; exit 1 when one fails; a rule
-that cannot run fails as "not checked".
-
-**The CI workflow** (`.github/workflows/harness-ci.yml`, `utils/orchestra/workflow.py`): a GitHub Actions file in the
-plan's repository, written by `lock` on the plan branch with the acceptance tests and locked like them. On each push of
-a child (`orch/p<n>/<name>`) to a pull request into `plan/p<n>` it gets the harness at one pinned commit (public: no
-secret), runs `harness ci` with a read-only token, then the child's unit test command in its folder. The rules come from
-the pinned harness, never from the child's branch. The user may make the job `harness-ci` a required check.
+**CI** is the project's own, set once per repository; a plan may write CI files as normal work, and the harness
+never adds one by itself. The parent reads every check run and status of the PR head (`doorbell.ci_state`): red sends
+the child back, running waits, none (no CI) skips the phase.
 
 ## 7. The gates (one rule set, three runners)
 
 | Gate | Where | Checks |
 |---|---|---|
 | Child's harness | the child's machine | issue, ticket row and hashes match before any work; files only in scope; commits name #N; no secret or AI mark; locked tests untouched |
-| CI (`harness ci` + the repository's own pipeline) | the forge, out of the child's reach | the same rules again; the repository's tests; branch and issue link; PR into the plan branch |
-| Parent | the parent's machine | runs only the acceptance tests; never reads the code |
+| CI (the repository's own pipeline, when it has one) | the forge, out of the child's reach | the project's rules and tests |
+| Parent | the parent's machine | its own copy of the acceptance tests on the PR merged with main; never reads the code |
 
-The rules have one owner: the rows of the floor pipeline. CI runs the same rows as `harness ci`.
+The harness rules have one owner: the rows of the floor pipeline, run live in the child's harness.
 
 ## 8. How sessions talk
 
 | Direction | How |
 |---|---|
-| Child to parent | a push; CI runs; the CI result wakes the parent that watches the draft PR. The hook names `orchestra.doorbell`, which reads GitHub itself: the CI result, the failed rules, new comments, the tip (`utils/orchestra/doorbell.py`) |
+| Child to parent | a push; CI runs; the CI result wakes the parent that watches the draft PR. The hook names `orchestra.doorbell`, which reads GitHub itself: every check run and status, new comments, the head (`utils/orchestra/doorbell.py`) |
 | Child's words | its registration (on its issue), question and handback, posted by its harness as comments with a `<!-- harness-comment -->` marker (`utils/orchestra/talk.py`); an empty signal commit wakes the parent through CI; never `send_message`, which auto mode refuses |
 | Parent to child | a signed order by `send_message`: `fix`, `answer` or `stop` (`utils/orchestra/orders.py`); its words are also a comment on the draft, given to a fresh session in its brief when the child's session ended; nothing under `.harness/` is committed on any branch |
 | Record | each CI result (`ci.result`) and each comment (`child.comment`: from the child, the orchestrator or a GitHub login) is one ledger row |
@@ -204,7 +190,7 @@ the locked tests or approves anything.
   the issue a child registered, orders, CI events.
 - Drive `db/` gets each child's copy when it stops and the parent's at the end; `ledger join` merges copies into one
   memory beside the ledger, each row once (`utils/ledger/join.py`), read by `db_query` with `memory: true`.
-- The trace: form 1, ticket row, issue #N, branch, commits "#N", CI runs, parent's check, merge, form 2; a ledger row
+- The trace: form 1, ticket row, issue #N, branch, commits "#N", CI runs, parent's check, merge, close; a ledger row
   at every step.
 
 ## 10. Forms the user answers
@@ -212,13 +198,12 @@ the locked tests or approves anything.
 | Form | When |
 |---|---|
 | Form 1: approve the plan | start |
-| Form 2: merge the plan branch into the base, delete the branches, archive the children (`utils/orchestra/ending.py`) | end |
 | Only when needed | a 4th send-back round; `add_repo`; turning on a repository setting |
 
 ## 11. The harness repository is one repository
 
 The same model applies. Its one difference: a merge into its `main` goes live in every session (publish on merge,
-with the fallback, PR 57). The plan branch and form 2 are what guard that.
+with the fallback, PR 57). The parent's own tests and the merge gate guard that.
 
 ## 12. Live facts this rests on
 
@@ -282,7 +267,9 @@ id; the doorbell line follows `ReadNotifications`; CI runs the tests only once t
    GitHub wake-up points to it).
 6. Orders: signed one-way messages, checked at the notifications door, each unlocking one action. Done: PR 81.
 7. End: every PR merged stops the children; form 2; archive; ledgers to `db/`; join. Done: PR 81.
-8. Docs and the user's specs (13, 05) brought in line. Done: PR 81. Next: live run 4 proves orders and form 2.
+8. Docs and the user's specs (13, 05) brought in line. Done: PR 81.
+9. Children merge into main (PR 103): it replaces the plan branch of 2, `harness ci` and its workflow of 5, and
+   form 2 of 7. CI is the project's own; the parent's own tests decide; accept merges; `close` ends the plan.
 
 ## 14. Decided by the user (2026-11-18)
 
@@ -297,3 +284,5 @@ id; the doorbell line follows `ReadNotifications`; CI runs the tests only once t
 - 2026-11-19: the user's Allow in a form for each merge of a pull request at its head commit (PR 80; `gh` merges are
   refused), and for each `create_session` on a model other than Sonnet `claude-sonnet-5-5` (the model gate, PR 93).
 - 2026-11-20: the talk of parent and child is comments on the draft PR and the issue (`talk.py`, PR 95).
+- 2026-11-20: children merge into main: no plan branch, CI the project's own, the parent's tests decide and accept
+  merges (PR 103); `close` replaces land and form 2.

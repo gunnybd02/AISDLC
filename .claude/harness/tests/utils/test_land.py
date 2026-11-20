@@ -1,18 +1,12 @@
-"""orchestra part 3, the final route: land merges the accepted pull requests (a fake GitHub that merges on the real
-origin), runs the unit's tests on the merged base and closes the delegated plan delivered; a conflict stops it with
-the two ways on; it waits while a child runs and for the parent's own files."""
-import re
+"""orchestra part 3: accept merges each green child into its base at the tested commit (a fake GitHub that merges
+on the real origin); close ends the delegated plan when every child is merged or forgotten, with no form 2."""
 import unittest
 
-from harness.assemble.engine.runner import Act
-from harness.utils.contracts import Event, Verdict
-from harness.utils.git.github import GitHubError
+from harness.utils.contracts import Event
 from harness.utils.orchestra import land, review
 from harness.utils.plan import tickets
-
-land.WAIT = 0  # the tests do not wait for GitHub
 from harness.tests import tree
-from harness.tests.utils.test_review import (LOCKED_UNITS, URL, UNITS, FakeGitHub, LockedScenario, Scenario, git)
+from harness.tests.utils.test_review import (CODE, LOCKED_UNITS, URL, UNITS, FakeGitHub, LockedScenario, Scenario, git)
 
 
 class PlanGitHub:
@@ -20,7 +14,7 @@ class PlanGitHub:
     origin, through a clone of its own; the user's merge of the plan pull request is merge(n)."""
 
     def __init__(self, origin, folder, drafts=None, keep=()):
-        self.origin, self.folder, self.calls, self.keep = origin, folder, [], keep
+        self.origin, self.folder, self.calls, self.keep, self.comments = origin, folder, [], keep, []
         self.prs = {n: {"head": head, "base": base, "merged": False} for n, (head, base) in (drafts or {}).items()}
         git(folder, "clone", "-q", str(origin), ".")
         git(folder, "config", "user.name", "u")
@@ -40,10 +34,17 @@ class PlanGitHub:
                 raise GitHubError("gh api DELETE: Reference does not exist (HTTP 422)")
             git(self.origin, "branch", "-D", ref)
             return {}
+        if method == "GET" and "/check-runs" in path:  # the project's CI: none here
+            return {"check_runs": []}
+        if method == "GET" and path.endswith("/status"):
+            return {"state": "pending", "statuses": [], "total_count": 0}
+        if method == "GET" and path.split("?")[0].endswith("/comments"):
+            return list(self.comments)
         n = int(path.split("/")[4])  # repos/o/r/pulls/<n>[/merge]
         if method == "GET":
             head = git(self.origin, "rev-parse", self.prs[n]["head"]).strip()
-            return {"merged": self.prs[n]["merged"], "mergeable": True, "head": {"sha": head}}
+            return {"merged": self.prs[n]["merged"], "mergeable": True, "head": {"sha": head},
+                    "base": {"ref": self.prs[n]["base"]}, "draft": False}
         return {"sha": self.merge(n)}
 
     def merge(self, n):
@@ -57,131 +58,84 @@ class PlanGitHub:
 
 
 class LockedLandTest(LockedScenario):
-    def test_children_land_on_the_plan_branch_and_only_the_users_merge_delivers(self):
-        """s5.accept.plan-branch, s5.land.plan-pr, s5.land.delivered: the child's draft #5 (spawn) is made ready."""
-        github = PlanGitHub(self.origin, tree(self, {}), {5: (f"orch/p{self.plan}/hello", f"plan/p{self.plan}")})
-        self.hand_back()
-        self.assertIn("Green", self.check())
-        self.assertIn(f"from orch/p{self.plan}/hello into plan/p{self.plan}",
-                      review.accept(self.port, "s1", "hello", LOCKED_UNITS, github))
-        self.port.write(lambda con, rec: tickets.save(con, {**self.port.ticket("s1"), "phase": "deliver"}))
-        text = land.land(self.port, "s1", LOCKED_UNITS, [], github)
-        self.assertIn(f"Merged #5 of hello into plan/p{self.plan}", text)
-        self.assertIn(f"on the merged plan/p{self.plan}: green", text)
-        self.assertIn(f"Plan pull request #6 ({URL}/pull/6): plan/p{self.plan} into work, not merged yet", text)
-        self.assertIn("Ask the user form 2 now", text)
-        self.assertEqual(self.port.ticket("s1")["state"], "open")
-        self.assertNotIn("orch-probe/hello.py", git(self.origin, "ls-tree", "-r", "--name-only", "work"))
-        q = re.search(r"exactly:\n(.+)\nOptions", land.land(self.port, "s1", LOCKED_UNITS, [], github)).group(1)
-        self.assertTrue(q.startswith(f"End plan {self.plan}: merge plan/p{self.plan} into work (PR #6 at "))
-        self.assertIn(f"delete 2 branches (orch/p{self.plan}/hello, plan/p{self.plan}), archive 1 child sessions", q)
-        answer = Event("PostToolUse", "AskUserQuestion", {"questions": [{"question": q}]}, "s1", "/w")
-        notes = Act(self.port).run(answer, {"answers": {q: "Allow"}}, Verdict("allow"))
-        self.assertTrue(any(n.startswith("GATE: the user allows form 2") for n in notes))
-        self.assertIn("Form 2 is allowed. Merge PR #6 of o/r with the merge tool, expectedHeadSha",
-                      land.land(self.port, "s1", LOCKED_UNITS, [], github))
-        github.merge(6)  # the merge the gate let through
-        text = land.land(self.port, "s1", LOCKED_UNITS, [], github)
-        self.assertIn("The plan pull request #6 is merged into work", text)
-        self.assertIn(f"Deleted the branches orch/p{self.plan}/hello, plan/p{self.plan}.", text)
-        self.assertIn('Archive the child session session_child0001 now: mcp__claude-code-remote__archive_session '
-                      '{"session_id": "session_child0001"}', text)
-        self.assertIn("is delivered", text)
-        self.assertEqual(self.port.ticket("s1")["state"], "closed")
-        self.assertIn("orch-probe/hello.py", git(self.origin, "ls-tree", "-r", "--name-only", "work"))
-        self.assertEqual([c[2]["base"] for c in github.calls if c[1].endswith("/pulls")], ["work"])  # the plan PR
-        self.assertEqual([c[1] for c in github.calls if c[0] == "POST"], ["graphql", "repos/o/r/pulls"])
-
-    def test_after_the_plan_pr_merged_land_cleans_up_and_names_a_branch_it_cannot_delete(self):
-        """s6.end.cleanup: every child session is archived (earlier ones too); a kept branch is named for the user."""
-        github = PlanGitHub(self.origin, tree(self, {}), {5: (f"orch/p{self.plan}/hello", f"plan/p{self.plan}")},
-                            keep=(f"plan/p{self.plan}",))
-        self.hand_back()
-        self.check()
-        review.accept(self.port, "s1", "hello", LOCKED_UNITS, github)
-        team = self.port.ticket("s1")["crew"]
-        team["hello"]["sessions"] = ["session_child_old"]  # a send-back opened a fresh session once
-        self.port.write(lambda con, rec: tickets.save(con, {**self.port.ticket("s1"), "crew": team, "phase": "deliver"}))
-        q = re.search(r"exactly:\n(.+)\nOptions", land.land(self.port, "s1", LOCKED_UNITS, [], github)).group(1)
-        self.assertIn("archive 2 child sessions", q)
-        Act(self.port).run(Event("PostToolUse", "AskUserQuestion", {"questions": [{"question": q}]}, "s1", "/w"),
-                           {"answers": {q: "Allow"}}, Verdict("allow"))
-        github.merge(6)
-        text = land.land(self.port, "s1", LOCKED_UNITS, [], github)
-        self.assertIn(f"Deleted the branches orch/p{self.plan}/hello.", text)
-        self.assertIn(f"GitHub kept plan/p{self.plan} (", text)
-        for sid in ("session_child_old", "session_child0001"):
-            self.assertIn(f'{{"session_id": "{sid}"}}', text)
-        self.assertEqual(self.port.ticket("s1")["state"], "closed")
-
-    def test_land_ends_with_no_step_of_the_parent_when_its_only_files_are_the_locked_tests(self):
-        """s3.land.locked-not-own: live run 6 waited for the parent's own files: the locked test lock had shipped."""
+    def test_a_locked_child_merges_at_accept_and_close_delivers_without_form_2(self):
+        """s5.close.ends: accept merges the child into its base; close delivers with no form 2 and gives the archive
+        call; the locked test alone is no own file of the parent."""
         self.assertEqual(land.own_files({"plan": {"files": ["orch-probe/test_hello_ac.py", "notes.md"], "children": [
             {"name": "hello", "change": ["orch-probe/hello.py"], "acTests": ["orch-probe/test_hello_ac.py"]}]}}),
             ["notes.md"])
-        github = PlanGitHub(self.origin, tree(self, {}), {5: (f"orch/p{self.plan}/hello", f"plan/p{self.plan}")})
+        github = PlanGitHub(self.origin, tree(self, {}), {5: (f"orch/p{self.plan}/hello", "work")})
         self.hand_back()
-        self.check()
-        review.accept(self.port, "s1", "hello", LOCKED_UNITS, github)
+        self.assertIn("Green", self.check())
+        self.assertIn("accepted and merged: #5 into work",
+                      land.accept(self.port, "s1", "hello", LOCKED_UNITS, github))
         ticket = self.port.ticket("s1")
         only = {**ticket["plan"], "files": ["orch-probe/test_hello_ac.py"]}  # the run plan: only the locked test
         self.port.write(lambda con, rec: tickets.save(con, {**ticket, "plan": only}))
-        q = re.search(r"exactly:\n(.+)\nOptions", land.land(self.port, "s1", LOCKED_UNITS, [], github)).group(1)
-        Act(self.port).run(Event("PostToolUse", "AskUserQuestion", {"questions": [{"question": q}]}, "s1", "/w"),
-                           {"answers": {q: "Allow"}}, Verdict("allow"))
-        github.merge(6)
-        text = land.land(self.port, "s1", LOCKED_UNITS, [], github)
-        self.assertNotIn("waits for your own files", text)
-        self.assertIn("is delivered", text)
-        self.assertNotEqual(self.port.ticket("s1").get("phase"), "deliver")  # no step_done of the parent was needed
+        text = land.close(self.port, "s1")
+        self.assertIn("is delivered: every child is merged or forgotten", text)
+        self.assertIn('archive_session {"session_id": "session_child0001"}', text)
+        self.assertNotIn("form 2", text)
+        self.assertEqual(self.port.ticket("s1")["state"], "closed")
+        self.assertEqual([c[1] for c in github.calls if c[0] == "POST"], [])  # no plan pull request is opened
 
 
 class LandTest(Scenario):
-    def accepted(self, github):
+    def test_accept_merges_at_the_tested_commit_and_tells_the_child_to_stop(self):
+        """s4.accept.merge: a moved head or another base is refused; the merge names the tested sha; the merge tool
+        on that pull request still needs the user's Allow."""
+        from harness.gear.translate.merge import MergeCalls
+        from harness.utils.forge import merges
+        github = FakeGitHub(self.repo, comments=self.said)
+        with self.assertRaisesRegex(review.ReviewError, "has not passed a check"):
+            land.accept(self.port, "s1", "hello", UNITS, github)
+        self.hand_back()
+        self.assertIn("Green", self.check())
+        tested = self.port.ticket("s1")["crew"]["hello"]["lastCheck"]["sha"]
+        github.base = "main"
+        with self.assertRaisesRegex(review.ReviewError, "goes into main, not work"):
+            land.accept(self.port, "s1", "hello", UNITS, github)
+        github.base = "work"
+        self.hand_back(code=CODE + "# moved\n")  # a new push after the check
+        with self.assertRaisesRegex(review.ReviewError, "moved since the check"):
+            land.accept(self.port, "s1", "hello", UNITS, github)
+        self.assertIn("Green", self.check())
+        tested = self.port.ticket("s1")["crew"]["hello"]["lastCheck"]["sha"]
+        text = land.accept(self.port, "s1", "hello", UNITS, github)
+        self.assertIn(f"accepted and merged: #5 into work at {tested[:12]}", text)
+        self.assertIn('archive_session {"session_id": "session_child0001"}', text)
+        (_, path, fields), = [c for c in github.calls if c[0] == "PUT"]
+        self.assertEqual((path, fields["sha"], fields["merge_method"]), ("repos/o/r/pulls/5/merge", tested, "merge"))
+        self.assertIn("orch-probe/hello.py", git(self.origin, "ls-tree", "-r", "--name-only", "work"))
+        entry = self.port.ticket("s1")["crew"]["hello"]
+        self.assertEqual((entry["state"], bool(entry["merged"]["sha"])), ("accepted", True))
+        call = {"owner": "o", "repo": "r", "pullNumber": 5, "expectedHeadSha": tested}
+        acts = MergeCalls().translate(Event("PreToolUse", "mcp__github__merge_pull_request", call, "s1"),
+                                      {"merge_pass": lambda code: merges.held(self.port, code)})
+        self.assertEqual(acts["rule_actions"][0]["op"], "no_pass")  # no pass was written by accept
+
+    def test_close_waits_for_every_child_and_the_parents_own_files(self):
+        """s5.close.ends: refused while a child is neither merged nor forgotten; then it waits for the parent's own
+        files; then delivered, with no form 2."""
+        github = FakeGitHub(self.repo, comments=self.said)
+        with self.assertRaisesRegex(review.ReviewError, "neither merged nor forgotten: hello"):
+            land.close(self.port, "s1")
         self.hand_back()
         self.check()
-        review.accept(self.port, "s1", "hello", UNITS, github)
-
-    def test_land_merges_tests_the_merged_base_and_delivers(self):
-        github = FakeGitHub(self.repo)
-        with self.assertRaisesRegex(review.ReviewError, "have not ended: hello"):
-            land.land(self.port, "s1", UNITS, [], github)
-        self.accepted(github)
-        text = land.land(self.port, "s1", UNITS, [], github)
-        self.assertIn("Merged #5 of hello into work", text)
-        self.assertIn("on the merged work: green", text)
-        self.assertIn("waits for your own files (notes.md)", text)  # the parent's own file is not committed yet
-        self.assertTrue(self.port.ticket("s1")["crew"]["hello"]["merged"]["sha"])
-        self.assertIn("orch-probe/hello.py", git(self.origin, "ls-tree", "-r", "--name-only", "work"))
-        self.port.write(lambda con, rec: __import__("harness.utils.plan.tickets", fromlist=["x"]).save(
-            con, {**self.port.ticket("s1"), "phase": "deliver"}))  # as after the parent's own step_done
-        text = land.land(self.port, "s1", UNITS, [], github)
+        land.accept(self.port, "s1", "hello", UNITS, github)
+        self.assertIn("waits for your own files (notes.md)", land.close(self.port, "s1"))
+        self.port.write(lambda con, rec: tickets.save(con, {**self.port.ticket("s1"), "phase": "deliver"}))
+        text = land.close(self.port, "s1")
         self.assertIn("is delivered", text)
-        self.assertEqual(self.port.ticket("s1")["state"], "closed")
-        self.assertEqual(len([c for c in github.calls if c[0] == "PUT"]), 1)  # merged once
         self.assertIn("Delete the check-in", text)
+        self.assertEqual(self.port.ticket("s1")["state"], "closed")
+        self.assertEqual(len([c for c in github.calls if c[0] == "PUT"]), 1)  # merged once, at accept
 
-    def test_a_conflict_stops_land_with_the_two_ways_on(self):
-        github = FakeGitHub(self.repo, conflict=True)
-        self.accepted(github)
-        (self.repo / "orch-probe").mkdir()
-        (self.repo / "orch-probe" / "hello.py").write_text("other = 1\n")
-        git(self.repo, "add", "-A")
-        git(self.repo, "commit", "-q", "-m", "base moves")
-        git(self.repo, "push", "-q", "origin", "work")
-        text = land.land(self.port, "s1", UNITS, [], github)
-        self.assertIn("does not merge into work", text)
-        self.assertIn("Conflicts in: orch-probe/hello.py", text)
-        self.assertIn("run('orchestra', 'reject'", text)
-        self.assertEqual(self.port.ticket("s1")["state"], "open")
-        self.assertIn("round 1 of 3", review.reject(self.port, "s1", "hello", "conflicts with work", 3, github))
-
-    def test_a_refusal_with_a_clean_local_merge_is_not_called_a_conflict(self):
-        github = FakeGitHub(self.repo, conflict=True)
-        self.accepted(github)
-        text = land.land(self.port, "s1", UNITS, [], github)
-        self.assertIn("merges cleanly here, but GitHub refused it", text)
-        self.assertNotIn("Resolve it here", text)
+    def test_a_forgotten_child_does_not_hold_close(self):
+        """s5.close.ends: a forgotten child ends the plan as well as a merged one."""
+        review.forget(self.port, "s1", "hello", "it will not come back")
+        self.port.write(lambda con, rec: tickets.save(con, {**self.port.ticket("s1"), "phase": "deliver"}))
+        self.assertIn("is delivered", land.close(self.port, "s1"))
 
     def test_what_a_card_covers(self):
         card = {"change": ["src/", "a.py"], "tests": ["tests/test_*.py"]}

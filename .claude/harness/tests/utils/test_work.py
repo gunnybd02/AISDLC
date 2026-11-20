@@ -70,6 +70,33 @@ class WorkTest(unittest.TestCase):
         with self.assertRaisesRegex(work.WorkError, "no child"):
             work.take(self.port, "s9", str(self.repo))
 
+    def test_take_and_push_refuse_a_drifted_locked_test(self):
+        """s7.child.drift: a locked acceptance test changed or gone stops take and push and is named; put back as the
+        start commit made it, both go on."""
+        from harness.utils.ledger.writes import content_hash
+        rel = "tests/test_api_ac.py"
+        (self.repo / "tests").mkdir()
+        (self.repo / rel).write_text("# locked\n", encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-q", "-m", "#7 api: start")
+        git(self.repo, "push", "-q", "origin", "work")
+        locks = {rel: content_hash(str(self.repo / rel))}
+        prompt = brief.brief(7, "pd-x", {**CARD, "acTests": [rel]}, "session_p1", rounds=3, start="work", pr=PR,
+                             locks=locks)
+        self.assertIn(json.dumps(locks), prompt)
+        Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": prompt}, "c3", str(self.repo)), {}, ALLOW)
+        (self.repo / rel).write_text("# changed by the child\n", encoding="utf-8")
+        with self.assertRaisesRegex(work.WorkError, f"{rel}: a locked acceptance test differs"):
+            work.take(self.port, "c3", str(self.repo))
+        git(self.repo, "checkout", "-q", "--", rel)
+        self.assertIn("approved by the grant", work.take(self.port, "c3", str(self.repo)))  # untouched: it goes on
+        push = lambda: work.push(self.port, "c3", lambda repo, args: ALLOW)  # noqa: E731
+        (self.repo / rel).unlink()
+        with self.assertRaisesRegex(work.WorkError, "put it back|Put it back"):
+            push()
+        git(self.repo, "checkout", "-q", "--", rel)
+        self.assertIn("Pushed orch/p7/api", push())
+
     def test_a_child_with_locked_tests_starts_from_the_plan_branch(self):
         """s3.child.start: the brief names the plan branch; take makes the child's branch from it, so the locked
         acceptance test is in the clone; the card plan names it as the proof of each AC but never as a file to edit."""

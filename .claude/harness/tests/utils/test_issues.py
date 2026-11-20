@@ -10,7 +10,7 @@ from unittest import mock
 from harness.mcp.actions.orchestra import Spawn, Started, Tickets
 from harness.utils.contracts import ActionContext, ActionError, Event
 from harness.utils.ledger import store
-from harness.utils.orchestra import issues, locked
+from harness.utils.orchestra import issues
 from harness.utils.plan import tickets as plan_tickets
 from harness.tests import tree
 from harness.tests.utils.test_review import LOCKED_UNITS, LockedScenario
@@ -96,7 +96,7 @@ class IssuesTest(LockedScenario):
         ticket = self.port.ticket("s1")
         self.assertEqual(block, {"format": "harness-issue/1", "plan": ticket["draft"], "planSha": ticket["plan"]["sha"],
                                  "child": "hello", "repo": "https://github.com/o/r", "path": ".",
-                                 "branch": f"orch/p{self.plan}/hello", "start": f"plan/p{self.plan}",
+                                 "branch": f"orch/p{self.plan}/hello", "start": "",
                                  "scope": ["orch-probe/hello.py"], "tests": [],
                                  "acTests": ["orch-probe/test_hello_ac.py"]})
         self.assertEqual(found.group(2), issues.block_sha(block))
@@ -115,11 +115,10 @@ class IssuesTest(LockedScenario):
         for heading, words in (("## Acceptance criteria", "- AC1: hello('Ann') returns 'Hello, Ann'"),
                                ("## Scope", "- orch-probe/hello.py"), ("## Tests", "- none"),
                                ("## Locked acceptance tests", "- orch-probe/test_hello_ac.py"),
-                               ("## Branch", f"orch/p{self.plan}/hello, from plan/p{self.plan}. The child pushes only "
-                                             "this branch.")):
+                               ("## Branch", f"orch/p{self.plan}/hello. The child pushes only this branch.")):
             self.assertIn(words, lines[lines.index(heading):], heading)
         self.assertIn("`#<this issue> hello: <what>`", body)
-        self.assertIn("`#<this issue> hello: start`, which changes no file", body)
+        self.assertIn("`#<this issue> hello: start`, made from the base, which adds the locked acceptance tests", body)
         self.assertIn("the child registers with a comment on this issue", body)
         self.assertEqual(issues.format_problems("## Goal\nx"), ["it has no section Acceptance criteria",
                          "it has no section Scope", "it has no section Tests", "it has no section Locked acceptance "
@@ -149,7 +148,6 @@ class IssuesTest(LockedScenario):
         with self.assertRaises(ActionError) as e:
             self.tickets()
         self.assertIn("a child has started", str(e.exception))
-        self.assertEqual(locked.plan_branch(self.plan), f"plan/p{self.plan}")
 
 
 if __name__ == "__main__":
