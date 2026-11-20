@@ -170,22 +170,20 @@ class Spawn(McpAction):
 
 
 class Lock(McpAction):
-    """orchestra.lock: the acceptance tests of the cards and the CI workflow, committed and pushed on the plan branch,
-    their hashes kept."""
+    """orchestra.lock: the acceptance tests of the cards, committed and pushed on the plan branch, their hashes kept."""
     block, name, effect = "orchestra", "lock", WRITE
-    summary = ("Lock the acceptance tests the cards name (acTests, written by you first) and the CI workflow that runs "
-               "harness ci: commit them on the plan branch plan/p<n> and push it, before any child starts; spawn needs it")
+    summary = ("Lock the acceptance tests the cards name (acTests, written by you first): commit them on the plan "
+               "branch plan/p<n> and push it, before any child starts; spawn needs it. No CI file is written")
     args_schema = {"type": "object", "properties": {}}
-    needs = ("plans", "session", "units", "harness_source")
+    needs = ("plans", "session", "units")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Lock the acceptance tests and the CI workflow of the delegated plan in force (utils/orchestra/locked.py),
-        the workflow pinned to the harness's source. ActionError for no delegated plan, no card with acTests, a
-        started child, a test not written yet, a source the workflow cannot pin, or a push that fails."""
+        """Lock the acceptance tests of the delegated plan in force (utils/orchestra/locked.py). ActionError for no
+        delegated plan, no card with acTests, a started child, a test not written yet, or a push that fails."""
         sid = session_of(ctx)
         units = plan_units(in_force(ctx.ports["plans"], sid), ctx.ports["units"]())
         try:
-            return locked.lock(ctx.ports["plans"], sid, units, ctx.ports["harness_source"]())
+            return locked.lock(ctx.ports["plans"], sid, units)
         except locked.LockError as e:
             raise ActionError(str(e)) from e
 

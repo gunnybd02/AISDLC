@@ -2,14 +2,11 @@
 sections 5 and 6). The parent writes each card's acTests in its own tree, at their paths from the plan's root; lock
 commits them at the same paths in the unit's folder on plan/p<plan> (made from the unit's base the first time) in the
 unit's repository, pushes that branch, keeps the content hash of each file in the ticket (its lock), and deletes the
-parent's untracked copies (clear): a red test left in its tree would keep its verify red (live run 2). With the
-harness's source it also writes the repository's CI workflow (utils/orchestra/workflow.py) on the plan branch and keeps
-its sha256: GitHub runs harness ci on each push of a child. A child starts from the plan branch and never changes a
-locked file; the parent's check runs only the tests and refuses a changed workflow. Once a child has started, nothing
-is locked again."""
+parent's untracked copies (clear): a red test left in its tree would keep its verify red (live run 2). It writes no CI
+file: CI is the repository's own. A child starts from the plan branch and never changes a locked file; the parent's
+check runs only the tests. Once a child has started, nothing is locked again."""
 from __future__ import annotations
 
-import hashlib
 import json
 import sqlite3
 from collections.abc import Callable
@@ -24,7 +21,6 @@ from harness.utils.ledger.writes import content_hash
 from harness.utils.orchestra import crew
 from harness.utils.orchestra.card import unit_spec
 from harness.utils.orchestra.fetch import FetchError, put_files, same_repo
-from harness.utils.orchestra.workflow import WORKFLOW, WorkflowError, text as workflow_text
 from harness.utils.plan import tickets
 from harness.utils.shapes import Card, PlanStore, Ticket
 
@@ -80,22 +76,21 @@ def on_origin(spec: dict[str, Any], repo: str, ref: str) -> bool:
         return False
 
 
-def lock(port: PlanStore, sid: str, units: dict[str, Any], source: Optional[dict[str, str]] = None) -> str:
-    """Lock the acceptance tests of the delegated plan in force: commit them, and the repository's CI workflow, on its
-    plan branch in each unit's repository, push it, and keep their hashes in the ticket.
+def lock(port: PlanStore, sid: str, units: dict[str, Any]) -> str:
+    """Lock the acceptance tests of the delegated plan in force: commit them on its plan branch in each unit's
+    repository, push it, and keep their hashes in the ticket. No CI file is written: CI is the repository's own.
 
     Args:
         port: the ledger port.
         sid: the parent's session.
         units: the plan's units by name (card.plan_units).
-        source: the harness the workflow pins, {url, sha} (cli_live.source); None writes no workflow.
 
     Returns:
         What was locked, where.
 
     Raises:
-        LockError: no delegated plan, no card with acTests, a child has started, a file is not written, the workflow
-            cannot pin the source, or the push fails.
+        LockError: no delegated plan, no card with acTests, a child has started, a file is not written, or the push
+            fails.
     """
     ticket = port.ticket(sid)
     plan = crew.delegated(ticket)
@@ -120,21 +115,13 @@ def lock(port: PlanStore, sid: str, units: dict[str, Any], source: Optional[dict
     kept = []
     for spec, paths in groups.values():
         files = {in_unit(spec, p): (root / p).read_text(encoding="utf-8") for p in dict.fromkeys(paths)}
-        if source is not None:  # one workflow per repository: every child whose unit is in it
-            in_repo = [(c, unit_spec(c, units)) for c in plan["children"]
-                       if (unit_spec(c, units).get("repo") or "") == (spec.get("repo") or "")]
-            try:
-                files[WORKFLOW] = workflow_text(plan["id"], in_repo, source)
-            except WorkflowError as e:
-                raise LockError(f"the CI workflow cannot be written: {e}") from e
         start = ref if on_origin(spec, repo, ref) else spec.get("base", "main")
         try:
             sha = put_files(spec, repo, start, files, f"Acceptance tests of plan {plan['id']}, locked", target=ref)
         except FetchError as e:
             raise LockError(str(e)) from e
-        flow = {"workflow": hashlib.sha256(files[WORKFLOW].encode("utf-8")).hexdigest()} if WORKFLOW in files else {}
         kept.append({"repo": spec.get("repo") or "", "path": spec.get("path") or ".", "base": spec.get("base", "main"),
-                     "sha": sha, "files": {p: content_hash(str(root / p)) for p in dict.fromkeys(paths)}, **flow})
+                     "sha": sha, "files": {p: content_hash(str(root / p)) for p in dict.fromkeys(paths)}})
 
     def write(con: sqlite3.Connection, rec: Recorder) -> None:
         fresh = tickets.latest(con, sid)
@@ -142,12 +129,10 @@ def lock(port: PlanStore, sid: str, units: dict[str, Any], source: Optional[dict
     port.write(write)
     gone, here = clear(root, [p for card in cards for p in card["acTests"]])
     names = ", ".join(p for unit in kept for p in unit["files"])
-    flows = (f" With them, the CI workflow {WORKFLOW} pins the harness at {str(source.get('sha'))[:12]}: GitHub runs "
-             f"harness ci on each push of a child to a pull request into {ref}." if source is not None else "")
     cleared = (f" Your tree keeps no copy of {', '.join(gone)}: {ref} holds it (write it again to lock again)."
                if gone else "") + (f" Kept in your tree, as the repository tracks it: {', '.join(here)}." if here else "")
     return (f"Locked on {ref}: {names}. A child starts from {ref}, never changes these files, and its check runs "
-            f"only them.{flows}{cleared} Now spawn the children.")
+            f"only them.{cleared} Now spawn the children.")
 
 
 def clear(root: Path, paths: list[str]) -> tuple[list[str], list[str]]:
@@ -248,7 +233,7 @@ def locked_files(ticket: Optional[Ticket]) -> dict[str, str]:
 
 def changed(folder: str, ticket: Optional[Ticket], card: Card) -> list[str]:
     """The locked files of a card whose content on a checkout of the child's branch is not what was locked: its
-    acceptance tests, and the CI workflow when the lock wrote one.
+    acceptance tests.
 
     Args:
         folder: the unit's folder in the checkout.
@@ -256,18 +241,10 @@ def changed(folder: str, ticket: Optional[Ticket], card: Card) -> list[str]:
         card: the child's card.
 
     Returns:
-        Its acTests that differ from their locked hash, are gone, or were never locked; WORKFLOW when the checkout's
-        workflow is none the lock wrote.
+        Its acTests that differ from their locked hash, are gone, or were never locked.
     """
     held = locked_files(ticket)
-    out = [p for p in card.get("acTests", []) if not held.get(p) or content_hash(str(Path(folder) / p)) != held[p]]
-    flows = {u["workflow"] for u in ((ticket or {}).get(LOCK) or {}).get("units", []) if u.get("workflow")}
-    repo = top(folder) if flows else None
-    if repo:
-        path = Path(repo) / WORKFLOW
-        if (hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else "") not in flows:
-            out.append(WORKFLOW)
-    return out
+    return [p for p in card.get("acTests", []) if not held.get(p) or content_hash(str(Path(folder) / p)) != held[p]]
 
 
 def unlocked(ticket: Optional[Ticket], card: Card) -> list[str]:

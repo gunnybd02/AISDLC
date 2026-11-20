@@ -138,7 +138,6 @@ class Scenario(unittest.TestCase):
 
 
 LOCKED_UNITS = {"probe": {**UNITS["probe"], "verify": ["{python}", "{test}"]}}  # one locked test file per run
-HARNESS = {"url": "https://github.com/o/harness", "sha": "a" * 40}  # the harness the CI workflow pins
 AC_TEST = ("import unittest\nfrom hello import hello\n\nclass T(unittest.TestCase):\n    def test_ac1(self):\n"
            "        self.assertEqual(hello('Ann'), 'Hello, Ann')\n\nif __name__ == '__main__':\n    unittest.main()\n")
 
@@ -163,7 +162,7 @@ class LockedScenario(Scenario):
         self.plan = self.port.ticket("s1")["plan"]["id"]
         (self.repo / "orch-probe").mkdir()
         (self.repo / "orch-probe" / "test_hello_ac.py").write_text(AC_TEST, encoding="utf-8")
-        self.locked_text = locked.lock(self.port, "s1", LOCKED_UNITS, HARNESS)
+        self.locked_text = locked.lock(self.port, "s1", LOCKED_UNITS)
         from harness.utils.plan import tickets as plan_tickets
         self.port.write(lambda con, rec: plan_tickets.save(con, {**plan_tickets.latest(con, "s1"), "drafts": {
             "hello": {"repo": "o/r", "number": 5, "url": f"{URL}/pull/5", "node": "PR_kw5", "watched": 1}}}))
@@ -172,9 +171,9 @@ class LockedScenario(Scenario):
         self.said = []
         self.gh = FakeGitHub(self.repo, comments=self.said)
 
-    def hand_back(self, receipt=None, code=CODE, ac=AC_TEST, flow=None):
-        """Push the child's branch, made from the plan branch: its code (and the acceptance test as given, and the CI
-        workflow when flow is given), then its empty signal commit, and post its handback comment naming it."""
+    def hand_back(self, receipt=None, code=CODE, ac=AC_TEST):
+        """Push the child's branch, made from the plan branch: its code (and the acceptance test as given), then its
+        empty signal commit, and post its handback comment naming it."""
         child = tree(self, {})
         git(child, "clone", "-q", str(self.origin), ".")
         git(child, "config", "user.name", "c")
@@ -182,8 +181,6 @@ class LockedScenario(Scenario):
         git(child, "switch", "-q", "-C", f"orch/p{self.plan}/hello", f"origin/plan/p{self.plan}")
         (child / "orch-probe" / "hello.py").write_text(code, encoding="utf-8")
         (child / "orch-probe" / "test_hello_ac.py").write_text(ac, encoding="utf-8")
-        if flow is not None:
-            (child / ".github" / "workflows" / "harness-ci.yml").write_text(flow, encoding="utf-8")
         git(child, "add", "-A")
         git(child, "commit", "-q", "-m", "work")
         body = {"name": "hello", "parent": "s1", "at": int(time.time() * 1000), "verify": "ok", "uncommitted": [],
@@ -197,17 +194,6 @@ class LockedScenario(Scenario):
 
 
 class LockedCheckTest(LockedScenario):
-    def test_lock_pushes_the_ci_workflow_with_the_tests(self):
-        """s2.lock.workflow: the plan branch on origin holds the workflow, pinned; the lock keeps its sha256."""
-        import hashlib
-        flow = git(self.origin, "show", f"plan/p{self.plan}:.github/workflows/harness-ci.yml")
-        self.assertIn(f"checkout --quiet {'a' * 40}", flow)
-        self.assertIn(f"branches: ['plan/p{self.plan}']", flow)
-        self.assertIn(f"github.head_ref == 'orch/p{self.plan}/hello'", flow)
-        unit, = self.port.ticket("s1")[locked.LOCK]["units"]
-        self.assertEqual(unit["workflow"], hashlib.sha256(flow.encode("utf-8")).hexdigest())
-        self.assertIn("the CI workflow .github/workflows/harness-ci.yml pins the harness at aaaaaaaaaaaa", self.locked_text)
-
     def test_accept_makes_the_draft_ready_and_names_the_issue_in_its_commit(self):
         """s3.draft.ready: no new pull request; accept writes nothing on the child's branch (no receipt to take off)."""
         from harness.utils.orchestra import issues
@@ -225,13 +211,6 @@ class LockedCheckTest(LockedScenario):
         self.assertIn('markPullRequestReadyForReview(input: {pullRequestId: "PR_kw5"})', fields["query"])
         self.assertEqual(self.port.ticket("s1")["crew"]["hello"]["pr"]["number"], 5)
         self.assertEqual(git(self.origin, "log", "-1", "--format=%s", f"orch/p{self.plan}/hello").strip(), "receipt")
-
-    def test_the_check_refuses_a_changed_workflow(self):
-        """s2.check.workflow: a child branch whose workflow is not the locked one is not green."""
-        self.hand_back(flow="name: nothing\n")
-        text = self.check()
-        self.assertIn("CHANGED: .github/workflows/harness-ci.yml", text)
-        self.assertNotIn("Green", text)
 
     def test_the_check_runs_the_locked_test_alone_and_needs_no_ac_behaviour(self):
         """s4.check.ac-only: the receipt names no AC behaviour; the locked test alone judges the code."""

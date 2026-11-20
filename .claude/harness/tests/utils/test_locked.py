@@ -44,8 +44,7 @@ class LockTest(unittest.TestCase):
         approvals(self.port, "s1", {q: YES})
         self.plan = self.port.ticket("s1")["plan"]["id"]
         self.ctx = ActionContext({"plans": self.port, "session": lambda: "s1", "units": lambda: UNITS,
-                                  "limits": lambda: {"children": 3, "rounds": 3},
-                                  "harness_source": lambda: None})  # no workflow here: test_review locks one
+                                  "limits": lambda: {"children": 3, "rounds": 3}})
 
     def write_test(self, text=AC):
         (self.repo / "orch-probe").mkdir(exist_ok=True)
@@ -67,6 +66,17 @@ class LockTest(unittest.TestCase):
         self.write_test(AC + "\n# more\n")
         Lock().run(self.ctx, {})  # before any child starts, a second lock moves the plan branch on
         self.assertIn("# more", git(self.origin, "show", f"{ref}:orch-probe/test_hello_ac.py"))
+
+    def test_lock_writes_no_ci_workflow(self):
+        """s2.lock.no-workflow: CI is the repository's own: the plan branch holds the tests and no workflow file."""
+        self.write_test()
+        out = Lock().run(self.ctx, {})
+        ref = f"plan/p{self.plan}"
+        files = git(self.origin, "ls-tree", "-r", "--name-only", ref).split()
+        self.assertIn("orch-probe/test_hello_ac.py", files)
+        self.assertFalse([f for f in files if f.startswith(".github/")])
+        self.assertNotIn("workflow", out)
+        self.assertNotIn("workflow", self.port.ticket("s1")["lock"]["units"][0])
 
     def test_lock_deletes_the_untracked_copy_of_a_locked_test(self):
         """s2.lock.local-copies-gone: the plan branch holds the test; the parent's tree no longer does."""
