@@ -107,10 +107,11 @@ def with_order(done: str, ctx: ActionContext, name: str, kind: str, body: str) -
     entry = ((ctx.ports["plans"].ticket(session_of(ctx)) or {}).get("crew") or {}).get(name) or {}
     url = (entry.get("fresh") or {}).get("url")  # the comment of the same words on the child's draft
     order = orders.give(ctx.ports["plans"], session_of(ctx), name, kind, f"{body} (the comment: {url})" if url else body)
+    soon = f"\n{doorbell.later()}" if doorbell.no_ci(ctx.ports["plans"], session_of(ctx), name) else ""
     if not order:
-        return done
+        return done + soon
     note, cut, _ = done.partition("; nothing is sent to the child")  # review.fresh_session's words for a fresh session
-    return f"{note}.\n{order}" if cut else f"{done}\n{order}"
+    return (f"{note}.\n{order}" if cut else f"{done}\n{order}") + soon
 
 
 class Reject(McpAction):
