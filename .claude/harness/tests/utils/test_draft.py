@@ -157,7 +157,7 @@ class ReadyTest(LockedScenario):
             draft.ready(self.port.ticket("s1"), "hello", github)
         self.hand_back()
         self.assertIn("Green", self.check())
-        with self.assertRaisesRegex(review.ReviewError, "not opened or made ready"):
+        with self.assertRaisesRegex(review.ReviewError, "was not merged"):
             review.accept(self.port, "s1", "hello", LOCKED_UNITS, github)
         entry = self.port.ticket("s1")["crew"]["hello"]
         self.assertNotEqual(entry["state"], "accepted")

@@ -77,16 +77,17 @@ class Check(McpAction):
 
 
 class Accept(McpAction):
-    """orchestra.accept: open the child's pull request into its unit's base."""
+    """orchestra.accept: merge the child's pull request at the commit the check tested."""
     block, name, effect = "orchestra", "accept", WRITE
-    summary = "Accept a child whose check is green this round: one pull request from its branch into its unit's base"
+    summary = ("Accept a child whose check is green this round: merge its pull request into its base at the tested "
+               "commit, then the stop order")
     args_schema = {"type": "object", "properties": {"name": NAME}, "required": ["name"]}
     needs = ("plans", "session", "units", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Open the child's pull request (utils/orchestra/review.accept); nothing is merged."""
+        """Merge the child's pull request (utils/orchestra/land.accept)."""
         sid = session_of(ctx)
-        return answered(PARENT_ERRORS, lambda: review.accept(ctx.ports["plans"], sid, args["name"], units(ctx),
+        return answered(PARENT_ERRORS, lambda: land.accept(ctx.ports["plans"], sid, args["name"], units(ctx),
                                                 ctx.ports["github"]))
 
 

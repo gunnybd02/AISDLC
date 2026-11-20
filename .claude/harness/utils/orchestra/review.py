@@ -1,7 +1,7 @@
 """Review: the parent's side of a handed-back child (docs/05b-orchestra-cloud.md part 3). The parent reads no code:
-it reads the child's handback comment on its draft (the receipt), fetches its branch, reruns the tests itself, then
-accepts (its draft becomes the pull request; nothing is merged here) or sends the child back (the config's
-limits.rounds at most).
+it reads the child's handback comment on its draft (the receipt), waits for the project's own CI (none: the phase is
+skipped), runs its own tests on the branch merged with the newest base, then accepts (utils/orchestra/land.accept
+merges it) or sends the child back (the config's limits.rounds at most).
 
 The child's machine and ledger are not the parent's: every fact comes from the branch and the draft. A send-back or an
 answer is a comment of the orchestrator on the child's draft (utils/orchestra/talk.py), never a commit on its branch;
@@ -17,13 +17,14 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from harness.utils.contracts import now
 from harness.utils.git.facts import top
-from harness.utils.git.github import GitHubError, repo_of
-from harness.utils.git.run import GitError, git
+from harness.utils.git.github import GitHubError
+from harness.utils.git.run import git, run_git
 from harness.utils.orchestra import crew, locked, talk
 from harness.utils.orchestra.brief import branch
 from harness.utils.orchestra.card import card_of, unit_spec
+from harness.utils.orchestra.doorbell import ci_state
 from harness.utils.orchestra.draft import DRAFTS, ready
-from harness.utils.orchestra.fetch import TAIL, checkout, rerun
+from harness.utils.orchestra.fetch import TAIL, checkout, git_or_empty, rerun
 from harness.utils.plan import tickets
 from harness.utils.shapes import Card, CrewEntry, PlanStore, Ticket
 
@@ -133,26 +134,63 @@ def last_word(ticket: Ticket, entry: CrewEntry, name: str, github: Callable[...,
         raise ReviewError(f"the draft #{where['number']} of {name} cannot be read: {str(e)[-200:]}") from e
 
 
+def gate(port: PlanStore, sid: str, name: str, card: Card, entry: CrewEntry, where: dict[str, Any], said: dict[str, Any],
+         github: Callable[..., Any]) -> dict[str, Any]:
+    """The pull request at the handback's commit, past the project's own CI (doorbell.ci_state): red is refused with
+    the failed checks, running or unknown is waited for, none (no CI) skips the phase. A draft with no CI yet is made
+    ready once, so a CI that skips drafts runs.
+
+    Returns the pull request as GitHub gives it. Raises ReviewError: GitHub cannot be read, the head is not the
+    handback's commit, or CI is not green or none.
+    """
+    try:
+        pr = github("GET", f"repos/{where['repo']}/pulls/{where['number']}") or {}
+        head = str((pr.get("head") or {}).get("sha") or said.get("sha"))
+        state, failed = ci_state(github, where["repo"], head)
+    except GitHubError as e:
+        raise ReviewError(f"the pull request #{where['number']} of {name} cannot be read: {str(e)[-200:]}") from e
+    if head != said.get("sha"):
+        raise ReviewError(f"the head of #{where['number']} is not its receipt's commit: the receipt does not describe "
+                          "the code after it")
+    if state == "red":
+        raise ReviewError(f"the project CI is red on {head[:12]}: {'; '.join(failed) or 'see the pull request'}. Send "
+                          f"it back: run('orchestra', 'reject', {{name: '{name}', why: '<these failures>'}}).")
+    if state in ("running", "unknown"):
+        raise ReviewError(f"the project CI has not finished on {head[:12]}: wait for its result, then check again")
+    if state == "none" and pr.get("draft") and entry.get("readied") != head:
+        ready(port.ticket(sid), name, github)
+        set_entry(port, sid, name, card, {"readied": head}, CHECKED)
+        raise ReviewError(f"#{where['number']} was a draft and shows no CI yet: it is ready now, so a CI that skips "
+                          "drafts may start; check again after its result (with no CI, the next check goes on)")
+    return pr
+
+
+def merged_with(folder: str, base: str) -> str:
+    """Merge the newest base into the checkout of the child's branch (what the base would get); the base's commit.
+    ReviewError when it conflicts (the files are named) or git cannot do it."""
+    git(folder, "fetch", "-q", "origin", base, timeout=300)
+    base_sha = git(folder, "rev-parse", "FETCH_HEAD").strip()
+    code, out = run_git(folder, ["-c", "user.name=harness", "-c", "user.email=harness@localhost", "merge", "-q",
+                                 "--no-edit", base_sha])
+    if code != 0:
+        files = [f for f in git_or_empty(folder, "diff", "--name-only", "--diff-filter=U").split() if f]
+        raise ReviewError(f"the branch does not merge with the newest {base}" + (f": conflicts in {', '.join(files)}"
+                          if files else f" ({out.strip()[-200:]})") + ". Send it back to merge it and hand back again.")
+    return base_sha
+
+
 def check(port: PlanStore, sid: str, name: str, units: dict[str, Any], verify: list[str], github: Callable[..., Any],
           timeout_min: int = 10) -> str:
-    """Check a handed-back child: its handback comment (the receipt, whose commit must be its branch's tip), and then,
-    for a card with locked acceptance tests (acTests), that they are unchanged and green (each alone when the unit's command names {test}, else the unit's
-    suite that holds them); for any other card, the coverage of its criteria and a rerun of its registered tests.
+    """Check a handed-back child: its handback comment (the receipt) at the head of its pull request, the project's CI
+    (gate), then its branch merged with the newest base (merged_with) and the tests run there: for a card with locked
+    acceptance tests (acTests) the parent's OWN copy (a changed copy on the branch is named and red), for any other
+    card the coverage of its criteria and its registered tests.
 
-    Args:
-        port: the ledger port.
-        sid: the parent's session.
-        name: the child's name.
-        units: the declared units by name.
-        verify: the config's test command (the home's, for a home child).
-        github: call(method, path, fields?) -> the JSON answer.
-        timeout_min: the minutes each test run may take (1 to 30).
+    Args: the ledger port, the parent's session, the child's name, the declared units by name, the config's test
+    command (the home's, for a home child), the GitHub call, the minutes each test run may take (1 to 30).
 
-    Returns:
-        The result: green, or what is missing or red.
-
-    Raises:
-        ReviewError: a bad timeout, no such child, no repository, no receipt, a stale or untrustworthy receipt.
+    Returns the result: green, or what is missing or red. Raises ReviewError: a bad timeout, no such child, no
+    repository, no receipt, a stale receipt, CI not passed, or a branch that does not merge with the base.
     """
     if not 1 <= int(timeout_min) <= 30:
         raise ReviewError("timeoutMin is 1 to 30")
@@ -170,88 +208,59 @@ def check(port: PlanStore, sid: str, name: str, units: dict[str, Any], verify: l
     receipt = (said or {}).get("receipt")
     if not receipt:
         raise ReviewError(f"{name} has posted no handback on its draft: it has not handed back (it is still working)")
+    if receipt.get("parent") != sid or receipt.get("name") != name:
+        raise ReviewError(f"the receipt on {ref} is not of {name} of this session")
+    if entry.get("sentBackAt") and int(receipt.get("at", 0)) <= int(entry["sentBackAt"]):
+        raise ReviewError(f"{name} has not handed back since it was sent back")
+    where = (ticket.get(DRAFTS) or {}).get(name) or entry.get("pr") or {}
+    gate(port, sid, name, card, entry, where, said, github)
+    into = (ticket.get(locked.LOCK) or {}).get("branch") or unit.get("base", "main")
     with checkout(unit, repo, ref) as folder:
         if said.get("sha") != git(folder, "rev-parse", "HEAD").strip():
             raise ReviewError(f"the tip of {ref} is not its receipt's commit: the receipt does not describe the code "
                               "after it")
-        if receipt.get("parent") != sid or receipt.get("name") != name:
-            raise ReviewError(f"the receipt on {ref} is not of {name} of this session")
-        if entry.get("sentBackAt") and int(receipt.get("at", 0)) <= int(entry["sentBackAt"]):
-            raise ReviewError(f"{name} has not handed back since it was sent back")
         dirty = list(receipt.get("uncommitted") or [])
         root = folder if unit.get("path", ".") in ("", ".") else str(Path(folder) / unit["path"])
-        if card.get("acTests"):  # the parent's own locked tests judge it: unchanged, then run
-            missing, touched = [], locked.changed(root, ticket, card)
-            ok, tail = (False, f"a locked acceptance test was changed: {', '.join(touched)}") if touched else \
-                rerun(root, command, list(card["acTests"]), int(timeout_min) * 60)
+        touched = locked.changed(root, ticket, card) if card.get("acTests") else []
+        base_sha = merged_with(folder, into)
+        if card.get("acTests"):  # the parent's own copy judges it, whatever the branch holds
+            prefix = "" if unit.get("path", ".") in ("", ".") else unit["path"].rstrip("/") + "/"
+            for test in card["acTests"]:
+                (Path(root) / test).write_text(git(folder, "show", f"{base_sha}:{prefix}{test}"), encoding="utf-8")
+            missing = []
+            ok, tail = rerun(root, command, list(card["acTests"]), int(timeout_min) * 60)
         else:
-            missing, touched = covered(receipt, card), []
+            missing = covered(receipt, card)
             tests = sorted({t for b in (receipt.get("behaviours") or {}).values() for t in b.get("tests", [])})
             ok, tail = rerun(root, command, tests, int(timeout_min) * 60)
-    green = ok and not missing and not dirty and receipt.get("verify") == "ok"
-    where = f"in the {unit.get('path', '.')} folder of {ref}: {'green' if ok else 'RED'}."
+    green = ok and not missing and not dirty and not touched and receipt.get("verify") == "ok"
+    place = f"in the {unit.get('path', '.')} folder of {ref} merged with the newest {into}: {'green' if ok else 'RED'}."
     if card.get("acTests"):
-        state = "CHANGED: " + ", ".join(touched) if touched else "unchanged"
+        state = "CHANGED on the branch (red; the parent's own copy ran): " + ", ".join(touched) if touched else \
+            "unchanged"
         how = "they run alone" if any("{test}" in w for w in command) else "the unit's suite, which holds them, runs"
-        lines = [f"The locked acceptance tests are {state}; {how} {where}"]
+        lines = [f"The locked acceptance tests are {state}; {how} {place}"]
     else:
         lines = [f"AC {len(card['ac']) - len(missing)} of {len(card['ac'])} covered by a registered behaviour; the "
-                 f"tests run again {where}"]
+                 f"tests run again {place}"]
     lines += [f"missing: AC{n}" for n in missing] + [f"uncommitted at handback: {f}" for f in dirty]
     lines += [] if receipt.get("verify") == "ok" else [f"the child's own verify was {receipt.get('verify')}"]
     lines += [f"refused (nobody could answer): {r}" for r in receipt.get("refused", [])]
     if not ok:
         lines.append(tail[-TAIL:])
     set_entry(port, sid, name, card, {"state": crew.HANDED_BACK, "checkedAt": entry.get("backs", 0) if green else None,
-                                      "lastCheck": {"green": green, "at": now(), "lines": lines[:12]},
+                                      "lastCheck": {"green": green, "at": now(), "lines": lines[:12],
+                                                    "sha": said.get("sha")},
                                       "receipt": receipt, "handbackUrl": said.get("url")}, CHECKED)
-    head = "Green: accept it with run('orchestra', 'accept', {name})." if green else \
+    head = "Green: accept it with run('orchestra', 'accept', {name}): it merges the pull request." if green else \
         "Not green: send it back with run('orchestra', 'reject', {name, why})."
     return "\n".join([f"Check of {name}: {head}"] + lines)
 
 
-def accept(port: PlanStore, sid: str, name: str, units: dict[str, Any], github: Callable[..., Any]) -> str:
-    """Accept a child whose check is green this round: open one pull request from its branch into the plan branch when
-    the parent locked acceptance tests (utils/orchestra/locked.py), else into its unit's base.
-
-    Args:
-        port: the ledger port.
-        sid: the parent's session.
-        name: the child's name.
-        units: the declared units by name.
-        github: call(method, path, fields) -> the JSON answer (utils/git/github.call).
-
-    Returns:
-        The pull request's number and URL, and what comes next. A child sent back after a first accept keeps its pull
-        request: its branch's new commits are in it already.
-
-    Raises:
-        ReviewError: no green check this round, the unit is not on GitHub, or GitHub refuses.
-    """
-    ticket, card, entry = child_of(port, sid, name)
-    if entry.get("checkedAt") is None or entry.get("checkedAt") != entry.get("backs", 0):
-        raise ReviewError(f"{name} has not passed a check this round: run('orchestra', 'check', {{name}}) first")
-    unit = unit_spec(card, units)
-    into = (ticket.get(locked.LOCK) or {}).get("branch") or unit.get("base", "main")  # the plan branch when locked
-    repo = top(ticket["plan"]["root"])
-    url = unit.get("repo") or (git(repo, "config", "--get", "remote.origin.url").strip() if repo else "")
-    ref = branch(ticket["plan"]["id"], name)
-    body = "\n".join([f"Child {name} of the delegated plan {ticket['plan']['id']} ({ticket['draft']}).", "",
-                      "Acceptance criteria, each with a registered test the parent ran again:"]
-                     + [f"- AC{n}: {a}" for n, a in enumerate(card["ac"], 1)]
-                     + ["", f"The receipt is the handback comment {entry.get('handbackUrl') or 'on its draft'}."])
-    held = entry.get("pr") or {}
-    try:  # its draft pull request (opened at spawn, draft.py) becomes ready; else one is opened now
-        pr = {"number": held["number"], "html_url": held.get("url")} if held.get("number") else ready(
-            ticket, name, github) or github("POST", f"repos/{repo_of(url)}/pulls", {
-                "head": ref, "base": into, "title": f"{name}: {card['goal']}"[:200], "body": body})
-    except GitHubError as e:
-        raise ReviewError(f"the pull request was not opened or made ready: {e}") from e
-    set_entry(port, sid, name, card, {"state": crew.ACCEPTED, "pr": {"number": pr.get("number"),
-              "url": pr.get("html_url"), "repo": repo_of(url), "base": into}}, crew.ACCEPTED)
-    return (f"{name} accepted: pull request #{pr.get('number')} ({pr.get('html_url')}) from {ref} into "
-            f"{into}. Nothing is merged yet: when every child is accepted, run('orchestra', "
-            "'land', {}) merges the pull requests.")
+def accept(*args: Any, **kwargs: Any) -> str:
+    """Moved to utils/orchestra/land.accept (it merges); kept for its older callers."""
+    from harness.utils.orchestra import land
+    return land.accept(*args, **kwargs)
 
 
 def say_back(port: PlanStore, sid: str, name: str, card: Card, kind: str, n: int, words: str, short: str,

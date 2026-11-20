@@ -19,11 +19,13 @@ from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError
 from harness.utils.git.run import GitError, git, run_git
 from harness.utils.ledger import store
-from harness.utils.orchestra import crew, ending, locked, synced
+from harness.utils.orchestra import crew, ending, locked, orders, synced
 from harness.utils.orchestra.brief import branch
 from harness.utils.orchestra.card import unit_spec
+from harness.utils.orchestra.draft import DRAFTS, ready
+from harness.utils.orchestra.ending import ARCHIVE
 from harness.utils.orchestra.fetch import checkout, rerun, same_repo
-from harness.utils.orchestra.review import ReviewError, set_entry
+from harness.utils.orchestra.review import ReviewError, child_of, set_entry
 from harness.utils.shapes import Card, PlanStore, Ticket
 
 MERGED = "merged"
@@ -128,6 +130,61 @@ def merge_one(github: Callable[..., Any], name: str, pr: dict[str, Any]) -> str:
     done = github("PUT", f"{path}/merge", {"merge_method": "merge",
                                           "commit_title": f"Merge {name} (pull request #{pr['number']})"})
     return str(done.get("sha") or "")
+
+
+def accept(port: PlanStore, sid: str, name: str, units: dict[str, Any], github: Callable[..., Any]) -> str:
+    """Merge a child whose check is green this round: its pull request, at the commit the check tested, into the base
+    it must go to (the plan branch when the parent locked tests, else its unit's base). The user's approval of the
+    delegated plan covers this merge: it runs in harness code, so the merge gate (utils/forge/merges.py) writes no
+    pass and still asks the user for any merge by the merge tool. Then the child is told to stop.
+
+    Args:
+        port: the ledger port.
+        sid: the parent's session.
+        name: the child's name.
+        units: the declared units by name.
+        github: call(method, path, fields) -> the JSON answer (utils/git/github.call).
+
+    Returns:
+        What was merged, the stop order's call and the archive call.
+
+    Raises:
+        ReviewError: no green check this round, no pull request, a head that moved since the check, another base, or
+            GitHub refuses.
+    """
+    ticket, card, entry = child_of(port, sid, name)
+    if entry.get("checkedAt") is None or entry.get("checkedAt") != entry.get("backs", 0):
+        raise ReviewError(f"{name} has not passed a check this round: run('orchestra', 'check', {{name}}) first")
+    tested = str((entry.get("lastCheck") or {}).get("sha") or "")
+    held = (ticket.get(DRAFTS) or {}).get(name) or entry.get("pr") or {}
+    if not held.get("repo") or not held.get("number"):
+        raise ReviewError(f"{name} has no pull request to merge (spawn opens one for every child)")
+    into = (ticket.get(locked.LOCK) or {}).get("branch") or unit_spec(card, units).get("base", "main")
+    path = f"repos/{held['repo']}/pulls/{held['number']}"
+    try:
+        pr = github("GET", path) or {}
+        head, base = str((pr.get("head") or {}).get("sha") or ""), str((pr.get("base") or {}).get("ref") or into)
+        if head != tested:
+            raise ReviewError(f"the head of #{held['number']} moved since the check ({tested[:12]} -> {head[:12]}): "
+                              f"run('orchestra', 'check', {{name: '{name}'}}) again")
+        if base != into:
+            raise ReviewError(f"#{held['number']} goes into {base}, not {into}: it is not merged")
+        if pr.get("draft"):
+            ready(ticket, name, github)
+        done = github("PUT", f"{path}/merge", {"merge_method": "merge", "sha": tested,
+                                               "commit_title": f"Merge {name} (pull request #{held['number']})"}) or {}
+    except GitHubError as e:
+        raise ReviewError(f"#{held['number']} of {name} was not merged ({str(e)[-200:]}): check it again, or send it "
+                          "back") from e
+    sha = str(done.get("sha") or "")
+    set_entry(port, sid, name, card, {"state": crew.ACCEPTED, MERGED: {"sha": sha, "at": now()},
+                                      "pr": {"number": held["number"], "url": held.get("url"), "repo": held["repo"],
+                                             "base": into}}, crew.ACCEPTED)
+    stop = orders.give(port, sid, name, "stop")
+    archive = (f"Once its ledger copy is in the store (it uploads it at the stop order), archive its session: {ARCHIVE} "
+               f"{json.dumps({'session_id': entry.get('sid')})}" if entry.get("sid") else "")
+    return " ".join(x for x in (f"{name} accepted and merged: #{held['number']} into {into} at {tested[:12]} "
+                                f"({sha[:12]}).", stop, archive) if x)
 
 
 def conflict_text(name: str, pr: dict[str, Any], ref: str, files: list[str], why: str) -> str:

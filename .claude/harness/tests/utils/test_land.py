@@ -20,7 +20,7 @@ class PlanGitHub:
     origin, through a clone of its own; the user's merge of the plan pull request is merge(n)."""
 
     def __init__(self, origin, folder, drafts=None, keep=()):
-        self.origin, self.folder, self.calls, self.keep = origin, folder, [], keep
+        self.origin, self.folder, self.calls, self.keep, self.comments = origin, folder, [], keep, []
         self.prs = {n: {"head": head, "base": base, "merged": False} for n, (head, base) in (drafts or {}).items()}
         git(folder, "clone", "-q", str(origin), ".")
         git(folder, "config", "user.name", "u")
@@ -40,10 +40,17 @@ class PlanGitHub:
                 raise GitHubError("gh api DELETE: Reference does not exist (HTTP 422)")
             git(self.origin, "branch", "-D", ref)
             return {}
+        if method == "GET" and "/check-runs" in path:  # the project's CI: none here
+            return {"check_runs": []}
+        if method == "GET" and path.endswith("/status"):
+            return {"state": "pending", "statuses": [], "total_count": 0}
+        if method == "GET" and path.split("?")[0].endswith("/comments"):
+            return list(self.comments)
         n = int(path.split("/")[4])  # repos/o/r/pulls/<n>[/merge]
         if method == "GET":
             head = git(self.origin, "rev-parse", self.prs[n]["head"]).strip()
-            return {"merged": self.prs[n]["merged"], "mergeable": True, "head": {"sha": head}}
+            return {"merged": self.prs[n]["merged"], "mergeable": True, "head": {"sha": head},
+                    "base": {"ref": self.prs[n]["base"]}, "draft": False}
         return {"sha": self.merge(n)}
 
     def merge(self, n):
@@ -62,11 +69,10 @@ class LockedLandTest(LockedScenario):
         github = PlanGitHub(self.origin, tree(self, {}), {5: (f"orch/p{self.plan}/hello", f"plan/p{self.plan}")})
         self.hand_back()
         self.assertIn("Green", self.check())
-        self.assertIn(f"from orch/p{self.plan}/hello into plan/p{self.plan}",
-                      review.accept(self.port, "s1", "hello", LOCKED_UNITS, github))
+        self.assertIn(f"accepted and merged: #5 into plan/p{self.plan}",
+                      land.accept(self.port, "s1", "hello", LOCKED_UNITS, github))
         self.port.write(lambda con, rec: tickets.save(con, {**self.port.ticket("s1"), "phase": "deliver"}))
         text = land.land(self.port, "s1", LOCKED_UNITS, [], github)
-        self.assertIn(f"Merged #5 of hello into plan/p{self.plan}", text)
         self.assertIn(f"on the merged plan/p{self.plan}: green", text)
         self.assertIn(f"Plan pull request #6 ({URL}/pull/6): plan/p{self.plan} into work, not merged yet", text)
         self.assertIn("Ask the user form 2 now", text)
@@ -90,7 +96,7 @@ class LockedLandTest(LockedScenario):
         self.assertEqual(self.port.ticket("s1")["state"], "closed")
         self.assertIn("orch-probe/hello.py", git(self.origin, "ls-tree", "-r", "--name-only", "work"))
         self.assertEqual([c[2]["base"] for c in github.calls if c[1].endswith("/pulls")], ["work"])  # the plan PR
-        self.assertEqual([c[1] for c in github.calls if c[0] == "POST"], ["graphql", "repos/o/r/pulls"])
+        self.assertEqual([c[1] for c in github.calls if c[0] == "POST"], ["repos/o/r/pulls"])  # ready: no draft
 
     def test_after_the_plan_pr_merged_land_cleans_up_and_names_a_branch_it_cannot_delete(self):
         """s6.end.cleanup: every child session is archived (earlier ones too); a kept branch is named for the user."""
@@ -138,9 +144,46 @@ class LockedLandTest(LockedScenario):
 
 class LandTest(Scenario):
     def accepted(self, github):
+        """Checked and recorded accepted with its pull request, not merged: land's own merge (until close, step 5)."""
         self.hand_back()
         self.check()
-        review.accept(self.port, "s1", "hello", UNITS, github)
+        team = self.port.ticket("s1")["crew"]
+        team["hello"] = {**team["hello"], "state": "accepted", "pr": {"number": 5, "url": f"{URL}/pull/5",
+                                                                      "repo": "o/r", "base": "work"}}
+        self.port.write(lambda con, rec: tickets.save(con, {**self.port.ticket("s1"), "crew": team}))
+
+    def test_accept_merges_at_the_tested_commit_and_tells_the_child_to_stop(self):
+        """s4.accept.merge: a moved head or another base is refused; the merge names the tested sha; the merge tool
+        on that pull request still needs the user's Allow."""
+        from harness.gear.translate.merge import MergeCalls
+        from harness.utils.forge import merges
+        github = FakeGitHub(self.repo, comments=self.said)
+        with self.assertRaisesRegex(review.ReviewError, "has not passed a check"):
+            land.accept(self.port, "s1", "hello", UNITS, github)
+        self.hand_back()
+        self.assertIn("Green", self.check())
+        tested = self.port.ticket("s1")["crew"]["hello"]["lastCheck"]["sha"]
+        github.base = "main"
+        with self.assertRaisesRegex(review.ReviewError, "goes into main, not work"):
+            land.accept(self.port, "s1", "hello", UNITS, github)
+        github.base = "work"
+        self.hand_back()  # a new push after the check
+        with self.assertRaisesRegex(review.ReviewError, "moved since the check"):
+            land.accept(self.port, "s1", "hello", UNITS, github)
+        self.assertIn("Green", self.check())
+        tested = self.port.ticket("s1")["crew"]["hello"]["lastCheck"]["sha"]
+        text = land.accept(self.port, "s1", "hello", UNITS, github)
+        self.assertIn(f"accepted and merged: #5 into work at {tested[:12]}", text)
+        self.assertIn('archive_session {"session_id": "session_child0001"}', text)
+        (_, path, fields), = [c for c in github.calls if c[0] == "PUT"]
+        self.assertEqual((path, fields["sha"], fields["merge_method"]), ("repos/o/r/pulls/5/merge", tested, "merge"))
+        self.assertIn("orch-probe/hello.py", git(self.origin, "ls-tree", "-r", "--name-only", "work"))
+        entry = self.port.ticket("s1")["crew"]["hello"]
+        self.assertEqual((entry["state"], bool(entry["merged"]["sha"])), ("accepted", True))
+        call = {"owner": "o", "repo": "r", "pullNumber": 5, "expectedHeadSha": tested}
+        acts = MergeCalls().translate(Event("PreToolUse", "mcp__github__merge_pull_request", call, "s1"),
+                                      {"merge_pass": lambda code: merges.held(self.port, code)})
+        self.assertEqual(acts["rule_actions"][0]["op"], "no_pass")  # no pass was written by accept
 
     def test_land_merges_tests_the_merged_base_and_delivers(self):
         github = FakeGitHub(self.repo)
