@@ -90,6 +90,17 @@ class DoorbellTest(unittest.TestCase):
     def ring(self, github):
         return doorbell.ring(self.port, "s1", github)
 
+    def test_a_wait_with_no_ci_names_a_short_check_in(self):
+        """s2.doorbell.no-ci-later: live run 9: with no CI no event wakes the parent, so a wait names a short
+        send_later call that runs the doorbell; a wait with CI does not; no_ci reads the last state of the child."""
+        self.assertFalse(doorbell.no_ci(self.port, "s1", "api"))  # nothing read yet
+        text = self.ring(FakeGitHub())
+        self.assertIn("no CI on", text)
+        self.assertIn('mcp__claude-code-remote__send_later {"delay_minutes": 3, "message": "Orchestra: run(', text)
+        self.assertTrue(doorbell.no_ci(self.port, "s1", "api"))
+        self.assertNotIn("send_later", self.ring(FakeGitHub(GREEN)))
+        self.assertFalse(doorbell.no_ci(self.port, "s1", "api"))  # the newest state counts
+
     def test_each_state_names_its_next_step(self):
         """s1.doorbell.ci-state: wait, reject naming the failed checks, answer, or check then accept; no CI skips the
         CI phase."""

@@ -143,8 +143,43 @@ def one(port: PlanStore, sid: str, name: str, pr: dict[str, Any], entry: dict[st
     elif receipt:
         step = f"it handed back and {ci} on {short}: run('orchestra', 'check', {{name: '{name}'}}), then accept."
     else:
-        step = f"{ci} on {short}, no handback yet: wait."
+        step = f"{ci} on {short}, no handback yet: wait." + (f" {later()}" if state == NONE else "")
     return "\n".join([f"{name} (draft #{number}): {step}"] + [f"  New comment: {c}" for c in said])
+
+
+LATER = 3  # minutes: with no CI no GitHub event wakes the parent (live run 9), so it looks again this soon
+
+
+def later(minutes: int = LATER) -> str:
+    """The short check-in a parent sets when no CI can wake it: a send_later call that runs the doorbell again.
+
+    Args:
+        minutes: how soon.
+
+    Returns:
+        The sentence with the call.
+    """
+    call = {"delay_minutes": minutes, "message": "Orchestra: run('orchestra', 'doorbell', {}) (no CI wakes you)."}
+    return f"No CI wakes you here: look again soon: mcp__claude-code-remote__send_later {json.dumps(call)}"
+
+
+def no_ci(port: PlanStore, sid: str, name: str) -> bool:
+    """Whether the newest CI result the doorbell recorded for this child says the repository has no CI.
+
+    Args:
+        port: the ledger port.
+        sid: the parent's session.
+        name: the child's name.
+
+    Returns:
+        True when the last state read was none; False when another state, or none was read yet.
+    """
+    for row in port.rows("SELECT text FROM pl_notes WHERE kind = ? AND sid = ? ORDER BY at DESC, rowid DESC",
+                         (RESULT, sid)):
+        body = json.loads(row["text"] or "{}")
+        if body.get("child") == name:
+            return body.get("state") == NONE
+    return False
 
 
 def heard(port: PlanStore, sid: str, name: str, entry: dict[str, Any], comments: list[dict[str, Any]]) -> list[str]:
