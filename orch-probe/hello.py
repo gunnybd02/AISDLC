@@ -1,3 +1,10 @@
+"""Greeting helper.
+
+AC1: hello("Ann") returns "Hello, Ann".
+AC2: hello("") raises ValueError.
+"""
+
+
 def hello(name):
     if not name:
         raise ValueError("name must not be empty")
