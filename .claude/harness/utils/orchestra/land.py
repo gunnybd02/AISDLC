@@ -43,7 +43,7 @@ def covers(card: Card, path: str) -> bool:
 
 def own_files(ticket: Ticket) -> list[str]:
     """The files of the delegated plan no card covers: the parent's own work. A card's acceptance tests are no own
-    file: lock ships them on the plan branch (live run 6: land waited for them).
+    file: lock keeps them in the ledger and each child's start commit adds them to its branch (no plan branch).
 
     Args:
         ticket: the parent's ticket.

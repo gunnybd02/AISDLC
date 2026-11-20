@@ -2,7 +2,7 @@
 ticket file that records them. An issue is in one format, FORMAT: its title "[p<plan>] <name>: <goal>", the SECTIONS
 in order (the card in words, the branch and the commit format), and a machine block: one JSON object between
 ISSUE_OPEN and ISSUE_CLOSE, with its sha256. The ticket's ISSUES key keeps each issue {repo, number, url, sha}; a
-second call opens none again. The child's register and harness ci read an issue with read_block and format_problems.
+second call opens none again. The child's register reads an issue with read_block and format_problems.
 Nothing secret goes in an issue: only the card.
 The ticket file, <draft>__<plan sha>.csv, has one row per child (COLUMNS); harness code writes it, the model only
 uploads it by its sha256 into the store's tickets folder, and the hook records that upload (utils/ledger/store.py)."""
@@ -46,7 +46,7 @@ class IssueError(ValueError):
 
 
 def block_of(plan: ApprovedPlan, draft: str, card: Card, repo: str, start: str, path: str = ".") -> dict[str, Any]:
-    """The machine block of a child's issue: what the child's register and harness ci check.
+    """The machine block of a child's issue: what the child's register checks.
 
     Args:
         plan: the delegated plan in force.
