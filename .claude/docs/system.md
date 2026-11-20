@@ -135,19 +135,18 @@ no child may change them (its harness and CI refuse it). A child's job is to mak
 | sections, in order | Goal, Acceptance criteria, Scope, Tests, Locked acceptance tests, Branch, Commits |
 | machine block | `{format, plan, planSha, child, repo, path, branch, start, scope, tests, acTests}` and its sha256 |
 
-**The registration** (`.harness/register/<name>.json`, format `harness-register/1`): the issue, its block's hash, the
-ticket file's hash and the plan's hash. The child's harness writes it at `take`, after the issue and the ticket row
-match, as the child's first commit (`#N <name>: register (...)`), and pushes it. The ledger keeps it as a row, and
-the card plan's approval names its commit.
+**The registration** (format `harness-register/1`): the issue, its block's hash, the ticket file's hash and the plan's
+hash. The child's harness posts it at `take`, after the issue and the ticket row match, as one comment on the issue
+(`register.on_issue`; the oldest one counts). The ledger keeps it as a row; the card plan's approval names it.
 
-**The draft pull request** (`utils/orchestra/draft.py`): at spawn the parent's harness makes the child's branch from
-the plan branch with one start commit (`.harness/notes/<name>/start.md`, `#N <name>: start`: GitHub opens no pull
-request without a commit) and opens one draft pull request into the plan branch. The parent watches it
-(`subscribe_pr_activity`); the hook records the watch and `started` waits for it. `harness ci` skips the start commit
-(a branch with only it is WAITING, exit 0). Accept makes the draft ready; it is the one pull request land merges.
+**The draft pull request** (`utils/orchestra/draft.py`): at spawn the parent's harness makes every child's branch from
+the plan branch (else the unit's base) with one empty start commit (`#N <name>: start`: GitHub opens no pull request
+without a commit) and opens one draft pull request. The parent watches it (`subscribe_pr_activity`); the hook records
+the watch and `started` waits for it. `harness ci` finds the issue from the start subject and the registration on the
+issue; a branch whose commits change no file is WAITING (exit 0). Accept makes the draft ready; land merges it.
 
 **The commit format**: every commit on a child's branch starts `#N <name>: `, written by the harness (the parent's
-start, steps, questions, handback, the parent's send-backs and answers, the receipt taken off).
+start, steps, and the empty signal commits of questions and handbacks).
 
 **The ticket CSV**, `tickets/<plan>__<sha>.csv` on Drive, one row per child, written by the harness at form 1 (the
 model only uploads it by reference):
@@ -185,9 +184,9 @@ The rules have one owner: the rows of the floor pipeline. CI runs the same rows 
 | Direction | How |
 |---|---|
 | Child to parent | a push; CI runs; the CI result wakes the parent that watches the draft PR. The hook names `orchestra.doorbell`, which reads GitHub itself: the CI result, the failed rules, new comments, the tip (`utils/orchestra/doorbell.py`) |
-| Child's words | its question and its handback, posted by its harness as comments on its draft PR (`draft.say`, with a `<!-- harness-comment -->` marker), next to the commits on its branch; never `send_message`, which auto mode refuses |
-| Parent to child | a signed order by `send_message`: `fix`, `answer` or `stop` (`utils/orchestra/orders.py`); the note stays on the branch as the record, read by a fresh session only when the child's session ended |
-| Record | each CI result (`ci.result`) and each comment (`child.comment`: from the child or a GitHub login, to the parent) is one ledger row |
+| Child's words | its registration (on its issue), question and handback, posted by its harness as comments with a `<!-- harness-comment -->` marker (`utils/orchestra/talk.py`); an empty signal commit wakes the parent through CI; never `send_message`, which auto mode refuses |
+| Parent to child | a signed order by `send_message`: `fix`, `answer` or `stop` (`utils/orchestra/orders.py`); its words are also a comment on the draft, given to a fresh session in its brief when the child's session ended; nothing under `.harness/` is committed on any branch |
+| Record | each CI result (`ci.result`) and each comment (`child.comment`: from the child, the orchestrator or a GitHub login) is one ledger row |
 | Safety net | one timer check-in (about 50 minutes, then about every 4 hours), for a child that dies silently |
 
 **An order:** `orch <plan> | child <name> | issue #N <sha12> | round <n> | kind <k> | mac <hmac>`, its body up to
@@ -297,3 +296,4 @@ id; the doorbell line follows `ReadNotifications`; CI runs the tests only once t
   refuses child-to-parent messages).
 - 2026-11-19: the user's Allow in a form for each merge of a pull request at its head commit (PR 80; `gh` merges are
   refused), and for each `create_session` on a model other than Sonnet `claude-sonnet-5-5` (the model gate, PR 93).
+- 2026-11-20: the talk of parent and child is comments on the draft PR and the issue (`talk.py`, PR 95).

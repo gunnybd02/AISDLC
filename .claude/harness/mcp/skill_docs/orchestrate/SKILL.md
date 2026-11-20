@@ -89,15 +89,15 @@ rules, new comments, the tip), records them, and names the next step:
 When only the user can decide, ask the user first. `run("orchestra", "digest", {})` shows every child in one line.
 
 ## 4. Check, then accept or send back
-1. `run("orchestra", "check", {"name"})`: the receipt on its branch, then the locked acceptance tests: unchanged on
+1. `run("orchestra", "check", {"name"})`: the receipt in its handback comment, then the locked acceptance tests: unchanged on
    its branch (a changed one is red, named), and run here with its unit's command. A card without `acTests` is
    checked the old way: one behaviour per AC, and its own tests run again.
-2. Not green: `run("orchestra", "reject", {"name", "why"})` with the check's words. It pushes the note and gives the
-   signed order (fix, its round): send it with `send_message` as given, to the child's running session; only if that
+2. Not green: `run("orchestra", "reject", {"name", "why"})` with the check's words. It posts the words as a comment on the
+   child's draft and gives the signed order (fix, its round): send it with `send_message` as given, to the child's running session; only if that
    session ended, spawn opens a fresh one. `answer` works the same. Three rounds at most; the fourth is the user's call
    (`forget`, or what the user says).
 3. Green: `run("orchestra", "accept", {"name"})` opens one pull request into the plan branch (into the unit's base
-   when nothing is locked) and takes the receipt off the branch (the ledger keeps it). Nothing is merged yet.
+   when nothing is locked): the child's draft made ready; the ledger keeps the receipt. Nothing is merged yet.
 4. A child that will not come back: `run("orchestra", "forget", {"name", "why"})`. A session the user wants back:
    `run("orchestra", "release", {"name", "why"})`. `run("orchestra", "read", {"name"})` shows a receipt.
 
@@ -148,7 +148,7 @@ With a plan branch, form 2 did this: make the archive calls land gave. Without o
 | `lock the acceptance tests first` (tickets) | `run("orchestra", "lock", {})`, then tickets |
 | check: `asked a question` whose text starts `Registration failed` | the child's issue or ticket row did not match its brief; it did no work | read the reason; fix the plan (revise), or `forget` the child |
 | `has not passed a check this round` | check it first |
-| `holds no receipt` / `not handed back since it was sent back` | wait for its message, or reject it |
+| `posted no handback` / `not handed back since it was sent back` | wait for its handback comment, or reject it |
 | `have not ended` (land) | check and accept, or forget, each child still running |
 | `the user decides now` | ask the user |
 | `3 children run already` | wait: accept or forget one first |
