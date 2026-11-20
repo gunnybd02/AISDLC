@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from harness.utils.ledger.recorder import Recorder
 
 ENV = "HARNESS_DRIVE_FOLDER"
-REASONS = ("manual", "push", "plan-close", "turn-end", "handback")
+REASONS = ("manual", "push", "plan-close", "turn-end", "handback", "stop")  # stop: a child's copy at the stop order
 TAG = re.compile(r"^orch\.pd-[a-z0-9-]{1,40}\.[a-z0-9][a-z0-9-]{0,39}$")  # the plan marker of an orchestra copy
 LEDGER, EXPORT, UPLOADED, ASKED = "store.ledger", "store.export", "store.uploaded", "store.asked"
 COUNTED = (("commit", "SELECT COUNT(*) AS n FROM rec_commits"),

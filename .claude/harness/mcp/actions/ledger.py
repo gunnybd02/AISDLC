@@ -171,8 +171,8 @@ class Export(McpAction):
     block, name, effect = "ledger", "export", WRITE
     summary = ("Copy the whole ledger for the store outside this machine (same schema as every copy; it records and is "
                "named by ledger, number, session, time, reason and commit) into .harness-export/ of the working folder "
-               "(or of the folder into) and say the one Google Drive call that uploads it; reason is manual, push, "
-               "plan-close, turn-end or handback; a session of an orchestra run adds its plan marker "
+               "(or of the folder into) and say the one Google Drive call that uploads it; reason is one of "
+               f"{', '.join(store.REASONS)}; a session of an orchestra run adds its plan marker "
                "orch.<plan id>.<child or parent> to the name; refused with no store folder")
     args_schema = {"type": "object", "properties": {"folder": {"type": "string"}, "into": {"type": "string"},
                                                     "reason": {"type": "string"}}, "required": []}
