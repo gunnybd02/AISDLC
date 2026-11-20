@@ -89,7 +89,7 @@ runs no other plan opens in the session; revise it instead. When a child says "h
 `run("orchestra", "check", {"name"})` (its receipt, the locked tests unchanged and run here), then `accept` (one pull
 request into the plan branch) or `reject` with why (3 rounds). A question: `answer`. Both post a comment on its draft and
 give the signed order (fix or answer) for the child's running session: send it with `send_message` as given. When every child
-has ended: `run("orchestra", "land", {})` merges the pull requests into the plan branch; a conflict stops it with the
+has ended: `run("orchestra", "close", {})` merges the pull requests into the plan branch; a conflict stops it with the
 two ways on (resolve it on the child's branch, or reject); green gives each child a signed stop order, opens one pull
 request of the plan branch into the base, and asks form 2 (merge it, delete the branches, archive the child sessions).
 On the user's Allow merge it with the merge tool, land again: it deletes the branches, gives the archive calls, closes.

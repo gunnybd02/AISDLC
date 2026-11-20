@@ -102,7 +102,7 @@ When only the user can decide, ask the user first. `run("orchestra", "digest", {
    `run("orchestra", "release", {"name", "why"})`. `run("orchestra", "read", {"name"})` shows a receipt.
 
 ## 5. Land: the final route
-When every child has ended (accepted, forgotten or released): `run("orchestra", "land", {})`.
+When every child has ended (accepted, forgotten or released): `run("orchestra", "close", {})`.
 - It merges the pull requests one by one, in the plan's order.
 - **A conflict stops it.** Its answer names the pull request and the files. Either resolve it yourself: fetch, stand
   on the child's branch, merge the base into it, fix those files (they are files of your plan), verify, commit with
