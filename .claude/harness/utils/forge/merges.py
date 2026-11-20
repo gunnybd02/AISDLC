@@ -2,8 +2,8 @@
 its server is named) runs only with a one-use pass for exactly that pull request and head commit: before it, the harness
 refuses it and gives the form question (gear/translate/merge.py, the when row merge.no_pass); the user's Allow to that
 question writes the pass in pl_asks (accepts); a merge that ran uses it (used), so the next merge asks again. A child
-never merges: nobody can answer its form. Merges inside harness actions (orchestra land into the plan branch) are
-covered by the plan the user approved."""
+never merges: nobody can answer its form. Merges inside harness actions (orchestra accept, a child that passed the
+parent's tests, into main) are covered by the plan the user approved."""
 from __future__ import annotations
 
 import hashlib

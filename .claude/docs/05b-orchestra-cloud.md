@@ -11,6 +11,10 @@
 > PR's comments; a plan with a plan branch ends with **form 2**.
 > Changed by the user on 2026-11-20 (PR 95): the talk is **comments** on the child's draft PR and its issue; nothing
 > under `.harness/` is committed on any branch (section 2b).
+> Changed by the user on 2026-11-20 (PR 103): **children merge into main**. No plan branch: a child branches from main
+> and its MR goes into main. CI is the project's own (set once per repo; a plan may write CI files as normal work; the
+> harness never adds one by itself; with no CI that phase is skipped). The parent tests each MR with its own copy of
+> the locked tests and merges it itself on pass (`accept`); `close` ends the plan. No harness ci, no form 2, no land.
 
 ## 1. Why spec 05 changes here
 
@@ -71,7 +75,7 @@ So every word between parent and child is a comment on the child's draft PR (or 
 | Child | its handback: an empty signal commit and a `handback` comment, the receipt a JSON block (`handback`) | waits for an order |
 | Parent | a send-back: a `sendback` comment (`reject`) | the signed fix order, with the words, to the running child; a fresh session only when it ended |
 | Parent | an answer: an `answer` comment (`answer`) | the signed answer order, the same way |
-| Parent | the signed stop order (`land`) | the child uploads its ledger and ends |
+| Parent | the signed stop order (`accept`, after the merge) | the child uploads its ledger and ends |
 
 The parent learns of a receipt or a question from CI and the comments on the draft PR (the doorbell, `system.md`
 section 8), never by a message from the child. A fresh session of a child gets the same brief plus the parent's last words and their comment's URL; `take`
@@ -104,9 +108,9 @@ sequenceDiagram
         P->>G: orchestra reject {name, why}: a send-back comment on the draft (round n of 3)
         P->>C: the signed fix order (send_message): its hook checks it, one more round
     else green
-        P->>P: orchestra accept {name}: its draft pull request is made ready
+        P->>G: orchestra accept {name}: ready, merged into main at the tested commit; stop order, archive
     end
-    P->>G: land: merge into plan/p<n>, stop orders, form 2, merge, delete branches, archive
+    P->>P: orchestra close: every child merged or forgotten, copies in the store
 ```
 
 ## 4. The parts
@@ -115,7 +119,7 @@ sequenceDiagram
 |---|---|---|
 | 1 | Card rules, delegated opening, one delegated plan at a time, `spawn`, `started`, `status`, the brief, the `ls-remote` fix | built |
 | 2 | The child: binding on its first prompt, `take`, `push`, `question`, `handback` and its receipt, the child refusals | built |
-| 3 | The parent: `check`, `accept` (one pull request), `reject`, `answer`, `forget`, `read`, `land` (the final route: merge, conflicts, close) | built |
+| 3 | The parent: `check`, `accept` (one pull request), `reject`, `answer`, `forget`, `read`, `close` (since PR 103: accept merges each child into main; close ends the plan) | built |
 | 4 | `release`, `remove` (checklist, then archive), `digest`, the check-in, receipts kept out of the base, the `orchestrate` skill | built |
 
 ## 5. Part 1, as built
@@ -206,13 +210,13 @@ The parent reads no code; every fact comes from the child's branch (`utils/orche
 
 | Action | What it does |
 |---|---|
-| `check {name, timeoutMin?}` | A temporary checkout of the child's branch: a detached worktree of the parent's clone when the unit lives there, else a shallow clone of the unit's repository. Refused when the draft holds no handback comment of the child, a question comment is newer, the handback's signal commit is not the branch tip (then the receipt would not describe the code), the receipt is not of this child of this session, or it is not newer than the last send-back. Counts one active behaviour with a test per AC (`AC<n>:` at the start of its description), and **reruns the tests** with the unit's command in the unit's folder (once per test file when the command names `{test}`), without the harness's variables. Green only with no AC missing, nothing uncommitted, the child's verify ok and the rerun green; the result is kept on the crew entry (`lastCheck`, `checkedAt` = the round) with a `checked` story row. |
-| `accept {name}` | A green check this round; opens **one pull request** from `orch/p<plan>/<name>` into the unit's `base` (title the goal, body the AC), records it (`pr`) and the child is `accepted`. Nothing is merged. A child sent back after it (a conflict) keeps its pull request. |
+| `check {name, timeoutMin?}` | The project's CI on the PR head first (`doorbell.ci_state`, every check run and status): red refuses with the failed checks, running waits, none (no CI) is skipped; a draft with no CI yet is made ready once. Then a temporary checkout of the child's branch merged with the newest base (a conflict is refused with its files): a detached worktree of the parent's clone when the unit lives there, else a shallow clone of the unit's repository. The parent's own copy of the locked tests (the ledger) is written over the checkout before they run. Refused when the draft holds no handback comment of the child, a question comment is newer, the handback's signal commit is not the branch tip (then the receipt would not describe the code), the receipt is not of this child of this session, or it is not newer than the last send-back. Counts one active behaviour with a test per AC (`AC<n>:` at the start of its description), and **reruns the tests** with the unit's command in the unit's folder (once per test file when the command names `{test}`), without the harness's variables. Green only with no AC missing, nothing uncommitted, the child's verify ok and the rerun green; the result is kept on the crew entry (`lastCheck`, `checkedAt` = the round) with a `checked` story row. |
+| `accept {name}` | A green check this round, the PR head still the tested commit and its base the unit's base; makes the draft ready, then **merges it into the base** (`PUT pulls/<n>/merge` at the tested sha, in harness code: the user's plan approval covers it, and the merge gate still asks for any other merge). The child is `accepted` and merged; the answer gives its signed stop order and its `archive_session` call. GitHub's automatic delete of head branches removes the branch. |
 | `reject {name, why}` | Round n of 3, then the user decides; an accepted child whose pull request is not merged may be sent back too. Posts the send-back as a comment on the child's draft and gives the signed fix order for its running session (PR 81); a fresh session (`spawn`, `started`) only when that session ended. |
 | `answer {name, text}` | The reply to a child's question, kept and posted as an answer comment on its draft, with the signed answer order, as for reject. |
 | `forget {name, why}` | The child ends `forgotten`; its card may be spawned again. Its session stays until the user agrees to archive it. |
 | `read {name}` | The receipt, read from the child's handback comment. |
-| `land {timeoutMin?}` | **The final route.** Refused while a child has not ended. Merges each accepted pull request in the plan's order (one already merged is taken as is). A pull request that does not merge stops it: the answer names it and its conflicted files (`git merge-tree`) and the two ways on: the parent resolves it on the child's branch (the files are the delegated plan's) and lands again, or sends the child back. Then each unit's tests run on its merged base. Green, with the parent's own files committed (or none), closes the delegated plan **delivered**. With a plan branch it first gives each child its stop order and form 2 (`ending.py`, PR 81): its Allow opens the merge gate for the plan pull requests; land then deletes the branches and gives every `archive_session` call. |
+| `close` | Refused while a child is neither merged nor forgotten. Then the parent's own files committed (or none), each child's ledger copy in the store (or the user's waiver), the plan closed **delivered**, and the archive calls left. Replaces `land` and form 2 (PR 103). |
 
 Not built: the base proof of spec 14.6 (a test already green on the base).
 
@@ -224,11 +228,11 @@ Not built: the base proof of spec 14.6 (a test already green on the base).
 | Action | What it does |
 |---|---|
 | `release {name, why}` | The child's session is the user's again, with its branch and plan; it leaves the crew (`released`). |
-| `remove` | For a plan without a plan branch (one with it ends with form 2). Which child sessions are archived is the user's word, each time. With no pass it answers ONE checklist form (one multi-select question per 4 children that ended: accepted, forgotten, released); the hook's Act keeps a one-use pass in `pl_asks` for each child the user ticks; the next `remove` marks exactly those `removed` and gives each `archive_session` call, which the parent's model makes (harness code cannot archive). |
+| `remove` | For forgotten or released children (accept gives a merged child's archive call). Which child sessions are archived is the user's word, each time. With no pass it answers ONE checklist form (one multi-select question per 4 children that ended: accepted, forgotten, released); the hook's Act keeps a one-use pass in `pl_asks` for each child the user ticks; the next `remove` marks exactly those `removed` and gives each `archive_session` call, which the parent's model makes (harness code cannot archive). |
 | `digest` | One line per child: state, rounds, session, branch, last check, pull request, merged. |
 
 **The check-in.** The answer of the first `started` tells the parent to set one scheduled check-in (`send_later`,
-30 minutes) for a child that dies silently; the delivered answer of `land` tells it to delete it.
+30 minutes) for a child that dies silently; the delivered answer of `close` tells it to delete it.
 
 **Receipts stay out of the base** (decided by the user on 2026-11-16; by design since PR 95): the receipt is a
 JSON block in the child's handback comment, never a file, so `accept` takes nothing off the branch; `check` keeps
@@ -243,14 +247,12 @@ it from HEAD, and the answer says which.
 `orch.<plan id>.parent` (`crew.store_tag`, `store.begin`). A child uploads its ledger at handback (reason `handback`) and at its stop order.
 Harness code cannot call Drive, but the hook reads Drive's own answer: when the parent's model searches the store
 folder, every file named as a copy of this plan's run whose session is that child's is kept on its crew entry
-(`stored`). With a store folder set, `land` delivers only when every child that ended has a copy no older than its
+(`stored`). With a store folder set, `close` delivers only when every child that ended has a copy no older than its
 handback, and `remove` archives only such children (a ticked child waits); a child whose session can never upload
 passes only with the user's "Allow" in the form "Close plan <id> without the database of <name>?". At delivery the
 parent saves its own ledger (`orch.<plan id>.parent`). The harness proves a copy is in the store, from Drive's
 answer; the model only runs the search. A copy is the child's own when its name's session is the child's cloud session id
-or its own id inside its harness, which its receipt names: the two differ in the cloud (found live). `land` waits
-for GitHub to decide whether a pull request can merge, and a refusal while the local merge is clean is reported as
-"land again", not as a conflict.
+or its own id inside its harness, which its receipt names: the two differ in the cloud (found live).
 
 ## 9. Limits
 
@@ -269,7 +271,7 @@ for GitHub to decide whether a pull request can merge, and a refusal while the l
   mac checks out with its own key from the brief; any other message from any session is data.
 - Whoever can push to the remote could forge a receipt on a branch. That is no worse than today (whoever can push can
   change the code), and the parent reruns the tests itself instead of taking the receipt's green on trust.
-- Since PR 63 (`docs/system.md`, build part 2) the parent writes the acceptance tests (`acTests`) and locks them on
-  the plan branch `plan/p<n>` (`orchestra.lock`, their hashes kept); a child starts from it, its doors refuse those
-  files, and the check finds any change by hash before it runs them. Children merge into the plan branch; one pull
-  request takes it into the base, merged by the user. CI (build part 5) will check the same lock on the forge.
+- The parent writes the acceptance tests (`acTests`) and locks them (`orchestra.lock`: text and hash in the
+  ledger, nothing pushed). The child's start commit adds a locked copy; its doors refuse those files, and take and
+  push refuse a copy that drifted. The parent runs its own copy at check, so a changed copy cannot pass. Since PR 103
+  each child merges into main on the parent's tests; no plan branch, and CI is the project's own.
