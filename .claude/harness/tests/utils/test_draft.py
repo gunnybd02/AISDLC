@@ -200,20 +200,19 @@ class SayTest(unittest.TestCase):
         """s1.child.comment: each one comment with the harness marker; the child's ledger keeps its id and hash."""
         from harness.mcp.actions.orchestra import Handback, Question
         text = Question().run(self.ctx(), {"question": "Which status code for a closed account?"})
-        self.assertTrue(text.startswith("It is posted on your draft pull request #5 as a comment"))
+        self.assertIn("Question 1 is the comment https://github.com/o/r/pull/5#issuecomment-1 on your draft", text)
         Handback().run(self.ctx(), self.REPORT)
         (m1, p1, f1), (m2, p2, f2) = self.calls
         self.assertEqual((m1, p1, p2), ("POST", "repos/o/r/issues/5/comments", "repos/o/r/issues/5/comments"))
         self.assertEqual(f1["body"].split("\n\n")[:2], ["**Question of api** (plan 7)",
                                                          "Which status code for a closed account?"])
-        self.assertTrue(f1["body"].endswith(
-            '<!-- harness-comment {"child": "api", "from": "child", "kind": "question", "plan": 7} -->'))
+        meta = talk.read({"body": f1["body"]})
+        self.assertEqual((meta["kind"], meta["child"], meta["from"], meta["n"]), ("question", "api", "child", 1))
         self.assertIn("Changed: app/orders.py lists orders\n\nChecked: tests pass\n\nNot checked: none\n\n"
                       "Risks: paging is not done", f2["body"])
         rows = self.port.rows("SELECT key, target, text FROM pl_notes WHERE kind = 'talk.said' ORDER BY rowid")
         self.assertEqual([r["key"] for r in rows], ["question", "handback"])
         self.assertEqual(json.loads(rows[0]["text"])["id"], 901)
-        self.assertEqual(talk.say(self.port, "c2", "question", ["x"], self.github), "")  # no draft: nothing posted
         self.assertEqual(len(self.calls), 2)
 
 

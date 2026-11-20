@@ -61,7 +61,7 @@ class LockedLandTest(LockedScenario):
         """s5.accept.plan-branch, s5.land.plan-pr, s5.land.delivered: the child's draft #5 (spawn) is made ready."""
         github = PlanGitHub(self.origin, tree(self, {}), {5: (f"orch/p{self.plan}/hello", f"plan/p{self.plan}")})
         self.hand_back()
-        self.assertIn("Green", review.check(self.port, "s1", "hello", LOCKED_UNITS, []))
+        self.assertIn("Green", self.check())
         self.assertIn(f"from orch/p{self.plan}/hello into plan/p{self.plan}",
                       review.accept(self.port, "s1", "hello", LOCKED_UNITS, github))
         self.port.write(lambda con, rec: tickets.save(con, {**self.port.ticket("s1"), "phase": "deliver"}))
@@ -97,7 +97,7 @@ class LockedLandTest(LockedScenario):
         github = PlanGitHub(self.origin, tree(self, {}), {5: (f"orch/p{self.plan}/hello", f"plan/p{self.plan}")},
                             keep=(f"plan/p{self.plan}",))
         self.hand_back()
-        review.check(self.port, "s1", "hello", LOCKED_UNITS, [])
+        self.check()
         review.accept(self.port, "s1", "hello", LOCKED_UNITS, github)
         team = self.port.ticket("s1")["crew"]
         team["hello"]["sessions"] = ["session_child_old"]  # a send-back opened a fresh session once
@@ -121,7 +121,7 @@ class LockedLandTest(LockedScenario):
             ["notes.md"])
         github = PlanGitHub(self.origin, tree(self, {}), {5: (f"orch/p{self.plan}/hello", f"plan/p{self.plan}")})
         self.hand_back()
-        review.check(self.port, "s1", "hello", LOCKED_UNITS, [])
+        self.check()
         review.accept(self.port, "s1", "hello", LOCKED_UNITS, github)
         ticket = self.port.ticket("s1")
         only = {**ticket["plan"], "files": ["orch-probe/test_hello_ac.py"]}  # the run plan: only the locked test
@@ -139,7 +139,7 @@ class LockedLandTest(LockedScenario):
 class LandTest(Scenario):
     def accepted(self, github):
         self.hand_back()
-        review.check(self.port, "s1", "hello", UNITS, [])
+        self.check()
         review.accept(self.port, "s1", "hello", UNITS, github)
 
     def test_land_merges_tests_the_merged_base_and_delivers(self):

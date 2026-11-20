@@ -1,6 +1,7 @@
 """Sessions part 5, the doorbell (utils/orchestra/doorbell.py): when a CI result wakes the parent, the harness reads
 each child's draft on GitHub (a fake here): the harness-ci check run of the head commit, the FAIL lines of a red job's
-log, the new comments and the files of the head commit; it records what is new once and names the next step."""
+log and the comments (the child's question or handback names its commit); it records what is new once and names
+the next step."""
 import json
 import unittest
 
@@ -17,23 +18,29 @@ LOG = ("2026-11-19T01:02:03.1234567Z harness ci: orch/p7/api into plan/p7\n"
        "2026-11-19T01:02:03.3234567Z FAIL scope: outside the scope of the issue: app/other.py\n"
        "2026-11-19T01:02:03.4234567Z Result: RED, 1 rule(s) failed: scope.\n")
 QUESTION = ("**Question of api** (plan 7)\n\nWhich status code for a closed account?\n\n"
-            + MARK.format(meta=json.dumps({"child": "api", "kind": "question", "plan": 7}, sort_keys=True)))
+            + MARK.format(meta=json.dumps({"child": "api", "kind": "question", "plan": 7, "n": 1, "sha": HEAD},
+                                          sort_keys=True)))
+HANDBACK = ("**Handback of api** (plan 7)\n\nChanged: app/orders.py\n\n```json\n{\"name\": \"api\"}\n```\n\n"
+            + MARK.format(meta=json.dumps({"child": "api", "kind": "handback", "plan": 7, "sha": HEAD}, sort_keys=True)))
+
+
+def said(body, n=1):
+    """A comment of the child on its draft, as GitHub gives it."""
+    return {"id": n, "body": body, "html_url": f"https://github.com/o/r/pull/5#c{n}", "user": {"login": "bot"}}
 
 
 class FakeGitHub:
-    """GitHub REST for one draft, #5 of o/r, in the state a test sets."""
+    """GitHub REST for one draft, #5 of o/r, in the state a test sets: its head, its check runs and its comments."""
 
-    def __init__(self, run=None, files=(), comments=()):
-        self.run, self.files, self.comments = run, list(files), list(comments)
+    def __init__(self, run=None, comments=()):
+        self.run, self.comments = run, list(comments)
 
     def __call__(self, method, path, fields=None):
         if path == "repos/o/r/pulls/5":
             return {"head": {"sha": HEAD}}
         if path == f"repos/o/r/commits/{HEAD}/check-runs":
             return {"check_runs": [{"name": "other"}] + ([self.run] if self.run else [])}
-        if path == f"repos/o/r/commits/{HEAD}":
-            return {"files": [{"filename": f} for f in self.files]}
-        if path == "repos/o/r/issues/5/comments":
+        if path == "repos/o/r/issues/5/comments?per_page=100":
             return self.comments
         raise AssertionError(path)
 
@@ -60,18 +67,19 @@ class DoorbellTest(unittest.TestCase):
 
     def test_each_state_names_its_next_step(self):
         """s2.doorbell.read: wait, reject with the failed rules, answer, or check then accept."""
-        receipt, question = ".harness/handback/api.json", ".harness/notes/api/question-1.md"
+        receipt, question = [said(HANDBACK)], [said(QUESTION)]
+        older = [said(HANDBACK.replace(HEAD, "b" * 40))]  # a handback of an older commit is not for the head
         short = HEAD[:12]
         for github, words in (
                 (FakeGitHub(), f"no harness-ci result on {short} yet: wait."),
                 (FakeGitHub(run("in_progress", None)), f"CI runs on {short}: wait."),
-                (FakeGitHub(run(conclusion="failure"), ["app/other.py"]),
+                (FakeGitHub(run(conclusion="failure")),
                  f"CI is RED on {short}: FAIL scope: outside the scope of the issue: app/other.py. Send it back: "
                  "run('orchestra', 'reject', {name: 'api', why: '<these failures>'})."),
-                (FakeGitHub(run(conclusion="success"), [question]), "it asked a question (its comment below)"),
-                (FakeGitHub(run(conclusion="success"), [receipt]),
+                (FakeGitHub(run(conclusion="success"), question), "it asked a question (its comment below)"),
+                (FakeGitHub(run(conclusion="success"), receipt),
                  f"it handed back and CI is green on {short}: run('orchestra', 'check', {{name: 'api'}}), then accept."),
-                (FakeGitHub(run(conclusion="success"), ["app/orders.py"]), f"CI is green on {short}, no receipt yet: wait.")):
+                (FakeGitHub(run(conclusion="success"), older), f"CI is green on {short}, no receipt yet: wait.")):
             with self.subTest(words=words[:30]):
                 self.assertIn(f"api (draft #5): {words}", self.ring(github))
         self.assertEqual(self.logs, ["repos/o/r/actions/jobs/77/logs"])  # only a red job's log is read
@@ -79,9 +87,9 @@ class DoorbellTest(unittest.TestCase):
     def test_red_tests_wait_while_the_child_works_and_send_it_back_after_its_handback(self):
         self.log = lambda method, path: "2026-11-19T01:02:03Z FAILED (failures=1)\n"  # tests, no rule line
         failed = run(conclusion="failure")
-        self.assertIn("its tests are red on", self.ring(FakeGitHub(failed, ["app/orders.py"])))
-        self.assertIn("CI is RED on", self.ring(FakeGitHub(failed, [".harness/handback/api.json"])))
-        self.assertIn("see https://github.com/o/r/runs/77", self.ring(FakeGitHub(failed, [".harness/handback/api.json"])))
+        self.assertIn("its tests are red on", self.ring(FakeGitHub(failed)))
+        self.assertIn("CI is RED on", self.ring(FakeGitHub(failed, [said(HANDBACK)])))
+        self.assertIn("see https://github.com/o/r/runs/77", self.ring(FakeGitHub(failed, [said(HANDBACK, 2)])))
 
     def test_results_and_comments_are_recorded_once_with_sender_and_receiver(self):
         """s2.doorbell.read: each CI result and each comment is one ledger row; a second ring adds none."""
@@ -89,7 +97,7 @@ class DoorbellTest(unittest.TestCase):
                      "user": {"login": "bot"}},
                     {"id": 12, "body": "Looks fine to me", "html_url": "https://github.com/o/r/pull/5#c12",
                      "user": {"login": "someone"}}]
-        github = FakeGitHub(run(conclusion="success"), [".harness/notes/api/question-1.md"], comments)
+        github = FakeGitHub(run(conclusion="success"), comments)
         text = self.ring(github)
         self.assertIn("  New comment: from api: **Question of api** (plan 7) Which status code for a closed account?", text)
         self.assertIn("  New comment: from @someone: Looks fine to me", text)
@@ -107,7 +115,7 @@ class DoorbellTest(unittest.TestCase):
         """s1.talk.from-parent: the parent's own answer is recorded from the orchestrator to the child."""
         answer = ("**Answer of the orchestrator** (plan 7)\n\nUse 409.\n\n" + MARK.format(meta=json.dumps(
             {"child": "api", "from": "orchestrator", "kind": "answer", "plan": 7}, sort_keys=True)))
-        text = self.ring(FakeGitHub(run(conclusion="success"), ["app/orders.py"], [
+        text = self.ring(FakeGitHub(run(conclusion="success"), [
             {"id": 21, "body": answer, "html_url": "https://github.com/o/r/pull/5#c21", "user": {"login": "bot"}}]))
         self.assertIn("  New comment: from orchestrator: **Answer of the orchestrator** (plan 7) Use 409.", text)
         kept = json.loads(self.port.rows("SELECT text FROM pl_notes WHERE kind = 'child.comment'")[0]["text"])

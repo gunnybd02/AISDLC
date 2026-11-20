@@ -2,15 +2,16 @@
 Sessions part 5, piece 4). A child cannot message its parent (auto mode refuses it); it pushes, and its harness posts
 its question or handback as a comment on its draft (utils/orchestra/talk.py). The harness reads GitHub itself, never
 the wake-up's text: for each child with a draft, the head commit of its pull request, the CHECK run on it, the FAIL
-lines of that job's log when it failed, the new comments, and the files of the head commit. It records each CI result
+lines of that job's log when it failed, and the comments (the child's newest question or handback names the commit
+it goes with: talk.newest). It records each CI result
 (RESULT, once per commit and result) and each new comment (COMMENT, once: from the child or the orchestrator when a
 harness posted it, else the GitHub login) and names the next step:
 
 - no result yet, or CI running: wait;
 - a rule of harness ci failed: send the child back with those rules;
 - its tests failed: send it back when it has handed back, else wait while it works;
-- a question at the tip: answer it;
-- the receipt at the tip and CI green: check, then accept;
+- a question for the head commit: answer it;
+- the handback for the head commit and CI green: check, then accept;
 - else: wait.
 
 A GitHub event in a prompt of a parent with drafts, or in the answer of ReadNotifications that reads it, gets
@@ -29,10 +30,8 @@ from harness.utils.git.github import GitHubError
 from harness.utils.ledger.mask import mask
 from harness.utils.ledger.store import note
 from harness.utils.orchestra import crew
-from harness.utils.orchestra.brief import NOTES
 from harness.utils.orchestra import talk
 from harness.utils.orchestra.draft import DRAFTS
-from harness.utils.orchestra.work import RECEIPTS
 from harness.utils.shapes import PlanStore
 
 CHECK = "harness-ci"  # the job of the workflow (utils/orchestra/workflow.py), so the name of its check run
@@ -89,8 +88,7 @@ def one(port: PlanStore, sid: str, name: str, pr: dict[str, Any], entry: dict[st
     try:
         head = str(((github("GET", f"{base}/pulls/{number}") or {}).get("head") or {}).get("sha") or "")
         runs = (github("GET", f"{base}/commits/{head}/check-runs") or {}).get("check_runs") or []
-        files = [str(f.get("filename")) for f in (github("GET", f"{base}/commits/{head}") or {}).get("files") or []]
-        comments = github("GET", f"{base}/issues/{number}/comments") or []
+        comments = talk.comments_of(github, pr)
     except GitHubError as e:
         return f"{name}: its draft #{number} cannot be read on GitHub ({str(e)[-200:]}); try the doorbell again."
     run = next((r for r in runs if r.get("name") == CHECK), {})
@@ -100,8 +98,9 @@ def one(port: PlanStore, sid: str, name: str, pr: dict[str, Any], entry: dict[st
          {"child": name, "sha": head, "status": status, "conclusion": conclusion, "failures": failures,
           "url": run.get("html_url")})
     said = heard(port, sid, name, entry, comments)
-    receipt = f"{RECEIPTS}/{name}.json" in files
-    asked = any(f.startswith(f"{NOTES}/{name}/question-") for f in files)
+    last = talk.newest(comments, name, ("question", "handback"))  # what the child said with its head commit
+    kind = (last or {}).get("kind") if (last or {}).get("sha") == head else ""
+    receipt, asked = kind == "handback", kind == "question"
     short, rules = head[:12], [f for f in failures if f.startswith("FAIL ")]
     if not run:
         step = f"no {CHECK} result on {short} yet: wait."

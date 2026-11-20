@@ -32,7 +32,7 @@ class SyncedTest(Scenario):
     def accepted_and_merged(self):
         github = FakeGitHub(self.repo)
         self.hand_back()
-        review.check(self.port, "s1", "hello", UNITS, [])
+        self.check()
         review.accept(self.port, "s1", "hello", UNITS, github)
         self.port.write(lambda con, rec: __import__("harness.utils.plan.tickets", fromlist=["x"]).save(
             con, {**self.port.ticket("s1"), "phase": "deliver"}))  # the parent's own step is done
@@ -61,7 +61,7 @@ class SyncedTest(Scenario):
     def test_a_copy_named_by_the_childs_own_id_from_its_receipt_is_its_own(self):
         """In the cloud a child's harness knows itself by another id than its cloud session's (found live)."""
         self.hand_back(receipt={"session": "8aa3f275-9f8b-56b3"})
-        review.check(self.port, "s1", "hello", UNITS, [])
+        self.check()
         draft = self.port.ticket("s1")["draft"]
         self.assertEqual(len(self.drive_answer([title("8aa3f275-9f8b-56b3", draft, "hello")])), 1)
         self.assertEqual(self.drive_answer([title("someone-else", draft, "hello")]), [])
@@ -108,7 +108,7 @@ class SyncedTest(Scenario):
 
     def test_remove_archives_a_ticked_child_only_once_it_is_in_the_store(self):
         self.hand_back()
-        review.check(self.port, "s1", "hello", UNITS, [])
+        self.check()
         review.forget(self.port, "s1", "hello", "done")
         form = cleanup.checklist(self.port.ticket("s1"))[0]
         Act(self.port).run(Event("PostToolUse", "AskUserQuestion", {}, "s1", "/w"),

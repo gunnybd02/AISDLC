@@ -1,6 +1,6 @@
 """Fetch: a child's branch as the parent sees it (docs/05b-orchestra-cloud.md part 3): a temporary checkout of the unit's
 repository, a run of the unit's test command in it, with the harness's own variables left out, and the parent's own
-commits on the branch (a note for the child, the receipt taken off), pushed with a plain branch push."""
+commits (the empty start commit of a child's branch), pushed with a plain branch push."""
 from __future__ import annotations
 
 import re
@@ -12,8 +12,6 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from harness.utils.git.run import GitError, git
-from harness.utils.orchestra.brief import subject
-from harness.utils.orchestra.work import RECEIPTS
 from harness.utils.plan.verify import project_env
 
 TAIL = 1500
@@ -104,36 +102,6 @@ def rerun(folder: str, command: list[str], tests: list[str], timeout: int) -> tu
             ok, text = False, str(e)
         out.append(f"$ {' '.join(words)}\n{text.strip()[-TAIL:]}")
     return ok, "\n".join(out)
-
-
-def drop_receipt(unit: dict[str, Any], repo: str, ref: str, name: str, number: Any = None) -> str:
-    """Take the receipt off the child's branch with one git commit, pushed to the branch, so the merge does not carry
-    it into the base; the parent's ledger keeps it (the crew entry's receipt, from check). A plain branch push: no
-    file API (the cloud's proxy refuses GitHub's), and only the child's own orch/ branch is written.
-
-    Args:
-        unit: the unit's spec {repo, path, verify, base}.
-        repo: the parent's repository root.
-        ref: the child's branch.
-        name: the child's name.
-        number: the child's issue number: the commit starts "#<number> <name>: " (brief.subject); None for none.
-
-    Returns:
-        A sentence for the answer: taken off, or why not (then it lands with the merge).
-    """
-    rel = f"{RECEIPTS}/{name}.json"
-    try:
-        with checkout(unit, repo, ref) as folder:
-            if not git(folder, "ls-files", "--", rel).strip():
-                return "The branch holds no receipt to take off."
-            who = committer(folder)
-            git(folder, "rm", "-q", "--", rel)
-            git(folder, *who, "commit", "-q", "-m",
-                subject(number, name, f"Keep the receipt of {name} out of {unit.get('base', 'main')}"))
-            git(folder, "push", "-q", "origin", f"HEAD:refs/heads/{ref}", timeout=300)
-    except (FetchError, GitError) as e:
-        return f"The receipt stays on the branch ({str(e)[-300:]}); it lands with the merge."
-    return "Its receipt is kept in the ledger and taken off the branch."
 
 
 def committer(folder: str) -> list[str]:

@@ -13,10 +13,11 @@ says). The user approved the plan with its children once, in the form; these act
 A child (a session opened from a brief, utils/orchestra/child.py) runs the rest (utils/orchestra/work.py):
 - take: its card plan opens, approved by the parent's grant, on its branch orch/p<plan>/<name>;
 - push: its own branch, after every step;
-- question {question}: a note on its branch, pushed; then it stops;
-- handback {changed, checked, notChecked, risks, testsChanged, added?, faults?}: the receipt on its branch, pushed.
+- question {question}: a comment on its draft and an empty commit, pushed; then it stops;
+- handback {changed, checked, notChecked, risks, testsChanged, added?, faults?}: its report and receipt as a comment
+  on its draft, and an empty commit, pushed.
 
-Parent and child talk through the child's branch, never by message (utils/orchestra/work.py).
+Parent and child talk in comments on the child's draft, never by message (utils/orchestra/talk.py).
 
 The parent's check, accept and reject come in part 3."""
 from __future__ import annotations
@@ -31,7 +32,7 @@ from harness.utils.git.facts import top
 from harness.utils.git.run import GitError, git
 from harness.utils.ledger import store
 from harness.utils.orchestra import brief as briefs
-from harness.utils.orchestra import crew, issues, locked, orders, register, talk, work
+from harness.utils.orchestra import crew, issues, locked, orders, register, work
 from harness.utils.orchestra import draft as drafts  # draft is also the desk id of a plan here
 from harness.utils.orchestra.card import in_force, plan_units, unit_spec
 from harness.utils.plan.item_checks import run_limits
@@ -310,28 +311,24 @@ class Push(McpAction):
 class Question(McpAction):
     """orchestra.question: a child's question for its parent."""
     block, name, effect = "orchestra", "question", WRITE
-    summary = "A child's question outside its card: a note on its branch, pushed; then the child stops"
+    summary = "A child's question outside its card: a comment on its draft with an empty commit, pushed; then it stops"
     args_schema = {"type": "object", "properties": {"question": {"type": "string"}}, "required": ["question"]}
     needs = ("plans", "session", "commit_judge", "git_judge", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Commit the question as a note on the child's branch and push it (utils/orchestra/work.ask), then post it on
-        the child's draft pull request (utils/orchestra/talk.say). ActionError for a session that is no child, a
-        question empty or longer than 400 characters, no card plan, another branch, or a rule that stops the commit or
-        the push."""
+        """Post the question on the child's draft with an empty signal commit and push it (utils/orchestra/work.ask).
+        ActionError for a session that is no child, a question empty or longer than 400 characters, no card plan,
+        another branch, no draft, a comment not posted, or a rule that stops the commit or the push."""
         sid, port = session_of(ctx), ctx.ports["plans"]
-
-        def go() -> str:
-            text = work.ask(port, sid, args["question"], ctx.ports["commit_judge"], ctx.ports["git_judge"])
-            return f"{talk.say(port, sid, 'question', [str(args['question'])], ctx.ports['github'])} {text}".strip()
-        return answered(CHILD_ERRORS, go)
+        return answered(CHILD_ERRORS, lambda: work.ask(port, sid, args["question"], ctx.ports["commit_judge"],
+                                                       ctx.ports["git_judge"], ctx.ports["github"]))
 
 
 class Handback(McpAction):
-    """orchestra.handback: a child's report, kept as a receipt on its branch."""
+    """orchestra.handback: a child's report and receipt, a comment on its draft."""
     block, name, effect = "orchestra", "handback", WRITE
     summary = ("A child's last call: its report (changed, checked, notChecked, risks, testsChanged, added?, faults?) "
-               "and what the harness reads (commits, verify, behaviours) written on its branch and pushed")
+               "and what the harness reads (commits, verify, behaviours) posted on its draft, with an empty commit")
     points = {"type": "array", "items": {"type": "string"}}
     pairs = {"type": "array", "items": {"type": "object"}}
     args_schema = {"type": "object", "properties": {"changed": points, "checked": points, "notChecked": points,
@@ -341,16 +338,10 @@ class Handback(McpAction):
     needs = ("plans", "session", "commit_judge", "git_judge", "store", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
-        """Write, commit and push the child's receipt (utils/orchestra/work.handback), then post its report on the
-        child's draft pull request (utils/orchestra/talk.say). ActionError for a bad report, a session that is no
-        child, no card plan, another branch, or a rule that stops the commit or the push."""
+        """Post the child's report and receipt on its draft with an empty signal commit, and push
+        (utils/orchestra/work.handback). ActionError for a bad report, a session that is no child, no card plan,
+        another branch, no draft, a comment not posted, or a rule that stops the commit or the push."""
         sid, port = session_of(ctx), ctx.ports["plans"]
-
-        def go() -> str:
-            text = work.handback(port, sid, args, ctx.ports["commit_judge"], ctx.ports["git_judge"],
-                                 bool(ctx.ports["store"]()))
-            lines = [f"{label}: " + ("; ".join(str(x) for x in args.get(key) or []) or "none")
-                     for label, key in (("Changed", "changed"), ("Checked", "checked"),
-                                        ("Not checked", "notChecked"), ("Risks", "risks"))]
-            return f"{talk.say(port, sid, 'handback', lines, ctx.ports['github'])} {text}".strip()
-        return answered(CHILD_ERRORS, go)
+        return answered(CHILD_ERRORS, lambda: work.handback(port, sid, args, ctx.ports["commit_judge"],
+                                                            ctx.ports["git_judge"], ctx.ports["github"],
+                                                            bool(ctx.ports["store"]())))

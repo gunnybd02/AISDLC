@@ -74,6 +74,36 @@ class TalkTest(unittest.TestCase):
         self.assertIn("[redacted]\n\nWhich status code?", body)
         self.assertLessEqual(len(talk.body_of("handback", {"child": "api"}, ["x" * 70000])), 65536)
 
+    def test_signal_is_an_empty_commit_judged_by_the_commit_rules(self):
+        """s4.child.question-comment: the signal commit changes no file; a refusal of the rules makes none."""
+        from harness.tests.e2e import git_repo
+        from harness.utils.contracts import Verdict
+        from harness.utils.git.run import git
+        repo = str(git_repo(self, {"a.py": "X = 1\n"}))
+        before, seen = git(repo, "rev-parse", "HEAD").strip(), []
+        sha = talk.signal(repo, "#41 api: Question 1 of api (plan 7)",
+                          lambda *a: seen.append(a) or Verdict("allow"))
+        self.assertEqual(seen, [(repo, [], "#41 api: Question 1 of api (plan 7)")])
+        self.assertEqual(git(repo, "rev-parse", "HEAD~1").strip(), before)
+        self.assertEqual(git(repo, "show", "--name-only", "--format=", sha).strip(), "")
+        with self.assertRaisesRegex(ValueError, "the commit is stopped: an AI mark"):
+            talk.signal(repo, "x", lambda *a: Verdict("refuse", "an AI mark"))
+        self.assertEqual(git(repo, "rev-parse", "HEAD").strip(), sha)
+        talk.unsignal(repo, sha)
+        self.assertEqual(git(repo, "rev-parse", "HEAD").strip(), before)
+
+    def test_a_receipt_is_the_json_block_of_its_comment_and_fits(self):
+        """s4.child.handback-comment: block reads back the receipt receipt_text wrote; a long receipt drops the files
+        of its commits first; a comment with no block gives {}."""
+        receipt = {"name": "api", "commits": [{"sha": "a" * 40, "files": ["f" * 200] * 400}], "uncommitted": []}
+        body = talk.body_of("handback", {"child": "api", "plan": 7}, ["Changed: x", talk.receipt_text(receipt)])
+        got = talk.block(body)
+        self.assertEqual(got["name"], "api")
+        self.assertEqual(got["commits"], [{"sha": "a" * 40}])  # too long with its files
+        self.assertLessEqual(len(body), 65536)
+        self.assertEqual(talk.block({"body": "no block"}), {})
+        self.assertEqual(talk.words_of({"body": body}).split(" ```")[0], "Changed: x")
+
 
 if __name__ == "__main__":
     unittest.main()

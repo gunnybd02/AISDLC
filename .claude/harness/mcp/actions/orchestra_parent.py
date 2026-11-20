@@ -63,16 +63,17 @@ def units(ctx: ActionContext) -> dict[str, Any]:
 class Check(McpAction):
     """orchestra.check: a handed-back child checked by its receipt and a rerun of its tests."""
     block, name, effect = "orchestra", "check", WRITE
-    summary = ("Check a child that handed back: fetch its branch, read its receipt, count its AC behaviours, rerun "
-               "its tests with its unit's command; green lets accept go")
+    summary = ("Check a child that handed back: read its handback comment (the receipt), fetch its branch, count its "
+               "AC behaviours, rerun its tests with its unit's command; green lets accept go")
     args_schema = {"type": "object", "properties": {"name": NAME, "timeoutMin": MINUTES}, "required": ["name"]}
-    needs = ("plans", "session", "units", "verify_command")
+    needs = ("plans", "session", "units", "verify_command", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Check the child (utils/orchestra/review.check) and keep the result on its crew entry."""
         sid = session_of(ctx)
         return answered(PARENT_ERRORS, lambda: review.check(ctx.ports["plans"], sid, args["name"], units(ctx),
-                                               list(ctx.ports["verify_command"]()), args.get("timeoutMin", 10)))
+                                               list(ctx.ports["verify_command"]()), ctx.ports["github"],
+                                               args.get("timeoutMin", 10)))
 
 
 class Accept(McpAction):
@@ -161,16 +162,16 @@ class Forget(McpAction):
 
 
 class Read(McpAction):
-    """orchestra.read: a child's receipt, from its branch."""
+    """orchestra.read: a child's receipt, from its handback comment."""
     block, name, effect = "orchestra", "read", READ
-    summary = "Read a child's receipt from its branch"
+    summary = "Read a child's receipt from its handback comment on its draft"
     args_schema = {"type": "object", "properties": {"name": NAME}, "required": ["name"]}
-    needs = ("plans", "session", "units")
+    needs = ("plans", "session", "github")
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """The child's receipt (utils/orchestra/review.read)."""
         sid = session_of(ctx)
-        return answered(PARENT_ERRORS, lambda: review.read(ctx.ports["plans"], sid, args["name"], units(ctx)))
+        return answered(PARENT_ERRORS, lambda: review.read(ctx.ports["plans"], sid, args["name"], ctx.ports["github"]))
 
 
 class Land(McpAction):
