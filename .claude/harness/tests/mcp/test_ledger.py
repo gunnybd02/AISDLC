@@ -103,6 +103,21 @@ class ExportActionTest(unittest.TestCase):
                          (copy.name, 2, "s-export-test", "push"))
         self.assertTrue(self.export("folder-from-env-1", reason="later").is_error)
 
+    def test_every_reason_a_harness_text_names_is_one_export_takes(self):
+        """s1.export.stop-reason: the stop order asks for reason stop (live run 11: the child fell back to manual);
+        export takes it and names the copy by it, and no harness text names a reason export refuses."""
+        import re
+        from pathlib import Path
+        from harness.utils.ledger import store
+        code = Path(__file__).resolve().parents[2]  # .claude/harness
+        named = {m for p in code.rglob("*.py") if "tests" not in p.parts
+                 for m in re.findall(r"\{reason: '([a-z-]+)'\}", p.read_text(encoding="utf-8"))}
+        self.assertIn("stop", named)
+        self.assertEqual(sorted(named - set(store.REASONS)), [])
+        result = self.export("folder-from-env-1", reason="stop")
+        self.assertFalse(result.is_error, result.text)
+        self.assertEqual(len(list((self.work / ".harness-export").glob("*__stop__*.db.gz"))), 1)
+
     def test_without_into_the_copy_goes_to_the_folder_the_call_is_made_from(self):
         here = os.getcwd()
         self.addCleanup(os.chdir, here)

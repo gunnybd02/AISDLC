@@ -97,8 +97,9 @@ session cannot read the old chat; it reads this file. The frame of every plan is
 | #107 | The project CI of AISDLC (`.github/workflows/ci.yml`, on pull requests into main): gitleaks, then the doctor (0 errors) and the harness suite on Python 3.13. Green on its own pull request |
 | #110 | Live run p45 (issue 108, draft PR 109; the child on Haiku): the model gate refused Haiku until the user's Allow; the child asked its question before any code and took the answer; the doorbell waited for the project CI before check; accept merged into main; the user ticked the child in the `remove` checklist, archived once its ledger copy was in the store; close delivered. The child cost $0.06. Follow-up: a question is answered whatever CI does (the question had waited about 4 minutes for CI on its empty commit); the probe files left main; old docstrings name the current flow |
 | #113 | Live run p47 (issue 111, PR 112; the child on Haiku): the doorbell named answer while the project CI still ran on the question commit (the ledger's ci.result: running), about 25 seconds from question to answer; the handback still waited for green CI; accept merged into main; the `remove` checklist and close as in run 10. The child cost $0.07. Its stop-time ledger copy is labelled manual, not stop. The probe files left main |
+| #114 | The ledger export takes the reason stop, which the stop order asks for (run 11's copy fell back to manual); the export summary lists `store.REASONS` itself, and a test checks every reason a harness text names. The unused `added_between` left `staged_diff.py`. The shell guard refuses any line naming that path (a word git in an argument), so the file joined the plan by a revision through the MCP door |
 
-About 708 tests pass (1 skipped, Windows only); doctor: 0 errors.
+About 709 tests pass (1 skipped, Windows only); doctor: 0 errors.
 
 Learned in #62: one session asked the user 72 times, all for commands the reader could not see whole (inline
 scripts, loops, `$VAR` paths, `python3 -m unittest`, `git checkout`, `git push`). A hook's "ask" reaches the user even

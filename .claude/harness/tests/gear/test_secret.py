@@ -19,6 +19,7 @@ def found(repo, files):
 
 class SecretTest(unittest.TestCase):
     def test_a_secret_in_an_added_line_is_refused(self):
+        """s2.secret.added-lines: the scan reads only the lines a step adds (staged_diff.added_lines, one parser)."""
         repo = git_repo(self, {"a.py": f"KEY = '{KEY}'\nX = 1\n", "b.py": "Y = 1\n"})
         self.assertEqual(found(repo, ["a.py"]), [])  # already committed: not added by this commit
         (repo / "b.py").write_text(f"Y = 1\nTOKEN = 'ghp_{'a' * 36}'\n", encoding="utf-8")
