@@ -98,8 +98,8 @@ class ChildGrant(TypedDict):
 
 class ChildRole(TypedDict):
     """A child's role from its brief (orchestra/child.py): name, plan number, draft (desk id), parent (session), branch
-    (orch/p<plan>/<name>), card, behaviours (p<plan>.<name>.ac<n>), unit (card.unit_spec), start (its plan branch,
-    "": the base) and record ({issue, ticket}: what it registers against, orchestra/register.py; {} for none)."""
+    (orch/p<plan>/<name>), card, behaviours (p<plan>.<name>.ac<n>), unit (card.unit_spec), start (the branch it
+    starts from; "": the base, as there is no plan branch) and record ({issue, ticket}: what it registers against, orchestra/register.py; {} for none)."""
     name: str
     plan: int
     draft: str

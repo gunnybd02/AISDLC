@@ -10,8 +10,8 @@ the answer: it saves it to a file of a tool-results folder and the answer says "
 2026-11-19). The hook reads such a file (saved_files, under SAVED_ROOT only), checks it the same way, and deletes it.
 take then reads the issue itself and, when both agree, keeps the registration in the ledger (pl_notes of kind
 child.registered) and posts it as one comment on the issue (on_issue, utils/orchestra/talk.py), before the card plan
-opens: its approval names that comment, and harness ci (utils/orchestra/ci.py) reads it there (registration_of). The
-branch holds no file of the registration."""
+opens: its approval names that comment, and the harness reads it there again (registration_of). The branch holds no
+file of the registration; the project's own CI, if any, checks the branch (utils/orchestra/doorbell.ci_state)."""
 from __future__ import annotations
 
 import base64

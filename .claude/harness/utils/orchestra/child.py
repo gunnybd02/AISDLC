@@ -29,8 +29,9 @@ BLOCK = re.compile(re.escape(CARD_OPEN) + r"\n(?P<body>\{.*\})\n" + re.escape(CA
 
 def parse(text: str) -> Optional[ChildRole]:
     """The role a brief gives: its first words name the child and the plan, and its card block (one JSON object) says
-    the same child and plan, with the parent's session, the branch, the card, the behaviour ids, the plan branch it
-    starts from (start, "" for the unit's base), and its issue, ticket file, draft pull request and order fields
+    the same child and plan, with the parent's session, the branch, the card, the behaviour ids, the branch it starts
+    from (start, "" for the unit's base: there is no plan branch), and its issue, ticket file, draft pull request and
+    order fields
     (record, {} when the brief names none; orders: utils/orchestra/orders.py; locks: the hash of each locked test).
 
     Args:

@@ -123,6 +123,18 @@ class DoorbellTest(unittest.TestCase):
             with self.subTest(words=words[:30]):
                 self.assertIn(f"api (draft #5): {words}", self.ring(github))
 
+    def test_a_question_is_answered_whatever_ci_does(self):
+        """s2.doorbell.question-first: a question of the head commit names answer while CI runs, is red, is green or
+        is none (live run 10: it waited for CI on its empty commit); a handback still waits while CI runs."""
+        question = [said(QUESTION)]
+        answer = ("api (draft #5): it asked a question (its comment below): "
+                  "run('orchestra', 'answer', {name: 'api', text}).")
+        for runs in ([run(status="queued", conclusion=None)], RED, GREEN, []):
+            with self.subTest(runs=runs[:1]):
+                self.assertIn(answer, self.ring(FakeGitHub(runs, comments=question)))
+        self.assertIn(f"CI runs on {HEAD[:12]}: wait.",
+                      self.ring(FakeGitHub([run(status="queued", conclusion=None)], comments=[said(HANDBACK)])))
+
     def test_results_and_comments_are_recorded_once_with_sender_and_receiver(self):
         """s2.doorbell.read: each CI result and each comment is one ledger row; a second ring adds none."""
         comments = [{"id": 11, "body": QUESTION, "html_url": "https://github.com/o/r/pull/5#c11",

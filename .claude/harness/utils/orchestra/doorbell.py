@@ -7,9 +7,10 @@ and that phase is skipped), and the comments (the child's newest question or han
 talk.newest). It records each CI state (RESULT, once per commit and state) and each new comment (COMMENT, once: from
 the child or the orchestrator when a harness posted it, else the GitHub login) and names the next step:
 
+- a question for the head commit: answer it, whatever CI does (live run 10: a question waited for CI on its empty
+  commit, which tests nothing new);
 - CI running, or not readable: wait;
 - CI red: send it back naming the failed checks when it has handed back, else wait while it works;
-- a question for the head commit: answer it;
 - the handback for the head commit, CI green or none: check, then accept;
 - else: wait.
 
@@ -129,7 +130,9 @@ def one(port: PlanStore, sid: str, name: str, pr: dict[str, Any], entry: dict[st
     kind = (last or {}).get("kind") if (last or {}).get("sha") == head else ""
     receipt, asked = kind == "handback", kind == "question"
     short, ci = head[:12], "no CI" if state == NONE else "CI is green"
-    if state == UNKNOWN:
+    if asked:  # a question needs no CI: its commit is empty
+        step = f"it asked a question (its comment below): run('orchestra', 'answer', {{name: '{name}', text}})."
+    elif state == UNKNOWN:
         step = f"the CI of {short} cannot be read ({'; '.join(failed)}): wait, then ring again."
     elif state == RUNNING:
         step = f"CI runs on {short}: wait."
@@ -138,8 +141,6 @@ def one(port: PlanStore, sid: str, name: str, pr: dict[str, Any], entry: dict[st
                 f"'{name}', why: '<these failures>'}}).")
     elif state == RED:
         step = f"CI is red on {short} while it works (no handback yet): wait."
-    elif asked:
-        step = f"it asked a question (its comment below): run('orchestra', 'answer', {{name: '{name}', text}})."
     elif receipt:
         step = f"it handed back and {ci} on {short}: run('orchestra', 'check', {{name: '{name}'}}), then accept."
     else:

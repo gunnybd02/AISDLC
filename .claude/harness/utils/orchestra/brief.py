@@ -92,8 +92,8 @@ def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[st
         parent_sid: the parent's session id.
         draft: the parent plan's desk id (pd-...).
         unit: the unit it works in, {repo, path, verify, base} (card.unit_spec); None for the home.
-        start: the plan branch the child's branch starts from and its pull request goes into (utils/orchestra/
-            locked.py); "" for the unit's base.
+        start: another branch the child starts from and its pull request goes into; "" for the unit's base (spawn
+            always gives "": there is no plan branch).
         issue: its issue {repo, number, url, sha} (utils/orchestra/issues.py); None for none.
         ticket_file: the plan's ticket file {title, sha256} in the store's tickets folder; None for none.
         pr: its draft pull request {repo, number, url} (utils/orchestra/draft.py); None for none.
@@ -146,7 +146,8 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
             its comment's URL: review.say_back); "" for
             its first session.
         rounds: the send-backs the child may have before the user decides (the config's limits.rounds).
-        start: the plan branch the child starts from and its pull request goes into; "" for the unit's base.
+        start: another branch the child starts from and its pull request goes into; "" (no plan branch) for the
+            unit's base.
         issue: its issue {repo, number, url, sha}; None for none.
         ticket_file: the plan's ticket file {title, sha256} in the store's tickets folder; None for none.
         pr: its draft pull request {repo, number, url}; None for none.

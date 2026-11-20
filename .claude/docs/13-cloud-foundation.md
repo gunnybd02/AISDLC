@@ -29,7 +29,7 @@ purpose, and what is still open. Checked on 2026-11-17 by reading the code and r
 | One owner per concept; no copies | Yes since this plan | **owners net** (section 2) |
 | Policy is data | Rule rows for hook calls; the orchestra limits and banned words in the plan (section 3) | arbiter load; plan checks |
 | The ledger: version and fingerprint on open, one upgrade door, hash chains, a fault never blocks | Yes | `docs/12-ledger.md`, the doctor's ledger line |
-| Approval only by the user's forms (`system.md` section 10): form 1's exact "Approve" starts; form 2's "Allow" ends a plan with a plan branch; a merge needs the "Allow" of its own form (the merge gate) | Yes | plan tests, `tests/utils/test_ending.py`, `tests/gear/test_merge.py` |
+| Approval only by the user's forms (`system.md` section 10): form 1's exact "Approve" starts; a merge needs the "Allow" of its own form (the merge gate); a session on a model other than Sonnet needs its "Allow" (the model gate); the user ticks which child sessions are archived. A delegated plan has no plan branch and no form 2: accept merges each tested child (PR 103) | Yes | plan tests, `tests/gear/test_merge.py`, `tests/gear/test_session.py`, `tests/utils/test_land.py` |
 | A child acts on its parent only through a signed order (HMAC with its own key), checked by its own hook | Yes (PR 81) | `utils/orchestra/orders.py`, rows `child.waiting` and `child.stopped` |
 
 ## 2. The owners net (`harness/nets/owners_net.py`)
