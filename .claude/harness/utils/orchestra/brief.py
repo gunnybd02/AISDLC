@@ -20,7 +20,6 @@ from harness.utils.shapes import Card
 
 HEAD = 'child session "{name}" of the delegated plan {plan}'
 CARD_OPEN, CARD_CLOSE = "<<<harness-card", "harness-card>>>"
-NOTES = ".harness/notes"  # <name>/question-<n>.md by the child; sendback-<n>.md, answer-<n>.md by the parent
 CLOUD = "CLAUDE_CODE_REMOTE_SESSION_ID"  # cse_<id> in a cloud session; its sessions are named session_<id>
 
 

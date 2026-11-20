@@ -13,6 +13,7 @@ import re
 import sqlite3
 from typing import Any, Optional
 
+from harness.utils.git.run import GitError, git
 from harness.utils.orchestra.brief import CARD_CLOSE, CARD_OPEN, HEAD, branch
 from harness.utils.orchestra.card import HOME, HOME_SPEC, behaviour_id
 from harness.utils.plan import desk, tickets
@@ -168,3 +169,29 @@ def card_plan(role: ChildRole, root: str) -> PlanItems:
     }
     verify = role.get("unit", HOME_SPEC).get("verify") or []
     return {**desk.normalize(items), **({"verify": list(verify)} if verify else {}), "root": root}
+
+
+def expected_after(repo: str, ticket: Any, expected: str) -> str:
+    """The commit a child's step_done expects, after the empty signal commits its harness made itself on its branch,
+    in time order: its question and handback commits, each on its parent (live run 6). The parent never writes on a
+    child's branch after the start, so nothing else moves it: a commit nobody of these made is no move, and step_done
+    still refuses it.
+
+    Args:
+        repo: the child's clone.
+        ticket: the child's ticket.
+        expected: the plan's last commit (or its base).
+
+    Returns:
+        The commit the branch may stand on now.
+    """
+    ticket, moves = ticket or {}, []
+    for made in [ticket.get("handback") or {}] + [a for a in ticket.get("asks") or [] if isinstance(a, dict)]:
+        if made.get("sha"):
+            try:
+                moves.append((int(made.get("at") or 0), git(repo, "rev-parse", f"{made['sha']}^").strip(), made["sha"]))
+            except GitError:
+                continue
+    for _, start, end in sorted(moves, key=lambda move: move[0]):
+        expected = end if start == expected and end else expected
+    return expected
