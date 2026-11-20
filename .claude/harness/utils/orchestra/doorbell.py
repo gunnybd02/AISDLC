@@ -1,17 +1,16 @@
 """Doorbell: what the parent does when a CI result on a child's draft pull request wakes it (docs/system.md section 8;
 Sessions part 5, piece 4). A child cannot message its parent (auto mode refuses it); it pushes, and its harness posts
 its question or handback as a comment on its draft (utils/orchestra/talk.py). The harness reads GitHub itself, never
-the wake-up's text: for each child with a draft, the head commit of its pull request, the CHECK run on it, the FAIL
-lines of that job's log when it failed, and the comments (the child's newest question or handback names the commit
-it goes with: talk.newest). It records each CI result
-(RESULT, once per commit and result) and each new comment (COMMENT, once: from the child or the orchestrator when a
-harness posted it, else the GitHub login) and names the next step:
+the wake-up's text: for each child with a draft, the head commit of its pull request, the state of the project's own
+CI on it (ci_state: every check run and commit status, whatever they are named; a repository with no CI has none,
+and that phase is skipped), and the comments (the child's newest question or handback names the commit it goes with:
+talk.newest). It records each CI state (RESULT, once per commit and state) and each new comment (COMMENT, once: from
+the child or the orchestrator when a harness posted it, else the GitHub login) and names the next step:
 
-- no result yet, or CI running: wait;
-- a rule of harness ci failed: send the child back with those rules;
-- its tests failed: send it back when it has handed back, else wait while it works;
+- CI running, or not readable: wait;
+- CI red: send it back naming the failed checks when it has handed back, else wait while it works;
 - a question for the head commit: answer it;
-- the handback for the head commit and CI green: check, then accept;
+- the handback for the head commit, CI green or none: check, then accept;
 - else: wait.
 
 A GitHub event in a prompt of a parent with drafts, or in the answer of ReadNotifications that reads it, gets
@@ -22,10 +21,9 @@ import json
 import re
 import time
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any
 
 from harness.utils.contracts import Event
-from harness.utils.git import github as forge
 from harness.utils.git.github import GitHubError
 from harness.utils.ledger.mask import mask
 from harness.utils.ledger.store import note
@@ -34,22 +32,56 @@ from harness.utils.orchestra import talk
 from harness.utils.orchestra.draft import DRAFTS
 from harness.utils.shapes import PlanStore
 
-CHECK = "harness-ci"  # the job of the workflow (utils/orchestra/workflow.py), so the name of its check run
 RESULT, COMMENT = "ci.result", "child.comment"  # pl_notes kinds of the parent
-STAMP = re.compile(r"^\S+Z\s")  # the time GitHub puts before each line of a job's log
 EVENT = re.compile(r"source=[\"']?github|external-event", re.I)
 NOTIFICATIONS = "ReadNotifications"  # in the cloud a CI result is a notification the model reads with this tool
 MOST = 2000  # characters of a comment the ledger keeps
+RED_RUNS = ("failure", "timed_out", "cancelled", "action_required", "startup_failure", "stale")
+RED_STATUSES = ("failure", "error")
+RED, RUNNING, NONE, GREEN, UNKNOWN = "red", "running", "none", "green", "unknown"
 
 
-def ring(port: PlanStore, sid: str, github: Callable[..., Any], log: Optional[Callable[..., str]] = None) -> str:
+def ci_state(github: Callable[..., Any], repo: str, sha: str) -> tuple[str, list[str]]:
+    """The state of the project's own CI on one commit: every check run (the latest of each) and every commit status,
+    whatever they are named. The parent never writes CI; a repository without CI has none, and that phase is skipped.
+
+    Args:
+        github: call(method, path, fields?) -> the JSON answer (utils/git/github.call).
+        repo: "<owner>/<name>".
+        sha: the commit.
+
+    Returns:
+        (state, failed): RED when a run concluded failure, timed_out, cancelled, action_required, startup_failure or
+        stale, or a status is failure or error; else RUNNING when a run is not completed or a status is pending; NONE
+        when there is no run and no status; else GREEN. failed names the red ones, "name (url)". UNKNOWN with the
+        reason when GitHub cannot be read (the caller waits).
+    """
+    base = f"repos/{repo}/commits/{sha}"
+    try:
+        runs = (github("GET", f"{base}/check-runs?filter=latest&per_page=100") or {}).get("check_runs") or []
+        statuses = (github("GET", f"{base}/status") or {}).get("statuses") or []
+    except GitHubError as e:
+        return UNKNOWN, [f"GitHub cannot be read: {str(e)[-200:]}"]
+    failed = [f"{r.get('name')} ({r.get('html_url') or r.get('details_url') or '?'})" for r in runs
+              if r.get("status") == "completed" and r.get("conclusion") in RED_RUNS]
+    failed += [f"{s.get('context')} ({s.get('target_url') or '?'})" for s in statuses
+               if s.get("state") in RED_STATUSES]
+    if failed:
+        return RED, failed
+    if any(r.get("status") != "completed" for r in runs) or any(s.get("state") == "pending" for s in statuses):
+        return RUNNING, []
+    if not runs and not statuses:
+        return NONE, []
+    return GREEN, []
+
+
+def ring(port: PlanStore, sid: str, github: Callable[..., Any]) -> str:
     """Read the drafts of the parent's children on GitHub, record what is new, and name each child's next step.
 
     Args:
         port: the ledger port.
         sid: the parent's session.
         github: call(method, path, fields?) -> the JSON answer (utils/git/github.call).
-        log: text(method, path) -> a job's log as text (utils/git/github.text); None uses it.
 
     Returns:
         One paragraph per child with a draft, or why there is nothing to read.
@@ -57,19 +89,19 @@ def ring(port: PlanStore, sid: str, github: Callable[..., Any], log: Optional[Ca
     ticket = port.ticket(sid) or {}
     held, team = ticket.get(DRAFTS) or {}, ticket.get("crew") or {}
     if not held:
-        return "No child has a draft pull request: nothing to read (spawn opens one for a plan with locked tests)."
+        return "No child has a draft pull request: nothing to read (spawn opens one for each child)."
     out = []
     for name, pr in sorted(held.items()):
         entry = team.get(name) or {}
         if entry.get("state") in crew.ENDED:
             out.append(f"{name}: {entry['state']}; nothing to do.")
             continue
-        out.append(one(port, sid, name, pr, entry, github, log or forge.text))
+        out.append(one(port, sid, name, pr, entry, github))
     return "\n".join(out)
 
 
-def one(port: PlanStore, sid: str, name: str, pr: dict[str, Any], entry: dict[str, Any], github: Callable[..., Any],
-        log: Callable[..., str]) -> str:
+def one(port: PlanStore, sid: str, name: str, pr: dict[str, Any], entry: dict[str, Any],
+        github: Callable[..., Any]) -> str:
     """Read one child's draft, record what is new, and say its next step.
 
     Args:
@@ -79,65 +111,40 @@ def one(port: PlanStore, sid: str, name: str, pr: dict[str, Any], entry: dict[st
         pr: its draft {repo, number, url}.
         entry: its crew entry ({} when it has not started).
         github: the JSON call.
-        log: the text call.
 
     Returns:
         The child's paragraph.
     """
-    base, number = f"repos/{pr['repo']}", pr["number"]
+    number = pr["number"]
     try:
-        head = str(((github("GET", f"{base}/pulls/{number}") or {}).get("head") or {}).get("sha") or "")
-        runs = (github("GET", f"{base}/commits/{head}/check-runs") or {}).get("check_runs") or []
+        head = str(((github("GET", f"repos/{pr['repo']}/pulls/{number}") or {}).get("head") or {}).get("sha") or "")
         comments = talk.comments_of(github, pr)
     except GitHubError as e:
         return f"{name}: its draft #{number} cannot be read on GitHub ({str(e)[-200:]}); try the doorbell again."
-    run = next((r for r in runs if r.get("name") == CHECK), {})
-    status, conclusion = run.get("status") or "none", run.get("conclusion") or ""
-    failures = fails(base, run, log) if conclusion and conclusion != "success" else []
-    keep(port, sid, RESULT, f"{pr['repo']}#{number}", f"{head}:{conclusion or status}",
-         {"child": name, "sha": head, "status": status, "conclusion": conclusion, "failures": failures,
-          "url": run.get("html_url")})
+    state, failed = ci_state(github, pr["repo"], head)
+    keep(port, sid, RESULT, f"{pr['repo']}#{number}", f"{head}:{state}",
+         {"child": name, "sha": head, "state": state, "failed": failed})
     said = heard(port, sid, name, entry, comments)
     last = talk.newest(comments, name, ("question", "handback"))  # what the child said with its head commit
     kind = (last or {}).get("kind") if (last or {}).get("sha") == head else ""
     receipt, asked = kind == "handback", kind == "question"
-    short, rules = head[:12], [f for f in failures if f.startswith("FAIL ")]
-    if not run:
-        step = f"no {CHECK} result on {short} yet: wait."
-    elif status != "completed":
+    short, ci = head[:12], "no CI" if state == NONE else "CI is green"
+    if state == UNKNOWN:
+        step = f"the CI of {short} cannot be read ({'; '.join(failed)}): wait, then ring again."
+    elif state == RUNNING:
         step = f"CI runs on {short}: wait."
-    elif conclusion != "success" and (rules or receipt):
-        why = "; ".join(rules or failures) or f"see {run.get('html_url')}"
-        step = (f"CI is RED on {short}: {why}. Send it back: run('orchestra', 'reject', {{name: '{name}', why: "
-                "'<these failures>'}).")
-    elif conclusion != "success":
-        step = f"its tests are red on {short} while it works (no receipt yet): wait."
+    elif state == RED and receipt:
+        step = (f"CI is RED on {short}: {'; '.join(failed)}. Send it back: run('orchestra', 'reject', {{name: "
+                f"'{name}', why: '<these failures>'}}).")
+    elif state == RED:
+        step = f"CI is red on {short} while it works (no handback yet): wait."
     elif asked:
         step = f"it asked a question (its comment below): run('orchestra', 'answer', {{name: '{name}', text}})."
     elif receipt:
-        step = f"it handed back and CI is green on {short}: run('orchestra', 'check', {{name: '{name}'}}), then accept."
+        step = f"it handed back and {ci} on {short}: run('orchestra', 'check', {{name: '{name}'}}), then accept."
     else:
-        step = f"CI is green on {short}, no receipt yet: wait."
+        step = f"{ci} on {short}, no handback yet: wait."
     return "\n".join([f"{name} (draft #{number}): {step}"] + [f"  New comment: {c}" for c in said])
-
-
-def fails(base: str, run: dict[str, Any], log: Callable[..., str]) -> list[str]:
-    """The FAIL lines and the result line of a failed job's log, without GitHub's time stamps.
-
-    Args:
-        base: "repos/<owner>/<name>".
-        run: the check run (its id is the Actions job's id).
-        log: the text call.
-
-    Returns:
-        The lines; [] when the log cannot be read.
-    """
-    try:
-        text = log("GET", f"{base}/actions/jobs/{run.get('id')}/logs")
-    except GitHubError:
-        return []
-    lines = [STAMP.sub("", line).strip() for line in str(text).splitlines()]
-    return [line for line in lines if line.startswith("FAIL ") or line.startswith("Result: RED")][:20]
 
 
 def heard(port: PlanStore, sid: str, name: str, entry: dict[str, Any], comments: list[dict[str, Any]]) -> list[str]:
