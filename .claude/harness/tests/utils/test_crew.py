@@ -78,6 +78,26 @@ class BriefTest(unittest.TestCase):
         self.assertIn("Each send-back and answer is also a comment of the orchestrator on your draft pull request", text)
         self.assertNotIn(".harness/notes", text)  # the talk is comments, never files on the branch
 
+    def test_the_brief_and_started_say_question_and_handback_are_comments(self):
+        """s3.brief.comments-words: live run 7 found two sentences of the old talk on the branch."""
+        text = " ".join(brief.brief(7, "pd-x", GOOD, "session_parent01", rounds=3).split())
+        self.assertIn("The harness posts it as a comment on your draft pull request and pushes an empty commit", text)
+        self.assertIn("the harness posts your report and its receipt as a comment on your draft pull request", text)
+        claude_dir = copy_tree(self)
+        port = LedgerPort(claude_dir)
+        port.touch_session("s1")
+        repo = git_repo(self, {"notes.md": "n\n"})
+        items = {**desk.normalize(desk.clean({**PLAN, "children": children(1)})), "root": str(repo)}
+        _, _, q = port.present(items, sid="s1")
+        approvals(port, "s1", {q: YES})
+        started = " ".join(Started().run(ActionContext({"plans": port, "session": lambda: "s1", "limits": lambda: {
+            "children": 3, "rounds": 3}}), {"name": "c1", "sid": "session_child0001"}).split())
+        self.assertIn("It talks by comments its harness posts on its draft", started)
+        self.assertIn("a handback or a question comment", started)
+        for old in ("pushed on your branch", "writes your receipt on your branch", "It talks only through its branch",
+                    "it pushes its receipt"):
+            self.assertNotIn(old, text + started)
+
     def test_the_brief_sends_the_child_to_the_ledger_door_not_the_file(self):
         text = brief.brief(7, "pd-x", GOOD, "session_parent01", rounds=3)
         self.assertIn("run('ledger', 'db_query', {sql})", text)

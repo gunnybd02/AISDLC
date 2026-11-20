@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+from typing import Any, Optional
 
 from harness.utils.contracts import Event, Translator
 from harness.utils.shapes import Facts
@@ -60,6 +61,23 @@ def texts(event: Event) -> list[str]:
     return out
 
 
+def label(answer: Any) -> Optional[str]:
+    """One answer as the text the gates read: a label as it is; a multi-select answer given as a list of labels joined
+    by ", " (live run 7: the remove checklist's answer never reached the harness); None for anything else.
+
+    Args:
+        answer: the answer of one question, as Claude Code gives it.
+
+    Returns:
+        The text, or None.
+    """
+    if isinstance(answer, (str, int, float)) and not isinstance(answer, bool):
+        return str(answer)
+    if isinstance(answer, (list, tuple)) and answer and all(isinstance(a, str) for a in answer):
+        return ", ".join(answer)
+    return None
+
+
 def given(event: Event) -> dict[str, str]:
     """{question: label} as the call or its response carries them; nothing for a call that is not shaped as a form.
 
@@ -82,7 +100,7 @@ def given(event: Event) -> dict[str, str]:
                 continue
         if isinstance(source, dict):
             source = source.get("answers", source)
-            found.update({str(q): str(a) for q, a in source.items() if isinstance(a, (str, int, float))})
+            found.update({str(q): label(a) for q, a in source.items() if label(a) is not None})
     asked = questions(event)
     if text and not any(FORGE in t for t in texts(event)):
         for q in asked:

@@ -246,11 +246,12 @@ class Started(McpAction):
         ticket = ctx.ports["plans"].ticket(sid)
         checkin = (" This is the first child: set a check-in now, since no child messages you: "
                    "mcp__claude-code-remote__send_later {\"delay_minutes\": 30, \"message\": \"Orchestra check-in: "
-                   "run('orchestra', 'check', {name}) for each running child (it reads the child's branch: a receipt or "
-                   "a question), and set the next check-in while a child still runs.\"}.") if first else ""
+                   "run('orchestra', 'check', {name}) for each running child (it reads the child's draft: a handback or "
+                   "a question comment), and set the next check-in while a child still runs.\"}.") if first else ""
         return (f"Child {args['name']} runs in session {entry['sid']} ({len(crew.running(ticket))} of {cap} "
-                "running). It talks only through its branch: it pushes its receipt, or a question, and stops; it "
-                "sends no message. To look at it, run('orchestra', 'check', {name}): it reads the branch and "
+                "running). It talks by comments its harness posts on its draft (a question, or its handback with the "
+                "receipt), each with an empty commit that wakes you; it sends no message. To look at it, "
+                "run('orchestra', 'check', {name}): it reads its draft and branch and "
                 f"says whether the child handed back, asked a question, or is still working.{checkin}")
 
 

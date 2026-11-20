@@ -25,7 +25,7 @@ from harness.utils.shapes import PlanStore
 
 MARK = "<!-- harness-comment {meta} -->"  # the last line of every comment a harness posts
 MARKED = MARK.split("{")[0].strip()  # "<!-- harness-comment"
-META = re.compile(r"<!-- harness-comment (\{.*\}) -->\s*$")
+META = re.compile(r"<!-- harness-comment (\{.*\}) -->")  # one line; the cloud may add a footer under it (run 7)
 SAID = "talk.said"  # pl_notes of the poster: target = the comment's URL, key = its kind, text = {id, sha256, from}
 CHILD, PARENT = "child", "orchestrator"  # the two sides of the talk (from)
 MOST = 60000  # characters of a comment's words: GitHub keeps 65536 at most
@@ -77,6 +77,14 @@ def post(port: PlanStore, sid: str, github: Callable[..., Any], where: dict[str,
     return made
 
 
+def marker(body: str) -> Optional[re.Match[str]]:
+    """The last harness marker of a comment's body, wherever it is: the cloud adds a footer under it (live run 7)."""
+    found = None
+    for found in META.finditer(body):
+        pass
+    return found
+
+
 def read(comment: dict[str, Any]) -> Optional[dict[str, Any]]:
     """The meta of a harness comment, with the comment's id and URL; None for any other comment.
 
@@ -86,7 +94,7 @@ def read(comment: dict[str, Any]) -> Optional[dict[str, Any]]:
     Returns:
         {kind, child, plan, from, ..., id, url}; from is CHILD when an older comment names none.
     """
-    found = META.search(str(comment.get("body") or ""))
+    found = marker(str(comment.get("body") or ""))
     if not found:
         return None
     try:
@@ -144,8 +152,11 @@ def block(comment: Any) -> dict[str, Any]:
 
 
 def words_of(comment: dict[str, Any]) -> str:
-    """The words of a harness comment on one line: without its head line, its json block and its MARK."""
-    body = BLOCK.sub("", META.sub("", str(comment.get("body") or "")))
+    """The words of a harness comment on one line: without its head line, its json block, its MARK and anything
+    under the MARK (a footer)."""
+    body = str(comment.get("body") or "")
+    found = marker(body)
+    body = BLOCK.sub("", body[:found.start()] if found else body)
     return " ".join(" ".join(body.split("\n\n")[1:]).split())
 
 
