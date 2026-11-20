@@ -12,7 +12,7 @@ from harness.assemble.engine.ports import LedgerPort
 from harness.assemble.engine.runner import Act
 from harness.mcp.actions.orchestra import Take
 from harness.utils.contracts import ActionContext, ActionError, Event, Verdict
-from harness.utils.orchestra import brief, child, issues, register
+from harness.utils.orchestra import brief, child, issues, register, talk
 from harness.tests import tree
 from harness.tests.e2e import copy_tree, git_repo
 
@@ -142,8 +142,28 @@ def git(repo, *args):
     return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout
 
 
+class FakeGitHub:
+    """GitHub REST for issue #41 (its body) and the comments of #41 and of the draft #5, kept as they are posted."""
+
+    def __init__(self, body):
+        self.body, self.comments, self.posts = body, {}, []
+
+    def __call__(self, method, path, fields=None):
+        if path == "repos/o/r/issues/41":
+            return {"number": 41, "body": self.body}
+        number = path.split("/issues/")[1].split("/")[0]
+        if method == "GET":
+            return list(self.comments.get(number, []))
+        made = {"id": 800 + len(self.posts), "html_url": f"{URL}/issues/{number}#c{len(self.posts)}",
+                "body": fields["body"]}
+        self.posts.append(number)
+        self.comments.setdefault(number, []).append(made)
+        return made
+
+
 class TakeTest(unittest.TestCase):
-    """take with a real origin: the plan branch holds the locked test; GitHub is a fake that answers the issue."""
+    """take with a real origin: the plan branch holds the locked test; GitHub is a fake that answers the issue and
+    keeps the comments."""
 
     def setUp(self):
         self.port = LedgerPort(copy_tree(self))
@@ -161,17 +181,17 @@ class TakeTest(unittest.TestCase):
         git(self.repo, "switch", "-q", "work")
         git(self.repo, "branch", "-q", "-D", "plan/p7")
         self.body, self.issue, self.text, self.made = records()
+        self.github = FakeGitHub(self.body)
         prompt = brief.brief(7, "pd-x", CARD, "session_p1", rounds=3, start="plan/p7", issue=self.issue,
-                             ticket_file=self.made)
+                             ticket_file=self.made, pr={"repo": "o/r", "number": 5, "url": f"{URL}/pull/5"})
         Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": prompt}, "c1", str(self.repo)), {}, ALLOW)
         here = os.getcwd()
         os.chdir(self.repo)  # the MCP server runs in the project's folder
         self.addCleanup(os.chdir, here)
 
     def take(self, body=None):
-        ctx = ActionContext({"plans": self.port, "session": lambda: "c1", "github": github_of(body or self.body),
-                             "commit_judge": lambda *a: ALLOW, "git_judge": lambda *a: ALLOW})
-        return Take().run(ctx, {})
+        self.github.body = body or self.body
+        return Take().run(ActionContext({"plans": self.port, "session": lambda: "c1", "github": self.github}), {})
 
     def ticket(self):
         Act(self.port).run(Event("PostToolUse", "mcp__Google_Drive__download_file_content", {"fileId": "1x"}, "c1",
@@ -191,34 +211,46 @@ class TakeTest(unittest.TestCase):
         self.assertTrue((self.repo / "tests" / "test_orders_ac.py").is_file())
         self.assertEqual(len(self.port.rows("SELECT 1 AS x FROM pl_notes WHERE kind = 'child.registered'")), 1)
 
-    def test_the_approval_names_the_registration_and_take_pushes_it(self):
-        """s3.register.approval: the ledger's grant of the card plan names issue #41 and the record's commit, which
-        is the first commit of the branch on origin, over the plan branch."""
+    def test_take_posts_the_registration_on_the_issue_and_commits_nothing(self):
+        """s2.register.on-issue: the registration is one comment on issue #41, named by the card plan's approval; the
+        branch gets no commit and no file, nothing is pushed, and a second take posts none."""
         self.ticket()
-        text = self.take()
-        sha = git(self.origin, "rev-parse", "orch/p7/api").strip()
-        self.assertIn("Pushed orch/p7/api", text)
-        self.assertEqual(git(self.origin, "log", "--format=%s", "plan/p7..orch/p7/api").splitlines(),
-                         [git(self.origin, "log", "-1", "--format=%s", sha).strip()])
-        self.assertTrue(git(self.origin, "log", "-1", "--format=%s", sha).startswith("#41 api: register (issue "))
+        self.take()
+        self.assertEqual(self.github.posts, ["41"])
+        meta = talk.read(self.github.comments["41"][0])
+        self.assertEqual((meta["kind"], meta["child"], meta["branch"], meta["issueSha"], meta["planSha"]),
+                         ("register", "api", "orch/p7/api", self.issue["sha"], "f" * 64))
+        self.assertEqual(register.registration_of(self.github.comments["41"], "api")["id"], 800)
+        planned = git(self.origin, "rev-parse", "plan/p7").strip()
+        self.assertEqual(git(self.repo, "rev-parse", "HEAD").strip(), planned)  # no commit on the branch
+        self.assertEqual(git(self.origin, "branch", "--list", "orch/p7/api"), "")  # nothing pushed
         grants = [json.loads(r["body"]) for r in self.port.rows("SELECT body FROM pl_logs")]
         grant = [g for g in grants if g.get("what") == "grant"][-1]
-        self.assertTrue(grant["by"].endswith(f", registration #41 in {sha[:12]}"), grant["by"])
-        self.assertEqual(self.port.approved("c1")["base"], sha)
+        self.assertTrue(grant["by"].endswith(", registration #41 in comment 800"), grant["by"])
+        self.assertEqual(self.port.approved("c1")["base"], planned)
+        self.assertIn("is open already", self.take())
+        self.assertEqual(self.github.posts, ["41"])
 
-    def test_a_mismatch_pushes_its_reason_and_opens_no_plan(self):
-        """s2.take.refused: the issue on GitHub is for another scope; the reason is question 1 on the branch."""
+    def test_a_mismatch_pushes_an_empty_stop_and_a_question_comment(self):
+        """s2.register.on-issue: the issue on GitHub is for another scope; the reason is question 1, a comment on the
+        draft #5 naming the empty commit pushed on the branch, which wakes the parent through CI."""
         self.ticket()
         wider, _, _, _ = records({**CARD, "change": ["app/"]})
         with self.assertRaises(ActionError) as e:
             self.take(wider)
         self.assertIn("Registration failed, so you may not work on this card", str(e.exception))
         self.assertIn("Stop now", str(e.exception))
+        self.assertIn("a comment on your draft pull request #5", str(e.exception))
         self.assertIsNone(self.port.approved("c1"))
-        note = git(self.origin, "show", "orch/p7/api:.harness/notes/api/question-1.md")
-        self.assertIn("issue #41 says scope ['app/'], the brief says ['app/orders.py']", note)
-        self.assertEqual(git(self.origin, "show", "--name-only", "--format=", "orch/p7/api").split(),
-                         [".harness/notes/api/question-1.md"])  # the tip is the question: the parent's check reads it
+        sha = git(self.origin, "rev-parse", "orch/p7/api").strip()
+        self.assertEqual(git(self.origin, "show", "--name-only", "--format=", sha).split(), [])  # no file
+        self.assertEqual(git(self.origin, "log", "-1", "--format=%s", sha).strip(),
+                         "#41 api: Registration of api failed (plan 7)")
+        self.assertEqual(self.github.posts, ["5"])
+        meta = talk.read(self.github.comments["5"][0])
+        self.assertEqual((meta["kind"], meta["n"], meta["sha"], meta["from"]), ("question", 1, sha, "child"))
+        self.assertIn("issue #41 says scope ['app/'], the brief says ['app/orders.py']",
+                      self.github.comments["5"][0]["body"])
 
 
 if __name__ == "__main__":

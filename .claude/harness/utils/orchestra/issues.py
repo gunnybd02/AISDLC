@@ -102,7 +102,9 @@ def issue_text(card: Card, block: dict[str, Any], plan: int) -> tuple[str, str, 
              "", branch_, block["branch"] + (f", from {block['start']}" if block["start"] else "")
              + ". The child pushes only this branch.",
              "", commits, f"Every commit on the branch starts with this issue's number and the child's name: "
-             f"`#<this issue> {name}: <what>`. The first one is the registration: `#<this issue> {name}: register`.",
+             f"`#<this issue> {name}: <what>`. The first one is the orchestrator's start, `#<this issue> {name}: "
+             "start`, which changes no file. Before any work the child registers with a comment on this issue; the "
+             "talk of child and orchestrator is in comments, never in files of the branch.",
              "", ISSUE_OPEN, json.dumps(block, sort_keys=True, ensure_ascii=False), f"sha256: {sha}", ISSUE_CLOSE]
     return f"[p{plan}] {name}: {card['goal']}"[:200], "\n".join(lines), sha
 

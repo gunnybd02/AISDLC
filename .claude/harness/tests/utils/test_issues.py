@@ -119,7 +119,8 @@ class IssuesTest(LockedScenario):
                                              "this branch.")):
             self.assertIn(words, lines[lines.index(heading):], heading)
         self.assertIn("`#<this issue> hello: <what>`", body)
-        self.assertIn("`#<this issue> hello: register`", body)
+        self.assertIn("`#<this issue> hello: start`, which changes no file", body)
+        self.assertIn("the child registers with a comment on this issue", body)
         self.assertEqual(issues.format_problems("## Goal\nx"), ["it has no section Acceptance criteria",
                          "it has no section Scope", "it has no section Tests", "it has no section Locked acceptance "
                          "tests", "it has no section Branch", "it has no section Commits", "it holds no machine block"])

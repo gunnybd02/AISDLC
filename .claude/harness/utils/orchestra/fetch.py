@@ -186,14 +186,15 @@ def put_note(unit: dict[str, Any], repo: str, ref: str, rel: str, text: str, mes
 
 
 def put_files(unit: dict[str, Any], repo: str, ref: str, files: dict[str, str], message: str, target: str = "") -> str:
-    """Commit files of the parent on a branch and push the result to a branch: a plain branch push. Files that are
-    already there as given make no commit.
+    """Commit files on a branch and push the result to a branch: a plain branch push. Files that are already there as
+    given make no commit; no files at all make an empty commit (a start or a signal: the talk is in comments, never in
+    files of the branch, utils/orchestra/talk.py).
 
     Args:
         unit: the unit's spec {repo, path, verify, base}.
         repo: the parent's repository root.
         ref: the branch the commit starts from.
-        files: {path in the repository: text}.
+        files: {path in the repository: text}; {} for an empty commit.
         message: the commit message.
         target: the branch pushed to; ref when "".
 
@@ -211,7 +212,9 @@ def put_files(unit: dict[str, Any], repo: str, ref: str, files: dict[str, str], 
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(text, encoding="utf-8")
                 git(folder, "add", "--", rel)
-            if git_or_empty(folder, "diff", "--cached", "--name-only"):
+            if not files:
+                git(folder, *committer(folder), "commit", "-q", "--allow-empty", "-m", message)
+            elif git_or_empty(folder, "diff", "--cached", "--name-only"):
                 git(folder, *committer(folder), "commit", "-q", "-m", message)
             sha = git(folder, "rev-parse", "HEAD").strip()
             git(folder, "push", "-q", "origin", f"HEAD:refs/heads/{to}", timeout=300)

@@ -121,32 +121,42 @@ class WorkTest(unittest.TestCase):
         self.assertEqual(git(self.origin, "log", "-2", "--format=%s", "orch/p7/api").splitlines(),
                          ["#41 api: Handback of api (plan 7)", "#41 api: Question 1 of api (plan 7)"])
 
-    def test_take_commits_the_registration_first_and_never_twice(self):
-        """s3.register.branch: the record is the first commit of the branch, before the card plan takes its base."""
+    def test_take_registers_with_one_comment_and_commits_nothing(self):
+        """s3.register.comment: the registration is one comment on the issue before the card plan opens; the branch
+        gets no commit, and a second registration posts none."""
         from harness.utils.ledger.store import note
-        from harness.utils.orchestra import register
+        from harness.utils.orchestra import register, talk
         issue = {"repo": "o/r", "number": 41, "url": "https://github.com/o/r/issues/41", "sha": "a" * 64}
         prompt = brief.brief(7, "pd-x", CARD, "session_p1", rounds=3, issue=issue,
                              ticket_file={"title": "t.csv", "sha256": "b" * 64})
         Act(self.port).run(Event("UserPromptSubmit", "", {"prompt": prompt}, "c3", str(self.repo)), {}, ALLOW)
         kept = json.dumps({"issue": "a" * 64, "ticket": "b" * 64, "plan": "f" * 64})
         self.port.write(lambda con, rec: note(con, register.REGISTERED, "orch/p7/api", 41, kept, "c3", 1))
+        posts = []
+
+        def github(method, path, fields=None):
+            self.assertTrue(path.startswith("repos/o/r/issues/41/comments"))
+            if method == "GET":
+                return list(posts)
+            posts.append({"id": 700 + len(posts), "html_url": f"{issue['url']}#c{len(posts)}", "body": fields["body"]})
+            return posts[-1]
         start = git(self.repo, "rev-parse", "HEAD").strip()
-        text = work.take(self.port, "c3", str(self.repo),
-                         lambda repo: register.on_branch(self.port, "c3", repo, lambda *a: ALLOW))
+        text = work.take(self.port, "c3", str(self.repo), lambda repo: register.on_issue(self.port, "c3", github))
         self.assertIn("Card plan", text)
-        self.assertEqual(git(self.repo, "log", "--format=%s", f"{start}..HEAD").splitlines(),
-                         ["#41 api: register (issue aaaaaaaaaaaa, ticket bbbbbbbbbbbb)"])
-        self.assertEqual(git(self.repo, "show", "--name-only", "--format=", "HEAD").split(), [".harness/register/api.json"])
-        record = json.loads((self.repo / ".harness" / "register" / "api.json").read_text(encoding="utf-8"))
-        self.assertEqual(record, {"format": "harness-register/1", "plan": "pd-x", "child": "api", "branch": "orch/p7/api",
-                                  "repo": "o/r", "issue": 41, "issueSha": "a" * 64, "ticketSha256": "b" * 64,
-                                  "planSha": "f" * 64})
-        head = git(self.repo, "rev-parse", "HEAD").strip()
-        self.assertEqual(self.port.approved("c3")["base"], head)  # the plan stands on the record
-        again = register.on_branch(self.port, "c3", str(self.repo), lambda *a: ALLOW)
-        self.assertEqual((again["sha"], git(self.repo, "rev-parse", "HEAD").strip()), (head, head))  # no second commit
-        self.assertIsNone(register.on_branch(self.port, "c1", str(self.repo), lambda *a: ALLOW))  # no issue: no record
+        self.assertEqual(git(self.repo, "log", "--format=%s", f"{start}..HEAD"), "")  # nothing committed
+        self.assertEqual(self.port.approved("c3")["base"], start)
+        meta = talk.read(posts[0])
+        self.assertEqual({k: meta[k] for k in ("kind", "child", "from", "branch", "issueSha", "ticketSha256", "planSha",
+                                               "format", "draft")},
+                         {"kind": "register", "child": "api", "from": "child", "branch": "orch/p7/api",
+                          "issueSha": "a" * 64, "ticketSha256": "b" * 64, "planSha": "f" * 64,
+                          "format": "harness-register/1", "draft": "pd-x"})
+        grant = [json.loads(r["body"]) for r in self.port.rows("SELECT body FROM pl_logs")
+                 if json.loads(r["body"]).get("what") == "grant"][-1]
+        self.assertTrue(grant["by"].endswith(", registration #41 in comment 700"), grant["by"])
+        self.assertEqual(register.on_issue(self.port, "c3", github)["comment"], 700)  # held: none posted again
+        self.assertEqual(len(posts), 1)
+        self.assertIsNone(register.on_issue(self.port, "c1", github))  # no issue: nothing to register
 
     def test_a_fresh_session_takes_the_pushed_branch_and_reads_its_notes(self):
         self.take()

@@ -48,14 +48,15 @@ class DraftScenario(LockedScenario):
 
 class DraftTest(DraftScenario):
     def test_spawn_opens_one_draft_after_a_start_commit_and_gives_the_watch_call(self):
-        """s1.draft.open: the start commit on the child's branch, then one draft into the plan branch, kept."""
+        """s2.start.empty: the start commit on the child's branch changes no file; then one draft into the plan
+        branch, kept."""
         text = self.spawn()
         ref, into = f"orch/p{self.plan}/hello", f"plan/p{self.plan}"
         self.assertEqual(git(self.origin, "log", "--format=%s", f"{into}..{ref}").splitlines(), ["#41 hello: start"])
-        self.assertEqual(git(self.origin, "show", "--name-only", "--format=", ref).split(),
-                         [".harness/notes/hello/start.md"])
-        self.assertIn("Issue #41: https://github.com/o/r/issues/41",
-                      git(self.origin, "show", f"{ref}:.harness/notes/hello/start.md"))
+        self.assertEqual(git(self.origin, "show", "--name-only", "--format=", ref).split(), [])  # an empty commit
+        self.assertEqual(git(self.origin, "ls-tree", "-r", "--name-only", ref),
+                         git(self.origin, "ls-tree", "-r", "--name-only", into))  # no .harness file
+        self.assertIn("Issue #41: https://github.com/o/r/issues/41", git(self.origin, "log", "-1", "--format=%B", ref))
         (method, path, fields), = self.github.pulls()
         self.assertEqual((method, path), ("POST", "repos/o/r/pulls"))
         self.assertEqual((fields["head"], fields["base"], fields["draft"]), (ref, into, True))
@@ -69,6 +70,23 @@ class DraftTest(DraftScenario):
         self.spawn()  # a second spawn reuses the draft: no new pull request, no new start commit
         self.assertEqual(len(self.github.pulls()), 1)
         self.assertEqual(len(git(self.origin, "log", "--format=%s", f"{into}..{ref}").splitlines()), 1)
+
+    def test_a_child_of_a_plan_without_locked_tests_gets_a_draft_into_its_base(self):
+        """s2.start.empty: no lock and no issue: the empty start is "<name>: start" and the draft goes into the base."""
+        from harness.tests.utils.test_review import LOCKED_UNITS
+        from harness.utils.orchestra.issues import ISSUES
+        from harness.utils.orchestra.locked import LOCK
+        ticket = self.port.ticket("s1")
+        self.port.write(lambda con, rec: plan_tickets.save(con, {**ticket, LOCK: {}, ISSUES: {}}))
+        card = {"name": "hello", "goal": "Add a hello module", "change": ["hello.py"]}
+        pr = draft.open_draft(self.port, "s1", card, LOCKED_UNITS["probe"], self.github)
+        ref = f"orch/p{self.plan}/hello"
+        self.assertEqual(git(self.origin, "log", "--format=%s", f"work..{ref}").splitlines(), ["hello: start"])
+        self.assertEqual(git(self.origin, "show", "--name-only", "--format=", ref).split(), [])
+        (_, _, fields), = self.github.pulls()
+        self.assertEqual((fields["head"], fields["base"], fields["draft"]), (ref, "work", True))
+        self.assertNotIn("issue", fields["body"])
+        self.assertEqual(pr["number"], 5)
 
     def watch(self, response, number=5, repo="r"):
         """The hook's Act on the answer of the watch call in the parent's session."""

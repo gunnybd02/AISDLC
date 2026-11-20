@@ -1,12 +1,12 @@
-"""Draft: the draft pull request of a child of a plan with locked tests (docs/system.md section 13, part 5). At spawn,
-the parent's harness makes the child's branch from the plan branch with one start commit (START, a note with the
-issue's link: GitHub opens no pull request without a commit) and opens one draft pull request from it into the plan
-branch, kept in the ticket (DRAFTS). The parent watches it (mcp__claude-code-remote__subscribe_pr_activity), so a CI
-result on any push of the child wakes it: the hook records that watch from the tool's answer (watch_seen), and
-started waits for it (unwatched). The child's registration is the first commit after the start commit; harness ci
-(utils/orchestra/ci.py) skips the start commit, and a branch holding only it is waiting. accept turns the draft into
-the pull request land merges (ready). The talk of parent and child is comments on the draft (utils/orchestra/talk.py);
-the push that goes with them runs CI, whose result wakes the parent."""
+"""Draft: the draft pull request of a child (docs/system.md section 13, part 5), the place of its talk with the
+parent (comments, utils/orchestra/talk.py). At spawn, the parent's harness makes the child's branch with one empty
+start commit (GitHub opens no pull request without a commit; the branch holds no file of the talk) and opens one
+draft pull request from it, into the plan branch when the plan is locked, else into the unit's base; it is kept in
+the ticket (DRAFTS). The parent watches it (mcp__claude-code-remote__subscribe_pr_activity), so a CI result on any
+push of the child wakes it: the hook records that watch from the tool's answer (watch_seen), and started waits for
+it when the plan is locked (unwatched). harness ci (utils/orchestra/ci.py) reads the issue from the start commit's
+subject; a branch whose commits change no file is waiting. accept turns the draft into the pull request land merges
+(ready)."""
 from __future__ import annotations
 
 import json
@@ -28,7 +28,6 @@ from harness.utils.plan import tickets
 from harness.utils.shapes import Card, PlanStore, Ticket
 
 DRAFTS = "drafts"  # the ticket's key: {name: {repo, number, url, node, watched?}}
-START = ".harness/notes/{name}/start.md"
 WATCH = "mcp__claude-code-remote__subscribe_pr_activity"
 OTHER = re.compile(r"already\s+watch|another\s+(?:claude\s+)?(?:session|agent)", re.I)  # the events go elsewhere
 READY = "mutation {{ markPullRequestReadyForReview(input: {{pullRequestId: \"{node}\"}}) {{ pullRequest {{ isDraft }} }} }}"
@@ -40,7 +39,8 @@ class DraftError(ValueError):
 
 
 def open_draft(port: PlanStore, sid: str, card: Card, unit: dict[str, Any], github: Callable[..., Any]) -> dict[str, Any]:
-    """The child's draft pull request into the plan branch: opened once, after the start commit, and kept.
+    """The child's draft pull request: opened once, after the empty start commit, and kept. Every child gets one: into
+    the plan branch when the plan is locked, else into its unit's base.
 
     Args:
         port: the ledger port.
@@ -53,33 +53,35 @@ def open_draft(port: PlanStore, sid: str, card: Card, unit: dict[str, Any], gith
         The draft {repo, number, url, node}.
 
     Raises:
-        DraftError: no lock or no issue yet, no repository URL, the start commit cannot be pushed, or GitHub refuses.
+        DraftError: a locked plan's child with no issue yet, no repository URL, the start commit cannot be pushed, or
+            GitHub refuses.
     """
     ticket, name = port.ticket(sid), card["name"]
     held = (ticket.get(DRAFTS) or {}).get(name)
     if held:
         return dict(held)
-    into = (ticket.get(LOCK) or {}).get("branch")
-    issue = ((ticket.get(ISSUES) or {}).get("children") or {}).get(name)
-    if not into or not issue:
-        raise DraftError(f"{name} has no {'plan branch' if not into else 'issue'} yet: lock, then tickets, then spawn")
+    lock = (ticket.get(LOCK) or {}).get("branch")
+    issue = ((ticket.get(ISSUES) or {}).get("children") or {}).get(name) or {}
+    if lock and not issue:
+        raise DraftError(f"{name} has no issue yet: lock, then tickets, then spawn")
+    into = lock or unit.get("base") or "main"
     plan, root = ticket["plan"], top(ticket["plan"]["root"]) or ""
     url = unit.get("repo") or (git(root, "config", "--get", "remote.origin.url").strip() if root else "")
-    ref = branch(plan["id"], name)
+    ref, number = branch(plan["id"], name), issue.get("number")
     if not on_origin(unit, root, ref):
-        note = (f"# Start of {name} (plan {plan['id']})\n\nIssue #{issue['number']}: {issue.get('url')}\n\nThe "
-                f"orchestrator made this branch from {into} so its draft pull request could open. Your registration "
-                "comes next: run('orchestra', 'take').\n")
+        message = (f"{subject(number, name, 'start') if number else name + ': start'}\n\nThe orchestrator made this "
+                   f"branch from {into} so its draft pull request could open; it changes no file."
+                   + (f" Issue #{number}: {issue.get('url')}" if number else ""))
         try:
-            put_files(unit, root, into, {START.format(name=name): note}, subject(issue["number"], name, "start"),
-                      target=ref)
+            put_files(unit, root, into, {}, message, target=ref)  # empty: GitHub needs a commit to open the draft
         except FetchError as e:
             raise DraftError(f"the start commit of {name} was not pushed: {str(e)[-300:]}") from e
     try:
         made = github("POST", f"repos/{repo_of(url)}/pulls", {
             "head": ref, "base": into, "title": f"[p{plan['id']}] {name}: {card['goal']}"[:200], "draft": True,
-            "body": f"The work of child {name} for issue #{issue['number']}, into {into}. A draft until the "
-                    "orchestrator accepts it; harness ci runs on each push."})
+            "body": f"The work of child {name}" + (f" for issue #{number}" if number else "") + f", into {into}. A "
+                    "draft until the orchestrator accepts it; the talk of child and orchestrator is in its comments"
+                    + ("; harness ci runs on each push." if lock else ".")})
     except GitHubError as e:
         raise DraftError(f"the draft pull request of {name} was not opened: {str(e)[-300:]}") from e
     entry = {"repo": repo_of(url), "number": made.get("number"), "url": made.get("html_url"), "node": made.get("node_id")}

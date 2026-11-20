@@ -120,8 +120,9 @@ def take(port: PlanStore, sid: str, root: str, first: Optional[Callable[[str], A
         port: the ledger port.
         sid: the child's session.
         root: the folder the session works in (the repository is the one holding it).
-        first: first(repo) commits the registration on the branch before the plan opens (register.on_branch) and
-            gives its record {issue, sha}, which the approval names; None, or a None record, names none.
+        first: first(repo) posts the registration as a comment on the issue before the plan opens (register.on_issue)
+            and gives {issue, comment}, which the approval names; None, or a None answer, names none. It commits
+            nothing: the plan's base is the branch as the parent's start commit left it.
 
     Returns:
         The text for the model: the plan, the branch, the behaviour ids and the loop.
@@ -148,10 +149,10 @@ def take(port: PlanStore, sid: str, root: str, first: Optional[Callable[[str], A
     if not Path(folder).is_dir():
         raise WorkError(f"the unit's folder {role['unit']['path']} is not in this clone ({repo})")
     notes = sorted(p.relative_to(repo).as_posix() for p in (Path(repo) / NOTES / role["name"]).glob("*.md"))
-    record = first(repo) if first else None  # the registration, committed before the plan's base is taken
+    record = first(repo) if first else None  # the registration, a comment on the issue, before the plan opens
     plan_id, _, _ = port.present(child.card_plan(role, folder), sid=sid)
     by = f"grant of plan {role['plan']} ({role['parent']})" + (
-        f", registration #{record['issue']} in {record['sha'][:12]}" if record else "")
+        f", registration #{record['issue']} in comment {record['comment']}" if record else "")
     number = port.approve(sid, port.revision(plan_id), by=by)
     return (f"Card plan {plan_id} (plan {number}) is open, approved by the grant of plan {role['plan']}; you are on "
             f"{role['branch']} ({how}). Files: {', '.join(role['card']['change'])}. Behaviours: "

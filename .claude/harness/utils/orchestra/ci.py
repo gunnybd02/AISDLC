@@ -1,42 +1,43 @@
 """CI: harness ci (python3 anchor.py cli ci --base <branch> --head <branch>), the child's gate run again on the forge
 (docs/system.md section 7), on a machine the child cannot reach. It reads only the repository and the child's issue:
-no session, no ledger. The registration record (utils/orchestra/register.py, RECORD) names the issue; the issue's
-machine block (utils/orchestra/issues.py) names the rest. Each rule of RULES passes or fails with why; a rule that
-cannot run fails as "not checked", so a red run always says what it did not see:
+no session, no ledger, and no file of the branch for its facts. The parent's start commit ("#<issue> <name>: start",
+utils/orchestra/draft.py) names the issue; the issue's machine block (utils/orchestra/issues.py) names the rest, and
+the child's registration is a comment on that issue (utils/orchestra/register.registration_of). Each rule of RULES
+passes or fails with why; a rule that cannot run fails as "not checked", so a red run always says what it did not see:
 
-- branch: the head is the branch of the registration and of the issue (orch/p<plan>/<name>)
+- branch: the head is the branch of the issue and of the registration (orch/p<plan>/<name>)
 - base: the base is the plan branch the issue names (start), when it names one
-- issue: the issue is in the issues' format and its block is the one the registration names (its sha256)
-- registered: the first commit over the base adds the registration alone, for this child and the issue's plan
+- issue: the start commit names the issue, it is in the issues' format, and its block is the one the registration names
+- registered: the child's registration comment is on the issue, for this child and the issue's plan
 - subjects: every commit's subject starts "#<issue> <name>: " (utils/orchestra/brief.subject)
 - marks: no commit message holds an AI mark (utils/git/marks.py)
 - secrets: no line the branch adds holds a secret (the shapes of utils/ledger/mask.py, as gear/detect/secret.py)
-- scope: every changed file is in the issue's scope (its change and tests, in the unit's folder) or the child's own
-  .harness files (its registration, notes and receipt)
-- locked: no locked acceptance test changes"""
+- scope: every changed file is in the issue's scope (its change and tests, in the unit's folder); the talk is in
+  comments, so a .harness file is outside it
+- locked: no locked acceptance test changes
+
+A branch none of whose commits changes a file (the start, and the child's empty signal commits) is WAITING."""
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Callable
 from typing import Any
 
-from harness.utils.git.github import GitHubError
+from harness.utils.git.github import GitHubError, repo_of
 from harness.utils.git.marks import marks_in
 from harness.utils.git.run import GitError, git
 from harness.utils.git.staged_diff import added_between
 from harness.utils.ledger.mask import SECRETS
-from harness.utils.orchestra.brief import NOTES, subject
-from harness.utils.orchestra.draft import START
+from harness.utils.orchestra.brief import subject
 from harness.utils.orchestra.issues import format_problems, read_block
 from harness.utils.orchestra.locked import in_unit
-from harness.utils.orchestra.register import RECORD, RECORD_FORMAT
-from harness.utils.orchestra.work import RECEIPTS
+from harness.utils.orchestra.register import registration_of
 from harness.utils.plan.files import matches
 
 RULES = ("branch", "base", "issue", "registered", "subjects", "marks", "secrets", "scope", "locked")
 HEAD = re.compile(r"^orch/p(?P<plan>\d+)/(?P<name>[a-z0-9][a-z0-9-]{0,39})$")
-WAITING = "only the parent's start commit is on the branch; the child has not registered yet"
+START = re.compile(r"^#(?P<number>\d+) (?P<name>[a-z0-9][a-z0-9-]{0,39}): start\b")
+WAITING = "no commit of the child changes a file yet"
 Result = tuple[str, bool, str]
 
 
@@ -59,7 +60,7 @@ def ref_of(repo: str, branch: str) -> str:
 
 def commits(repo: str, base: str, head: str) -> list[dict[str, Any]]:
     """The commits of head over base, oldest first, each with its message and the files it changes (against its
-    first parent).
+    first parent; [] for an empty commit).
 
     Args:
         repo: the clone.
@@ -76,29 +77,43 @@ def commits(repo: str, base: str, head: str) -> list[dict[str, Any]]:
     return out
 
 
-def record_of(repo: str, first: dict[str, Any], name: str) -> dict[str, Any]:
-    """The registration a commit holds, when the files it changes are the registration alone.
+def started(log: list[dict[str, Any]], name: str) -> int:
+    """The issue the parent's start commit names: the first commit of the log whose subject is "#<n> <name>: start"
+    and that changes no file.
 
     Args:
-        repo: the clone.
-        first: a commit ({sha: any ref, files: what it changes}); the tip with files [the record] reads the record
-            the branch holds now.
+        log: the commits over the base (commits).
         name: the child's name.
 
     Returns:
-        The record; {} when there is none, or other files change with it.
+        The issue's number; 0 when no such commit is there.
     """
-    rel = RECORD.format(name=name)
-    if first.get("files") != [rel]:
-        return {}
+    for c in log:
+        found = START.match(c["message"])
+        if found and found["name"] == name and not c["files"]:
+            return int(found["number"])
+    return 0
+
+
+def slug_of(repo: str, slug: str = "") -> str:
+    """The repository's owner/name on GitHub: the one given, else the one of its origin's URL.
+
+    Args:
+        repo: the clone.
+        slug: owner/name when the caller knows it (GITHUB_REPOSITORY in Actions).
+
+    Returns:
+        owner/name; "" when it cannot be told.
+    """
+    if slug:
+        return slug
     try:
-        record = json.loads(git(repo, "show", f"{first['sha']}:{rel}"))
-    except (GitError, ValueError):
-        return {}
-    return record if isinstance(record, dict) and record.get("format") == RECORD_FORMAT else {}
+        return repo_of(git(repo, "config", "--get", "remote.origin.url").strip())
+    except (GitError, GitHubError):
+        return ""
 
 
-def check(repo: str, base: str, head: str, github: Callable[..., Any], sha: str = "") -> list[Result]:
+def check(repo: str, base: str, head: str, github: Callable[..., Any], sha: str = "", slug: str = "") -> list[Result]:
     """Run every rule of RULES on the branch head over base.
 
     Args:
@@ -108,6 +123,7 @@ def check(repo: str, base: str, head: str, github: Callable[..., Any], sha: str 
         github: call(method, path, fields?) -> the JSON answer (utils/git/github.call).
         sha: the commit under test (the pull request's head of this run); "" for the branch's tip on origin. Live run
             5: a job read the tip after a later push, not the commit it tested.
+        slug: the repository's owner/name; "" for the one of its origin (slug_of).
 
     Returns:
         One (rule, passed, why) per rule, in the order of RULES.
@@ -116,47 +132,85 @@ def check(repo: str, base: str, head: str, github: Callable[..., Any], sha: str 
     if not found:
         return fill([("branch", False, f"{head} is no branch of a child (orch/p<plan>/<name>)")],
                     "the head is no branch of a child")
-    name, rel, opened = found["name"], RECORD.format(name=found["name"]), START.format(name=found["name"])
-    tip = sha or ref_of(repo, head)
-    record = record_of(repo, {"sha": tip, "files": [rel]}, name)  # the record at the commit under test
-    if not record:
-        try:
-            only_start = [c["files"] for c in commits(repo, ref_of(repo, base), tip)] == [[opened]]
-        except GitError:
-            only_start = False
-        if only_start:  # the parent's start commit alone: the draft pull request is open, the child not yet
-            return [(rule, True, WAITING) for rule in RULES]
-        return fill([("registered", False, f"{head} holds no registration ({rel})")], "no registration names the issue")
-    out: list[Result] = []
-    block = issue_rule(record, github, out)
-    planned = record.get("branch") == head and (not block or block.get("branch") == head)
-    out.append(("branch", planned, f"{head} is the branch of issue #{record.get('issue')}" if planned else
-                f"{head}, but the registration says {record.get('branch')} and the issue {block.get('branch')}"))
-    out.append(base_rule(base, block))
-    start = block.get("start") or base  # the plan branch the child's branch starts from
+    name, tip = found["name"], sha or ref_of(repo, head)
     try:
-        log = commits(repo, ref_of(repo, start), tip)
+        log = commits(repo, ref_of(repo, base), tip)
     except GitError as e:
-        return fill(out, f"git cannot read {head} over {start}: {str(e)[-200:]}")
-    body = log[1:] if log and log[0]["files"] == [opened] else log  # after the parent's start commit
-    first = body[0] if body else {"sha": "", "files": []}
-    why = ""
-    if record_of(repo, first, name) != record:
-        why = (f"{head} does not start with its registration: its first commit over {start} changes "
-               f"{', '.join(first['files']) or 'nothing'}")
-    elif record.get("child") != name or (block and record.get("planSha") != block.get("planSha")):
-        why = "the registration is for another child or plan"
-    out.append(("registered", not why, why or f"the first commit {first['sha'][:12]} over {start} registers {name} "
-                f"for issue #{record.get('issue')}"))
-    prefix = subject(record.get("issue"), name, "")
+        return fill([], f"git cannot read {head} over {base}: {str(e)[-200:]}")
+    if not any(c["files"] for c in log):  # the start and empty signals alone: the child has no work yet
+        return [(rule, True, WAITING) for rule in RULES]
+    number, slug = started(log, name), slug_of(repo, slug)
+    if not number:
+        return fill([("issue", False, f"no start commit '#<issue> {name}: start' over {base} names the issue")],
+                    "no start commit names the issue")
+    if not slug:
+        return fill([("issue", False, "not checked: the repository on GitHub is not known (--repo)")],
+                    "the repository on GitHub is not known")
+    out: list[Result] = []
+    registration, why = registered(slug, number, name, github)
+    block = issue_rule(slug, number, registration, github, out)
+    out.append(branch_rule(head, number, block, registration))
+    out.append(base_rule(base, block))
+    if not why and block and registration.get("planSha") != block.get("planSha"):
+        why = "the registration is for another plan"
+    out.append(("registered", not why, why or f"comment {registration.get('id')} on issue #{number} registers {name} "
+                "for its plan"))
+    start = block.get("start") or base  # the plan branch the child's branch starts from
+    if start != base:
+        try:
+            log = commits(repo, ref_of(repo, start), tip)
+        except GitError as e:
+            return fill(out, f"git cannot read {head} over {start}: {str(e)[-200:]}")
+    prefix = subject(number, name, "")
     wrong = [c["sha"][:12] for c in log if not c["message"].startswith(prefix)]
     out.append(("subjects", not wrong, f"every commit starts {prefix!r}" if not wrong else
                 f"these commits do not start {prefix!r}: {', '.join(wrong)}"))
     marked = [f"{c['sha'][:12]} ({', '.join(marks_in(c['message']))})" for c in log if marks_in(c["message"])]
     out.append(("marks", not marked, "no AI mark" if not marked else f"AI marks in {'; '.join(marked)}"))
-    out += files_rules(repo, ref_of(repo, start), tip, name, block)
+    out += files_rules(repo, ref_of(repo, start), tip, block)
     order = {rule: n for n, rule in enumerate(RULES)}
     return sorted(out, key=lambda r: order[r[0]])
+
+
+def registered(slug: str, number: int, name: str, github: Callable[..., Any]) -> tuple[dict[str, Any], str]:
+    """The child's registration comment on its issue.
+
+    Args:
+        slug: the repository's owner/name.
+        number: the issue's number.
+        name: the child's name.
+        github: the GitHub call.
+
+    Returns:
+        (its meta, or {}; why the registered rule fails, or "").
+    """
+    try:
+        comments = github("GET", f"repos/{slug}/issues/{number}/comments?per_page=100") or []
+    except GitHubError as e:
+        return {}, f"not checked: the comments of issue #{number} cannot be read: {str(e)[-160:]}"
+    found = registration_of(comments if isinstance(comments, list) else [], name)
+    return found, "" if found else f"issue #{number} holds no registration comment of {name}"
+
+
+def branch_rule(head: str, number: int, block: dict[str, Any], registration: dict[str, Any]) -> Result:
+    """The branch rule: the head is the branch the issue and the registration name.
+
+    Args:
+        head: the child's branch's name.
+        number: the issue's number.
+        block: the issue's block; {} when the issue was not read.
+        registration: the registration's meta; {} when there is none.
+
+    Returns:
+        The result.
+    """
+    if not block and not registration:
+        return "branch", False, "not checked: neither the issue nor a registration was read"
+    named = {block.get("branch") if block else head, registration.get("branch") if registration else head}
+    if named == {head}:
+        return "branch", True, f"{head} is the branch of issue #{number}"
+    return ("branch", False, f"{head}, but the issue says {block.get('branch')} and the registration "
+            f"{registration.get('branch')}")
 
 
 def base_rule(base: str, block: dict[str, Any]) -> Result:
@@ -177,40 +231,42 @@ def base_rule(base: str, block: dict[str, Any]) -> Result:
     return "base", start == base, f"{base} is {'' if start == base else 'not '}the plan branch {start}"
 
 
-def issue_rule(record: dict[str, Any], github: Callable[..., Any], out: list[Result]) -> dict[str, Any]:
-    """Read the issue the registration names and add the issue rule to out.
+def issue_rule(slug: str, number: int, registration: dict[str, Any], github: Callable[..., Any],
+               out: list[Result]) -> dict[str, Any]:
+    """Read the issue the start commit names and add the issue rule to out.
 
     Args:
-        record: the registration.
+        slug: the repository's owner/name.
+        number: the issue's number.
+        registration: the registration's meta; {} when there is none (then only the format is checked).
         github: the GitHub call.
         out: the results so far.
 
     Returns:
-        The issue's block; {} when it cannot be read or is not the registered one.
+        The issue's block; {} when it cannot be read or is not in format, or not the registered one.
     """
-    name = f"issue #{record.get('issue')}"
+    name = f"issue #{number}"
     try:
-        body = str((github("GET", f"repos/{record.get('repo')}/issues/{record.get('issue')}") or {}).get("body") or "")
+        body = str((github("GET", f"repos/{slug}/issues/{number}") or {}).get("body") or "")
     except GitHubError as e:
         out.append(("issue", False, f"{name} cannot be read: {str(e)[-160:]}"))
         return {}
     problems = format_problems(body)
     block, sha = read_block(body)
-    if block and sha != record.get("issueSha"):
+    if block and registration and sha != registration.get("issueSha"):
         problems.append("its block is not the one the registration names")
-    out.append(("issue", not problems, f"{name} is in format and registered" if not problems else
-                f"{name}: " + "; ".join(problems)))
+    out.append(("issue", not problems, f"{name} is in format" + (" and registered" if registration else "")
+                if not problems else f"{name}: " + "; ".join(problems)))
     return {} if problems else block
 
 
-def files_rules(repo: str, base: str, head: str, name: str, block: dict[str, Any]) -> list[Result]:
+def files_rules(repo: str, base: str, head: str, block: dict[str, Any]) -> list[Result]:
     """The secrets, scope and locked rules on the files the branch changes.
 
     Args:
         repo: the clone.
         base: the base's ref.
         head: the head's ref.
-        name: the child's name.
         block: the issue's block; {} when the issue was not read.
 
     Returns:
@@ -225,8 +281,7 @@ def files_rules(repo: str, base: str, head: str, name: str, block: dict[str, Any
     changed = git(repo, "diff", "--name-only", "--no-renames", f"{base}...{head}").split()
     unit = {"path": block.get("path") or "."}
     allowed = [in_unit(unit, p) for p in list(block.get("scope") or []) + list(block.get("tests") or [])]
-    own = [RECORD.format(name=name), f"{NOTES}/{name}/", f"{RECEIPTS}/{name}.json"]
-    outside = [f for f in changed if not matches(allowed + own, f)]
+    outside = [f for f in changed if not matches(allowed, f)]
     locked = [f for f in changed if f in {in_unit(unit, t) for t in block.get("acTests") or []}]
     return out + [("scope", not outside, "every changed file is in the scope of the issue" if not outside else
                    f"outside the scope of the issue: {', '.join(outside)}"),
@@ -249,9 +304,9 @@ def fill(done: list[Result], why: str) -> list[Result]:
 
 
 def has_code(repo: str, base: str, head: str, sha: str = "") -> bool:
-    """Whether the child's branch holds work of its own over base: a commit that is neither the parent's start commit
-    nor the registration alone. Until then the workflow skips the child's tests, which are red before any code (live
-    run 2: the draft was red when it opened); harness ci itself runs every rule each time.
+    """Whether the child's branch holds work of its own over base: a commit that changes a file (the start commit and
+    the child's signal commits change none). Until then the workflow skips the child's tests, which are red before any
+    code (live run 2: the draft was red when it opened); harness ci itself runs every rule each time.
 
     Args:
         repo: the clone.
@@ -262,18 +317,17 @@ def has_code(repo: str, base: str, head: str, sha: str = "") -> bool:
     Returns:
         True when such a commit is on the branch, or when that cannot be told (the tests then run).
     """
-    found = HEAD.match(head)
-    if not found:
+    if not HEAD.match(head):
         return True
-    alone = ([START.format(name=found["name"])], [RECORD.format(name=found["name"])])
     try:
         log = commits(repo, ref_of(repo, base), sha or ref_of(repo, head))
     except GitError:
         return True
-    return any(c["files"] not in alone for c in log)
+    return any(c["files"] for c in log)
 
 
-def report(repo: str, base: str, head: str, github: Callable[..., Any], sha: str = "") -> tuple[bool, str]:
+def report(repo: str, base: str, head: str, github: Callable[..., Any], sha: str = "",
+           slug: str = "") -> tuple[bool, str]:
     """Run the rules and write the text harness ci prints.
 
     Args:
@@ -282,11 +336,12 @@ def report(repo: str, base: str, head: str, github: Callable[..., Any], sha: str
         head: the child's branch's name.
         github: the GitHub call.
         sha: the commit under test; "" for the branch's tip on origin.
+        slug: the repository's owner/name; "" for the one of its origin.
 
     Returns:
         (all passed, the text: a head line, one line per rule, the result).
     """
-    results = check(repo, base, head, github, sha)
+    results = check(repo, base, head, github, sha, slug)
     failed = [rule for rule, ok, _ in results if not ok]
     if all(why == WAITING for _, _, why in results):
         return True, "\n".join([f"harness ci: {head} into {base}", f"WAIT: {WAITING}.",

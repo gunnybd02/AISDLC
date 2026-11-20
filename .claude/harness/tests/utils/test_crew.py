@@ -3,6 +3,7 @@ the parent's spawn, started and status, through the real ledger port and the rea
 import json
 import subprocess
 import unittest
+from unittest import mock
 
 from harness.assemble.engine.ports import LedgerPort
 from harness.mcp.actions.orchestra import Spawn, Started, Status, source_url
@@ -134,7 +135,12 @@ class CrewTest(unittest.TestCase):
         self.repo = git_repo(self, {"notes.md": "n\n"})
         self.port = LedgerPort(self.claude_dir)
         self.port.touch_session("s1")
-        self.ctx = ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3}, "units": dict})
+        self.ctx = ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3}, "units": dict,
+                                  "github": lambda *a: {}})
+        draft = {"repo": "o/r", "number": 5, "url": "https://github.com/o/r/pull/5"}  # every child gets a draft; its
+        stub = mock.patch("harness.utils.orchestra.draft.open_draft", return_value=draft)  # own tests are test_draft's
+        stub.start()
+        self.addCleanup(stub.stop)
 
     def approve(self, extra=None, n=2):
         items = {**desk.normalize(desk.clean({**PLAN, "children": children(n), **(extra or {})})),
@@ -163,7 +169,8 @@ class CrewTest(unittest.TestCase):
         self.approve(extra={"children": [{**GOOD, "name": "c1", "unit": "api"}]})
         units = {"api": {"repo": "https://github.com/me/shop", "path": "services/api", "verify": ["npm", "test"],
                          "base": "develop"}}
-        ctx = ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3}, "units": lambda: units})
+        ctx = ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3}, "units": lambda: units,
+                             "github": lambda *a: {}})
         text = Spawn().run(ctx, {"name": "c1"})
         call = json.loads(text[text.index("\n{") + 1:])
         self.assertEqual(call["source_url"], "https://github.com/me/shop")

@@ -144,29 +144,33 @@ class CliTest(unittest.TestCase):
                                           "GITHUB_HEAD_REF)"))
 
     def test_ci_tells_the_workflow_whether_the_branch_has_code(self):
-        """s5.ci.code-output: code=no for the start and the registration alone, code=yes once a commit follows."""
+        """s5.ci.code-output: code=no while the start and empty signals alone are on the branch, code=yes once a
+        commit changes a file; with no --repo, no GITHUB_REPOSITORY and no GitHub origin the issue is not read."""
         import subprocess
         from harness.tests import tree
 
         def commit(rel, text, message):
-            (self.repo / rel).parent.mkdir(parents=True, exist_ok=True)
-            (self.repo / rel).write_text(text, encoding="utf-8")
-            for words in (["add", "-A"], ["commit", "-q", "-m", message]):
+            if rel:
+                (self.repo / rel).parent.mkdir(parents=True, exist_ok=True)
+                (self.repo / rel).write_text(text, encoding="utf-8")
+            for words in (["add", "-A"], ["commit", "-q", "--allow-empty", "-m", message]):
                 subprocess.run(["git", "-C", str(self.repo), *words], check=True, capture_output=True)
         base = subprocess.run(["git", "-C", str(self.repo), "branch", "--show-current"], check=True,
                               capture_output=True, text=True).stdout.strip()
         subprocess.run(["git", "-C", str(self.repo), "switch", "-q", "-c", "orch/p7/api"], check=True)
-        commit(".harness/notes/api/start.md", "# Start of api\n", "#41 api: start")
-        commit(".harness/register/api.json", "{}\n", "#41 api: register")
+        commit("", "", "#41 api: start")
+        commit("", "", "#41 api: Question 1 of api (plan 7)")
         home, out = tree(self, {}), tree(self, {"out.txt": ""}) / "out.txt"
         for want in ("no", "yes"):
-            with unittest.mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(out)}):
+            with unittest.mock.patch.dict(os.environ, {"GITHUB_OUTPUT": str(out), "GITHUB_REPOSITORY": ""}):
                 _, text = run_cli(["ci", "--base", base, "--head", "orch/p7/api", "--in", str(self.repo)], home)
             self.assertEqual(out.read_text(encoding="utf-8").splitlines()[-1], f"code={want}")
             self.assertEqual(text.splitlines()[-1], "Tests: they run." if want == "yes" else
-                             "Tests: they wait: no commit past the start and the registration yet.")
+                             "Tests: they wait: no commit of the child changes a file yet.")
             if want == "no":
+                self.assertIn("Result: WAITING", text)
                 commit("app/orders.py", "ORDERS = []\n", "#41 api: List orders")
+        self.assertIn("FAIL issue: not checked: the repository on GitHub is not known (--repo)", text)
         self.assertEqual(out.read_text(encoding="utf-8"), "code=no\ncode=yes\n")
         self.assertEqual(list(home.iterdir()), [])
 

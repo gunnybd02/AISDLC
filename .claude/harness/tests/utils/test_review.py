@@ -263,7 +263,8 @@ class ReviewTest(Scenario):
             self.check()
 
     def ctx(self):
-        return ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3}, "units": lambda: UNITS})
+        return ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3},
+                              "units": lambda: UNITS, "github": FakeGitHub(self.repo)})  # every child gets a draft
 
     def test_reject_pushes_a_send_back_note_and_a_fresh_session_reads_it(self):
         self.hand_back()
@@ -308,7 +309,8 @@ class ReviewTest(Scenario):
         with self.assertRaisesRegex(review.ReviewError, "sent back 1 times: the user decides now"):
             review.reject(self.port, "s1", "hello", "again", UNITS, 1)
         spawned = Spawn().run(ActionContext({"plans": self.port, "session": lambda: "s1", "units": lambda: UNITS,
-                                             "limits": lambda: {"children": 3, "rounds": 1}}), {"name": "hello"})
+                                             "limits": lambda: {"children": 3, "rounds": 1},
+                                             "github": FakeGitHub(self.repo)}), {"name": "hello"})
         self.assertIn("It may send you back at most 1 times", spawned)
 
     def test_a_fresh_session_keeps_the_childs_rounds(self):
