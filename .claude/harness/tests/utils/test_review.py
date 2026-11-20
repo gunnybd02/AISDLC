@@ -11,7 +11,7 @@ from harness.mcp.actions.orchestra import Spawn, Started
 from harness.utils.contracts import YES, ActionContext
 from harness.utils.git.github import GitHubError, repo_of
 from harness.utils.orchestra import locked, review, talk
-from harness.utils.plan import desk
+from harness.utils.plan import desk, tickets as plan_tickets
 from harness.utils.plan.approval import approvals
 from harness.tests import tree
 from harness.tests.e2e import copy_tree, git_repo
@@ -162,7 +162,7 @@ AC_TEST = ("import unittest\nfrom hello import hello\n\nclass T(unittest.TestCas
 
 
 class LockedScenario(Scenario):
-    """The same parent, with a card whose acceptance test the parent wrote and locked on the plan branch."""
+    """The same parent, with a card whose acceptance test the parent wrote and locked (in the ledger)."""
 
     def setUp(self):
         self.port = LedgerPort(copy_tree(self))
@@ -182,22 +182,22 @@ class LockedScenario(Scenario):
         (self.repo / "orch-probe").mkdir()
         (self.repo / "orch-probe" / "test_hello_ac.py").write_text(AC_TEST, encoding="utf-8")
         self.locked_text = locked.lock(self.port, "s1", LOCKED_UNITS)
-        from harness.utils.plan import tickets as plan_tickets
         self.port.write(lambda con, rec: plan_tickets.save(con, {**plan_tickets.latest(con, "s1"), "drafts": {
             "hello": {"repo": "o/r", "number": 5, "url": f"{URL}/pull/5", "node": "PR_kw5", "watched": 1}}}))
         Started().run(ActionContext({"plans": self.port, "session": lambda: "s1", "limits": lambda: {"children": 3, "rounds": 3}}),
                       {"name": "hello", "sid": "session_child0001"})  # its draft is open and watched, as spawn leaves it
         self.said = []
-        self.gh = FakeGitHub(self.repo, comments=self.said, base=f"plan/p{self.plan}")
+        self.gh = FakeGitHub(self.repo, comments=self.said)  # into the base: there is no plan branch
 
     def hand_back(self, receipt=None, code=CODE, ac=AC_TEST):
-        """Push the child's branch, made from the plan branch: its code (and the acceptance test as given), then its
-        empty signal commit, and post its handback comment naming it."""
+        """Push the child's branch, made from the base: its code (and the acceptance test as given), then its empty
+        signal commit, and post its handback comment naming it."""
         child = tree(self, {})
         git(child, "clone", "-q", str(self.origin), ".")
         git(child, "config", "user.name", "c")
         git(child, "config", "user.email", "c@c")
-        git(child, "switch", "-q", "-C", f"orch/p{self.plan}/hello", f"origin/plan/p{self.plan}")
+        git(child, "switch", "-q", "-C", f"orch/p{self.plan}/hello", "origin/work")
+        (child / "orch-probe").mkdir(exist_ok=True)
         (child / "orch-probe" / "hello.py").write_text(code, encoding="utf-8")
         (child / "orch-probe" / "test_hello_ac.py").write_text(ac, encoding="utf-8")
         git(child, "add", "-A")
@@ -230,7 +230,7 @@ class LockedCheckTest(LockedScenario):
         self.assertIn("Green", self.check())  # no CI at all: the phase is skipped
         self.gh.runs = [{"name": "lint", "status": "completed", "conclusion": "success"}]
         text = self.check()
-        self.assertIn("merged with the newest plan/p", text)
+        self.assertIn("merged with the newest work", text)
         self.assertEqual(self.port.ticket("s1")["crew"]["hello"]["lastCheck"]["sha"], talk.read(self.said[-1])["sha"])
 
     def test_the_check_runs_the_locked_test_alone_and_needs_no_ac_behaviour(self):

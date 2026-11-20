@@ -13,7 +13,7 @@ from typing import Any, Callable
 from harness.utils.contracts import now
 from harness.utils.git.github import GitHubError
 from harness.utils.ledger import store
-from harness.utils.orchestra import crew, locked, orders, synced
+from harness.utils.orchestra import crew, orders, synced
 from harness.utils.orchestra.card import unit_spec
 from harness.utils.orchestra.draft import DRAFTS, ready
 from harness.utils.orchestra.review import ReviewError, child_of, set_entry
@@ -57,7 +57,7 @@ def own_files(ticket: Ticket) -> list[str]:
 
 def accept(port: PlanStore, sid: str, name: str, units: dict[str, Any], github: Callable[..., Any]) -> str:
     """Merge a child whose check is green this round: its pull request, at the commit the check tested, into the base
-    it must go to (the plan branch when the parent locked tests, else its unit's base). The user's approval of the
+    it must go to (its unit's base). The user's approval of the
     delegated plan covers this merge: it runs in harness code, so the merge gate (utils/forge/merges.py) writes no
     pass and still asks the user for any merge by the merge tool. Then the child is told to stop.
 
@@ -82,7 +82,7 @@ def accept(port: PlanStore, sid: str, name: str, units: dict[str, Any], github: 
     held = (ticket.get(DRAFTS) or {}).get(name) or entry.get("pr") or {}
     if not held.get("repo") or not held.get("number"):
         raise ReviewError(f"{name} has no pull request to merge (spawn opens one for every child)")
-    into = (ticket.get(locked.LOCK) or {}).get("branch") or unit_spec(card, units).get("base", "main")
+    into = unit_spec(card, units).get("base", "main")  # no plan branch: a child merges into its unit base
     path = f"repos/{held['repo']}/pulls/{held['number']}"
     try:
         pr = github("GET", path) or {}

@@ -1,6 +1,6 @@
 """Sessions part 5, the draft pull request (utils/orchestra/draft.py): for a plan with locked tests, spawn makes the
-child's branch with one start commit, opens one draft pull request into the plan branch (a fake GitHub here, a real
-origin), and gives the call that watches it."""
+child's branch from the base with one start commit that adds its locked tests, opens one draft pull request into the
+base (a fake GitHub here, a real origin), and gives the call that watches it."""
 import json
 import unittest
 
@@ -48,14 +48,16 @@ class DraftScenario(LockedScenario):
 
 class DraftTest(DraftScenario):
     def test_spawn_opens_one_draft_after_a_start_commit_and_gives_the_watch_call(self):
-        """s2.start.empty: the start commit on the child's branch changes no file; then one draft into the plan
-        branch, kept."""
+        """s6.start.tests: the start commit is cut from the base and adds the locked tests (the parent's copy, from
+        the ledger); then one draft into the base, kept. No plan branch."""
         text = self.spawn()
-        ref, into = f"orch/p{self.plan}/hello", f"plan/p{self.plan}"
+        ref, into = f"orch/p{self.plan}/hello", "work"
         self.assertEqual(git(self.origin, "log", "--format=%s", f"{into}..{ref}").splitlines(), ["#41 hello: start"])
-        self.assertEqual(git(self.origin, "show", "--name-only", "--format=", ref).split(), [])  # an empty commit
-        self.assertEqual(git(self.origin, "ls-tree", "-r", "--name-only", ref),
-                         git(self.origin, "ls-tree", "-r", "--name-only", into))  # no .harness file
+        self.assertEqual(git(self.origin, "show", "--name-only", "--format=", ref).split(),
+                         ["orch-probe/test_hello_ac.py"])  # the locked test, nothing else (no .harness file)
+        from harness.tests.utils.test_review import AC_TEST
+        self.assertEqual(git(self.origin, "show", f"{ref}:orch-probe/test_hello_ac.py"), AC_TEST)
+        self.assertNotIn(f"plan/p{self.plan}", git(self.origin, "branch", "--list"))
         self.assertIn("Issue #41: https://github.com/o/r/issues/41", git(self.origin, "log", "-1", "--format=%B", ref))
         (method, path, fields), = self.github.pulls()
         self.assertEqual((method, path), ("POST", "repos/o/r/pulls"))

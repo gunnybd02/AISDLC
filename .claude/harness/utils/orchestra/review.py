@@ -214,7 +214,7 @@ def check(port: PlanStore, sid: str, name: str, units: dict[str, Any], verify: l
         raise ReviewError(f"{name} has not handed back since it was sent back")
     where = (ticket.get(DRAFTS) or {}).get(name) or entry.get("pr") or {}
     gate(port, sid, name, card, entry, where, said, github)
-    into = (ticket.get(locked.LOCK) or {}).get("branch") or unit.get("base", "main")
+    into, own = unit.get("base", "main"), locked.texts(port, ticket)  # own: the parent's copy, from the ledger
     with checkout(unit, repo, ref) as folder:
         if said.get("sha") != git(folder, "rev-parse", "HEAD").strip():
             raise ReviewError(f"the tip of {ref} is not its receipt's commit: the receipt does not describe the code "
@@ -222,11 +222,10 @@ def check(port: PlanStore, sid: str, name: str, units: dict[str, Any], verify: l
         dirty = list(receipt.get("uncommitted") or [])
         root = folder if unit.get("path", ".") in ("", ".") else str(Path(folder) / unit["path"])
         touched = locked.changed(root, ticket, card) if card.get("acTests") else []
-        base_sha = merged_with(folder, into)
+        merged_with(folder, into)
         if card.get("acTests"):  # the parent's own copy judges it, whatever the branch holds
-            prefix = "" if unit.get("path", ".") in ("", ".") else unit["path"].rstrip("/") + "/"
             for test in card["acTests"]:
-                (Path(root) / test).write_text(git(folder, "show", f"{base_sha}:{prefix}{test}"), encoding="utf-8")
+                (Path(root) / test).write_text(own[test], encoding="utf-8")
             missing = []
             ok, tail = rerun(root, command, list(card["acTests"]), int(timeout_min) * 60)
         else:

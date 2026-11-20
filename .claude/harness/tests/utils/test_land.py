@@ -6,7 +6,7 @@ from harness.utils.contracts import Event
 from harness.utils.orchestra import land, review
 from harness.utils.plan import tickets
 from harness.tests import tree
-from harness.tests.utils.test_review import (LOCKED_UNITS, URL, UNITS, FakeGitHub, LockedScenario, Scenario, git)
+from harness.tests.utils.test_review import (CODE, LOCKED_UNITS, URL, UNITS, FakeGitHub, LockedScenario, Scenario, git)
 
 
 class PlanGitHub:
@@ -64,10 +64,10 @@ class LockedLandTest(LockedScenario):
         self.assertEqual(land.own_files({"plan": {"files": ["orch-probe/test_hello_ac.py", "notes.md"], "children": [
             {"name": "hello", "change": ["orch-probe/hello.py"], "acTests": ["orch-probe/test_hello_ac.py"]}]}}),
             ["notes.md"])
-        github = PlanGitHub(self.origin, tree(self, {}), {5: (f"orch/p{self.plan}/hello", f"plan/p{self.plan}")})
+        github = PlanGitHub(self.origin, tree(self, {}), {5: (f"orch/p{self.plan}/hello", "work")})
         self.hand_back()
         self.assertIn("Green", self.check())
-        self.assertIn(f"accepted and merged: #5 into plan/p{self.plan}",
+        self.assertIn("accepted and merged: #5 into work",
                       land.accept(self.port, "s1", "hello", LOCKED_UNITS, github))
         ticket = self.port.ticket("s1")
         only = {**ticket["plan"], "files": ["orch-probe/test_hello_ac.py"]}  # the run plan: only the locked test
@@ -96,7 +96,7 @@ class LandTest(Scenario):
         with self.assertRaisesRegex(review.ReviewError, "goes into main, not work"):
             land.accept(self.port, "s1", "hello", UNITS, github)
         github.base = "work"
-        self.hand_back()  # a new push after the check
+        self.hand_back(code=CODE + "# moved\n")  # a new push after the check
         with self.assertRaisesRegex(review.ReviewError, "moved since the check"):
             land.accept(self.port, "s1", "hello", UNITS, github)
         self.assertIn("Green", self.check())

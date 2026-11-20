@@ -1,8 +1,8 @@
 """orchestra: the parent's side of a delegated plan (docs/05-orchestra.md, for the cloud as docs/05b-orchestra-cloud.md
 says). The user approved the plan with its children once, in the form; these actions start the children.
 
-- lock: the acceptance tests the cards name (acTests), written by the parent, committed and pushed on the plan branch
-  plan/p<n>, their hashes kept (utils/orchestra/locked.py); spawn needs it for a card with acTests.
+- lock: the acceptance tests the cards name (acTests), written by the parent, their text and hashes kept in the
+  ledger (utils/orchestra/locked.py); each child's start commit adds them; spawn needs it for a card with acTests.
 - tickets: one GitHub issue per child with a machine block and its hash, and the ticket file (utils/orchestra/issues.py).
 - spawn {name, model?}: the brief of a child and the create_session call that opens it, on Sonnet unless a model is
   named (another model asks the user's form: utils/forge/sessions.py). Harness code cannot open a cloud session; the
@@ -123,8 +123,8 @@ class Spawn(McpAction):
         unit = unit_spec(card, plan_units(own, ctx.ports["units"]()))
         url = unit["repo"] or source_url(ticket["plan"].get("root") or os.getcwd())
         fresh = ((ticket.get("crew") or {}).get(card["name"]) or {}).get("fresh") or {}
-        start = (ticket.get(locked.LOCK) or {}).get("branch", "")  # with a lock, every child starts from the plan branch
-        issue, made = self.recorded(ctx.ports["plans"], ticket, card["name"]) if start else ({}, {})
+        start = ""  # no plan branch: every child starts from its unit's base, its tests in its start commit
+        issue, made = self.recorded(ctx.ports["plans"], ticket, card["name"]) if ticket.get(locked.LOCK) else ({}, {})
         try:  # the draft comes first, for every child: the brief names it, and the talk goes there (talk.py)
             pr = drafts.open_draft(ctx.ports["plans"], sid, card, unit, ctx.ports["github"])
         except drafts.DraftError as e:
@@ -170,10 +170,11 @@ class Spawn(McpAction):
 
 
 class Lock(McpAction):
-    """orchestra.lock: the acceptance tests of the cards, committed and pushed on the plan branch, their hashes kept."""
+    """orchestra.lock: the acceptance tests of the cards, their text and hashes kept in the ledger; nothing pushed."""
     block, name, effect = "orchestra", "lock", WRITE
-    summary = ("Lock the acceptance tests the cards name (acTests, written by you first): commit them on the plan "
-               "branch plan/p<n> and push it, before any child starts; spawn needs it. No CI file is written")
+    summary = ("Lock the acceptance tests the cards name (acTests, written by you first): keep their text and hashes "
+               "in the ledger, before any child starts; spawn needs it. Each child's start commit adds them; nothing "
+               "is pushed and no CI file is written")
     args_schema = {"type": "object", "properties": {}}
     needs = ("plans", "session", "units")
 

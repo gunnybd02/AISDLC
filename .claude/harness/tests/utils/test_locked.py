@@ -1,6 +1,6 @@
-"""Sessions part 2, the lock: the parent writes the acceptance tests the cards name, lock commits them on the plan
-branch plan/p<n> (made from the unit's base) and pushes it, keeping the hash of each file; a missing test stops it; a
-started child stops it; spawn needs it. A real origin, reached as https://github.com/o/r through git's insteadOf."""
+"""Sessions part 2, the lock: the parent writes the acceptance tests the cards name, lock keeps the text and hash of
+each in the ledger and pushes nothing (no plan branch); a missing test stops it; a started child stops it; spawn needs
+it. A real origin, reached as https://github.com/o/r through git's insteadOf."""
 import subprocess
 import unittest
 
@@ -50,41 +50,30 @@ class LockTest(unittest.TestCase):
         (self.repo / "orch-probe").mkdir(exist_ok=True)
         (self.repo / "orch-probe" / "test_hello_ac.py").write_text(text, encoding="utf-8")
 
-    def test_lock_pushes_the_acceptance_tests_on_the_plan_branch_and_keeps_their_hashes(self):
-        """s2.lock.push"""
+    def test_lock_keeps_the_tests_in_the_ledger_and_pushes_no_branch(self):
+        """s6.lock.ledger: the text and hash of each test are in the ledger; nothing is pushed, no plan branch and no CI
+        file; a second lock before any child starts keeps the new text."""
         self.write_test()
         out = Lock().run(self.ctx, {})
-        ref = f"plan/p{self.plan}"
-        self.assertIn(f"Locked on {ref}: orch-probe/test_hello_ac.py", out)
-        self.assertEqual(git(self.origin, "show", f"{ref}:orch-probe/test_hello_ac.py"), AC)
-        self.assertEqual(git(self.origin, "rev-parse", f"{ref}~1"), git(self.origin, "rev-parse", "work"))  # from base
-        held = self.port.ticket("s1")[locked.LOCK]
-        self.assertEqual(held["branch"], ref)
-        copy = tree(self, {"t.py": AC}) / "t.py"  # the same text: the parent's own copy is gone (clear)
-        self.assertEqual(locked.locked_files(self.port.ticket("s1")), {"orch-probe/test_hello_ac.py": content_hash(str(copy))})
-        self.assertEqual(locked.unlocked(self.port.ticket("s1"), CARD), [])
-        self.write_test(AC + "\n# more\n")
-        Lock().run(self.ctx, {})  # before any child starts, a second lock moves the plan branch on
-        self.assertIn("# more", git(self.origin, "show", f"{ref}:orch-probe/test_hello_ac.py"))
-
-    def test_lock_writes_no_ci_workflow(self):
-        """s2.lock.no-workflow: CI is the repository's own: the plan branch holds the tests and no workflow file."""
-        self.write_test()
-        out = Lock().run(self.ctx, {})
-        ref = f"plan/p{self.plan}"
-        files = git(self.origin, "ls-tree", "-r", "--name-only", ref).split()
-        self.assertIn("orch-probe/test_hello_ac.py", files)
-        self.assertFalse([f for f in files if f.startswith(".github/")])
+        self.assertIn("Locked: orch-probe/test_hello_ac.py, their text and hash kept in the ledger; nothing is pushed", out)
+        self.assertEqual(git(self.origin, "branch", "--list").split(), ["work"])  # no plan/p<n>, no other branch
         self.assertNotIn("workflow", out)
-        self.assertNotIn("workflow", self.port.ticket("s1")["lock"]["units"][0])
+        ticket = self.port.ticket("s1")
+        self.assertNotIn("branch", ticket[locked.LOCK])
+        copy = tree(self, {"t.py": AC}) / "t.py"  # the same text: the parent's own copy is gone (clear)
+        self.assertEqual(locked.locked_files(ticket), {"orch-probe/test_hello_ac.py": content_hash(str(copy))})
+        self.assertEqual(locked.texts(self.port, ticket), {"orch-probe/test_hello_ac.py": AC})
+        self.assertEqual(locked.unlocked(ticket, CARD), [])
+        self.write_test(AC + "\n# more\n")
+        Lock().run(self.ctx, {})  # before any child starts, a second lock keeps the new text
+        self.assertIn("# more", locked.texts(self.port, self.port.ticket("s1"))["orch-probe/test_hello_ac.py"])
 
     def test_lock_deletes_the_untracked_copy_of_a_locked_test(self):
-        """s2.lock.local-copies-gone: the plan branch holds the test; the parent's tree no longer does."""
+        """s2.lock.local-copies-gone: the ledger holds the test; the parent's tree no longer does."""
         self.write_test()
         out = Lock().run(self.ctx, {})
         self.assertFalse((self.repo / "orch-probe" / "test_hello_ac.py").exists())
-        self.assertEqual(git(self.origin, "show", f"plan/p{self.plan}:orch-probe/test_hello_ac.py"), AC)
-        self.assertIn(f"Your tree keeps no copy of orch-probe/test_hello_ac.py: plan/p{self.plan} holds it", out)
+        self.assertIn("Your tree keeps no copy of orch-probe/test_hello_ac.py: the ledger holds it", out)
         self.assertEqual(git(self.repo, "status", "--porcelain"), "")
 
     def test_lock_keeps_a_tracked_test_and_names_it(self):
@@ -104,7 +93,7 @@ class LockTest(unittest.TestCase):
             Lock().run(self.ctx, {})
         self.assertIn("write these acceptance tests first", str(e.exception))
         self.assertIn("orch-probe/test_hello_ac.py", str(e.exception))
-        self.assertEqual(git(self.origin, "branch", "--list", f"plan/p{self.plan}"), "")
+        self.assertEqual(git(self.origin, "branch", "--list").split(), ["work"])
 
     def test_spawn_needs_the_lock_and_a_started_child_stops_a_new_one(self):
         """s2.lock.before-spawn"""
@@ -129,8 +118,7 @@ class LockTest(unittest.TestCase):
             Lock().run(self.ctx, {})
         self.assertIn("a child has started", str(e.exception))
 
-    def test_the_plan_branch_is_outside_the_childrens_branches(self):
-        self.assertEqual(locked.plan_branch(7), "plan/p7")
+    def test_a_card_path_in_its_unit(self):
         self.assertEqual(locked.in_unit({"path": "api"}, "tests/t.py"), "api/tests/t.py")
         self.assertEqual(locked.in_unit({"path": "."}, "tests/t.py"), "tests/t.py")
 
