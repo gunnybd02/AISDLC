@@ -11,9 +11,11 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
+from pathlib import Path
 from typing import Any, Optional
 
 from harness.utils.git.run import GitError, git
+from harness.utils.ledger.writes import content_hash
 from harness.utils.orchestra.brief import CARD_CLOSE, CARD_OPEN, HEAD, branch
 from harness.utils.orchestra.card import HOME, HOME_SPEC, behaviour_id
 from harness.utils.plan import desk, tickets
@@ -29,7 +31,7 @@ def parse(text: str) -> Optional[ChildRole]:
     """The role a brief gives: its first words name the child and the plan, and its card block (one JSON object) says
     the same child and plan, with the parent's session, the branch, the card, the behaviour ids, the plan branch it
     starts from (start, "" for the unit's base), and its issue, ticket file, draft pull request and order fields
-    (record, {} when the brief names none; orders: utils/orchestra/orders.py).
+    (record, {} when the brief names none; orders: utils/orchestra/orders.py; locks: the hash of each locked test).
 
     Args:
         text: a prompt.
@@ -55,7 +57,7 @@ def parse(text: str) -> Optional[ChildRole]:
             or unit["path"].startswith("/") or not isinstance(unit["verify"], list):
         return None
     start = body.get("start") if isinstance(body.get("start"), str) else ""
-    record = {k: body[k] for k in ("issue", "ticket", "pr", "orders") if isinstance(body.get(k), dict)}
+    record = {k: body[k] for k in ("issue", "ticket", "pr", "orders", "locks") if isinstance(body.get(k), dict)}
     return {"name": name, "plan": plan, "draft": str(body.get("draft", "")), "parent": str(body["parent"]),
             "branch": body["branch"], "card": card, "unit": unit, "start": start, "record": record,
             "behaviours": [behaviour_id(plan, name, n) for n in range(1, len(card.get("ac", [])) + 1)]}
@@ -195,3 +197,30 @@ def expected_after(repo: str, ticket: Any, expected: str) -> str:
     for _, start, end in sorted(moves, key=lambda move: move[0]):
         expected = end if start == expected and end else expected
     return expected
+
+
+def drifted(role: Any, folder: str) -> list[str]:
+    """The locked acceptance tests of a child that differ from their locked hash, or are missing, in its clone.
+
+    Args:
+        role: the child's role (its record keeps locks {path: hash} from the brief).
+        folder: the child's unit folder (unit_root).
+
+    Returns:
+        The drifted paths, sorted; [] when every locked test is as the orchestrator locked it.
+    """
+    locks = ((role or {}).get("record") or {}).get("locks") or {}
+    out = []
+    for rel, digest in sorted(locks.items()):
+        path = Path(folder) / rel
+        if not path.is_file() or content_hash(str(path)) != digest:
+            out.append(rel)
+    return out
+
+
+def drift_text(paths: list[str]) -> str:
+    """Why take or push refuses a drifted locked test, and the way back."""
+    return (f"{', '.join(paths)}: a locked acceptance test differs from the orchestrator's (or is gone). Put it back as "
+            "the start commit made it (restore the file from your branch's first commit) and never change it; then "
+            "run this again.")
+

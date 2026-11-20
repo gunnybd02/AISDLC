@@ -145,6 +145,8 @@ def take(port: PlanStore, sid: str, root: str, first: Optional[Callable[[str], A
     folder = child.unit_root(role, repo)
     if not Path(folder).is_dir():
         raise WorkError(f"the unit's folder {role['unit']['path']} is not in this clone ({repo})")
+    if child.drifted(role, folder):  # a locked acceptance test is not as the orchestrator locked it
+        raise WorkError(child.drift_text(child.drifted(role, folder)))
     record = first(repo) if first else None  # the registration, a comment on the issue, before the plan opens
     plan_id, _, _ = port.present(child.card_plan(role, folder), sid=sid)
     by = f"grant of plan {role['plan']} ({role['parent']})" + (
@@ -178,6 +180,9 @@ def push(port: PlanStore, sid: str, judge: GitJudge) -> str:
     on = git(repo, "branch", "--show-current").strip()
     if on != role["branch"]:
         raise WorkError(f"you are on {on or 'a detached HEAD'}; a child pushes only {role['branch']}")
+    drift = child.drifted(role, child.unit_root(role, repo))
+    if drift:
+        raise WorkError(child.drift_text(drift))
     verdict = judge(repo, ["push", "-u", "origin", role["branch"]])
     if stopped(verdict):
         raise WorkError(verdict.reason)

@@ -57,6 +57,12 @@ class DraftTest(DraftScenario):
                          ["orch-probe/test_hello_ac.py"])  # the locked test, nothing else (no .harness file)
         from harness.tests.utils.test_review import AC_TEST
         self.assertEqual(git(self.origin, "show", f"{ref}:orch-probe/test_hello_ac.py"), AC_TEST)
+        from harness.utils.orchestra import locked
+        from harness.utils.orchestra.brief import CARD_CLOSE, CARD_OPEN
+        prompt = json.loads(text[text.index("\n{") + 1:])["prompt"]
+        block = json.loads(prompt[prompt.index(CARD_OPEN) + len(CARD_OPEN):prompt.index(CARD_CLOSE)])
+        self.assertEqual(block["locks"], locked.locked_files(self.port.ticket("s1")))  # the hashes the child guards
+        self.assertEqual(list(block["locks"]), ["orch-probe/test_hello_ac.py"])
         self.assertNotIn(f"plan/p{self.plan}", git(self.origin, "branch", "--list"))
         self.assertIn("Issue #41: https://github.com/o/r/issues/41", git(self.origin, "log", "-1", "--format=%B", ref))
         (method, path, fields), = self.github.pulls()

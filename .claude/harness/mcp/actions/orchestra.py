@@ -133,7 +133,9 @@ class Spawn(McpAction):
                  f"wakes you: {drafts.WATCH} {json.dumps(drafts.watch_call(pr))}. Then ")
         prompt = briefs.brief(plan, draft, card, sid, unit, fresh.get("note", ""), rounds=limits["rounds"], start=start,
                               issue=issue, ticket_file=made, pr=pr, cloud=briefs.cloud_id(),
-                              key=orders.key_for(ctx.ports["plans"], sid, card["name"]))
+                              key=orders.key_for(ctx.ports["plans"], sid, card["name"]),
+                              locks={p: h for p, h in locked.locked_files(ticket).items()
+                                     if p in card.get("acTests", [])})  # the child's harness refuses a drifted test
         call = briefs.create_call(plan, card, prompt, url, args.get("model", ""))
         where = "" if url else (" The unit's repository has no URL another machine can clone: add source_url to "
                                 "the call by hand.")

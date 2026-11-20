@@ -130,7 +130,7 @@ def known(plan: ApprovedPlan, registry: dict[str, Behaviour], bid: str) -> None:
 def not_locked(port: PlanStore, sid: str, rel: str) -> None:
     """Refuse a file the orchestrator locked for this child session: an acceptance test of its card (acTests), which
     it must make pass and never change (utils/orchestra/locked.py); and, for a child with an issue, any file outside
-    its scope, its card's change and tests (the scope harness ci checks, utils/orchestra/ci.py).
+    its scope, its card's change and tests (the scope of its ticket row and issue).
 
     Args:
         port: the harness ledger (plans, tickets, audit rows).
@@ -147,8 +147,8 @@ def not_locked(port: PlanStore, sid: str, rel: str) -> None:
                         "make it pass and never change it; ask the orchestrator if it is wrong")
     number = ((role.get("record") or {}).get("issue") or {}).get("number")
     if number and not matches(list(card.get("change") or []) + list(card.get("tests") or []), rel):
-        raise DoorError(f"{rel} is outside the scope of issue #{number} (its change and tests): harness ci refuses "
-                        "any other file; ask the orchestrator (run('orchestra', 'question')) if the card needs it")
+        raise DoorError(f"{rel} is outside the scope of issue #{number} (its change and tests): the orchestrator's "
+                        "check refuses any other file; ask the orchestrator (run('orchestra', 'question')) if the card needs it")
 
 
 def add_file(port: PlanStore, sid: str, plan: ApprovedPlan, path: str, behavior: str, why: Optional[str]) -> str:

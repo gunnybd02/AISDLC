@@ -82,7 +82,8 @@ def child_subject(role: dict[str, Any], what: str) -> str:
 
 def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[str, Any] | None = None,
                start: str = "", issue: dict[str, Any] | None = None, ticket_file: dict[str, Any] | None = None,
-               pr: dict[str, Any] | None = None, orders: dict[str, Any] | None = None) -> str:
+               pr: dict[str, Any] | None = None, orders: dict[str, Any] | None = None,
+               locks: dict[str, str] | None = None) -> str:
     """The card as the child's harness reads it: one JSON object between CARD_OPEN and CARD_CLOSE.
 
     Args:
@@ -97,6 +98,8 @@ def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[st
         ticket_file: the plan's ticket file {title, sha256} in the store's tickets folder; None for none.
         pr: its draft pull request {repo, number, url} (utils/orchestra/draft.py); None for none.
         orders: what it checks the parent's orders with, {key, cloud, rounds} (utils/orchestra/orders.py); None.
+        locks: the content hash of each locked acceptance test of the card ({path: hash}, locked.locked_files); the
+            child's take and push refuse a file that drifted from it.
 
     Returns:
         The block, three lines.
@@ -108,7 +111,8 @@ def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[st
             **({"issue": {k: issue.get(k) for k in ("repo", "number", "url", "sha")}} if issue else {}),
             **({"ticket": {k: ticket_file.get(k) for k in ("title", "sha256")}} if ticket_file else {}),
             **({"pr": {k: pr.get(k) for k in ("repo", "number", "url")}} if pr else {}),
-            **({"orders": {k: orders.get(k) for k in ("key", "cloud", "rounds")}} if orders else {})}
+            **({"orders": {k: orders.get(k) for k in ("key", "cloud", "rounds")}} if orders else {}),
+            **({"locks": dict(locks)} if locks else {})}
     return "\n".join([CARD_OPEN, json.dumps(body, ensure_ascii=False, sort_keys=True), CARD_CLOSE])
 
 
@@ -128,7 +132,7 @@ def listed(label: str, paths: list[str]) -> str:
 def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, Any] | None = None,
           resume: str = "", *, rounds: int, start: str = "", issue: dict[str, Any] | None = None,
           ticket_file: dict[str, Any] | None = None, pr: dict[str, Any] | None = None, cloud: str = "",
-          key: str = "") -> str:
+          key: str = "", locks: dict[str, str] | None = None) -> str:
     """The first prompt of a child: who it is, its work, how it is approved, that nobody is at its keyboard, its
     permissions, how it asks and hands back, its files and criteria, and the card block.
 
@@ -148,13 +152,17 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
         pr: its draft pull request {repo, number, url}; None for none.
         cloud: the parent's cloud session id (cloud_id), named beside parent_sid; "" outside the cloud.
         key: the child's order key (utils/orchestra/orders.key_for); "" for none.
+        locks: {path: hash} of the card's locked acceptance tests (card_block); None for none.
 
     Returns:
         The brief, as the prompt of create_session.
     """
-    spoken = (f"Your draft pull request is #{pr['number']} ({pr['url']}). CI runs harness ci on each push you make, and "
-              "the orchestrator is woken by its result. Your question and your handback are posted there as comments "
-              "by the harness itself: that is how your words reach the orchestrator.") if pr else ""
+    spoken = (f"Your draft pull request is #{pr['number']} ({pr['url']}) into {start or (unit or HOME_SPEC)['base']}. "
+              "CI is the project's own: when the repository has one, it runs on each push and the orchestrator waits "
+              "for it; when it has none, that phase is skipped. Your question and your handback are posted there as "
+              "comments by the harness itself: that is how your words reach the orchestrator, whom your push wakes. "
+              "When you hand back, the orchestrator tests your pull request with its own copy of the acceptance tests "
+              "and, when they pass, merges it into the base itself.") if pr else ""
     record = (f"Your task on record: issue #{issue['number']} ({issue['url']}), and your row in the ticket file "
               f"{(ticket_file or {}).get('title', '(none)')} of the store's tickets folder. take registers you first: "
               "it asks you to download that file once with the Google Drive tool, the harness checks it and the issue "
@@ -164,9 +172,10 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
     name, spec = card["name"], unit or dict(HOME_SPEC)
     parent = f"{cloud} (harness id {parent_sid})" if cloud and cloud != parent_sid else parent_sid
     into, locked = start or spec["base"], list(card.get("acTests", []))
-    held = (f"Acceptance tests (locked): {', '.join(locked)}. The orchestrator wrote them; they are on your branch from "
-            f"the start (take makes it from {into}). Make them pass and never change them: the harness refuses it, and "
-            "the check sees any change.") if locked else ""
+    held = (f"Acceptance tests (locked): {', '.join(locked)}. The orchestrator wrote them; its start commit put them on "
+            f"your branch, cut from {into}. Make them pass and never change them: the harness refuses an edit, and "
+            "take and push refuse a test that differs from its locked hash. The orchestrator runs its own copy."
+            ) if locked else ""
     judged = ("The orchestrator reads no code: it checks that the locked acceptance tests are unchanged on your branch "
               "and runs them, and only them, with your unit's test command." if locked else
               "The orchestrator reads no code: it checks that each criterion has a registered behaviour whose "
@@ -213,7 +222,7 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
                               listed("Tests", card.get("tests", []))) if x),
         f"{judged} It may send you back at most {rounds} times; then the user decides.\n" + "\n".join(acs),
         card_block(plan, card, parent_sid, draft, spec, start, issue, ticket_file, pr,
-                   {"key": key, "cloud": cloud, "rounds": rounds} if key else None),
+                   {"key": key, "cloud": cloud, "rounds": rounds} if key else None, locks),
     ]
     return "\n\n".join(p for p in parts if p)
 
