@@ -47,8 +47,8 @@ class IssuesTest(LockedScenario):
         with mock.patch.dict("os.environ", {store.ENV: root}):
             text = self.tickets()
         ticket = self.port.ticket("s1")
-        made = ticket[issues.ISSUES]["file"]
-        self.assertEqual(made["title"], f"{ticket['draft']}__{ticket['plan']['sha'][:12]}.csv")
+        made = ticket[issues.ISSUES]["files"]["hello"]
+        self.assertEqual(made["title"], f"{ticket['draft']}__hello__{ticket['plan']['sha'][:12]}.csv")
         rows = list(csv.reader(io.StringIO((self.work / ".harness-export" / made["title"]).read_text())))
         self.assertEqual(rows[0], list(issues.COLUMNS))
         held = ticket[issues.ISSUES]["children"]["hello"]
@@ -68,6 +68,25 @@ class IssuesTest(LockedScenario):
         other = Event("PostToolUse", "mcp__Google_Drive__create_file", {"title": "x.csv"}, "s1", "/w",
                       {"id": "1OtherFileId00001", "title": "x.csv"})
         self.assertEqual(store.uploaded(self.port, other), [])  # a file the harness did not make is not a ticket
+
+    def test_each_child_ticket_goes_to_its_subtask_folder_and_its_brief_names_its_path(self):
+        """s3.tickets.per-child: a plan that names its repo gets store/<project>/P<plan>-<title>/<child>/: the ticket
+        file goes there (the folders found or made first), and the brief names that path for the child's stop copy."""
+        root = "1RootFolderId0001"
+        fresh = self.port.ticket("s1")
+        plan = {**fresh["plan"], "title": "Hello module", "repos": {"probe": {"url": "https://github.com/o/r"}}}
+        self.port.write(lambda con, rec: plan_tickets.save(con, {**fresh, "plan": plan}))
+        path = ["r", f"P{self.plan}-hello-module", "hello"]
+        with mock.patch.dict("os.environ", {store.ENV: root}):
+            text = self.tickets()
+            self.assertIn("First find the store's folder " + "/".join(path), text)
+            self.assertIn(f"title = 'r' and mimeType = '{store.FOLDER_MIME}' and parentId = '{root}'", text)
+            self.assertIn("  parentId: <the id Drive gave for hello>", text.splitlines())
+            title = self.port.ticket("s1")[issues.ISSUES]["files"]["hello"]["title"]
+            store.uploaded(self.port, Event("PostToolUse", "mcp__Google_Drive__create_file", {"title": title}, "s1",
+                                            "/w", {"id": "1TicketFileId0001", "title": title}))
+            brief = json.loads(Spawn().run(self.ctx(FakeIssues()), {"name": "hello"}).split("\n", 1)[1])["prompt"]
+        self.assertIn('"store": {"path": ' + json.dumps(path) + "}", brief)
 
     def test_with_no_store_folder_the_ticket_stays_here(self):
         self.assertIn("no store folder is set", self.tickets())
@@ -136,7 +155,7 @@ class IssuesTest(LockedScenario):
             with self.assertRaises(ActionError) as e:
                 Spawn().run(ctx, {"name": "hello"})
             self.assertIn("is not in the store yet", str(e.exception))
-            title = self.port.ticket("s1")[issues.ISSUES]["file"]["title"]
+            title = self.port.ticket("s1")[issues.ISSUES]["files"]["hello"]["title"]
             store.uploaded(self.port, Event("PostToolUse", "mcp__Google_Drive__create_file", {"title": title}, "s1",
                                             "/w", {"id": "1TicketFileId0001", "title": title}))
             text = Spawn().run(ctx, {"name": "hello"})

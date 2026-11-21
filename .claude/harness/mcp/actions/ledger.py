@@ -11,7 +11,7 @@ from typing import Any
 from harness.utils.contracts import READ, WRITE, ActionContext, ActionError, McpAction
 from harness.utils.git.branches import current
 from harness.utils.git.facts import top
-from harness.utils.ledger import store
+from harness.utils.ledger import layout, store
 from harness.utils.orchestra import crew
 from harness.utils.ledger.export import FOLDER, FOLDER_ID, snapshot, upload_call
 from harness.utils.plan.life import settle
@@ -180,7 +180,8 @@ class Export(McpAction):
 
     def run(self, ctx: ActionContext, args: dict[str, Any]) -> str:
         """Copy the whole ledger into <into>/.harness-export/ for the store and answer the one Drive call that uploads
-        it into the store's db folder (first the calls that find or make db when no Drive answer showed it yet).
+        it into the store's db folder, or for a final copy of an orchestra run into its plan or subtask folder
+        (layout.copy_path); first the calls that find or make that folder when no Drive answer showed it yet.
         ActionError with no store folder, into not a folder, an unknown reason, or no ledger yet."""
         folder = str(args.get("folder") or ctx.ports["store"]() or "").strip()
         if not FOLDER_ID.match(folder):
@@ -197,13 +198,17 @@ class Export(McpAction):
             raise ActionError("there is no ledger yet: nothing to export")
         try:
             sid = ctx.ports["session"]()
-            tag = crew.store_tag(ctx.ports["plans"].ticket(sid)) if "plans" in ctx.ports and sid else ""
-            record = store.begin(port, sid, reason, where(into), tag=tag)
+            ticket = ctx.ports["plans"].ticket(sid) if "plans" in ctx.ports and sid else None
+            record = store.begin(port, sid, reason, where(into), tag=crew.store_tag(ticket))
             copy = snapshot(port.path, into / FOLDER, record)
         except LedgerError as e:
             raise ActionError(str(e)) from e
-        db = store.place(port, "db") if folder == store.folder() else ""  # a folder given by hand: its db is not known
-        return upload_call(copy, folder, db)
+        if folder != store.folder():  # a folder given by hand: its db and paths are not known
+            return upload_call(copy, folder)
+        path = layout.copy_path(ticket, reason)  # a final copy of an orchestra run: its plan or subtask folder
+        if path:
+            return upload_call(copy, folder, place=layout.path_words(port, sid, path))
+        return upload_call(copy, folder, store.place(port, "db"))
 
 
 class StoreStatus(McpAction):

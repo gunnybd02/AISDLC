@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Optional, Protocol
 
 from harness.utils.contracts import RULE_ACTIONS, Detector, Event, Finding, Port, Translator, Verdict, waived
 from harness.utils.git.asks import accepts
-from harness.utils.ledger import store
+from harness.utils.ledger import layout, store
 from harness.utils.plan import stop
 from harness.utils.plan.files import allows, relative
 from harness.utils.plan.approval import approvals
@@ -197,6 +197,7 @@ class Act:
             notes += delivery(self.port, event.session, facts.get("git_commit"), facts.get("plan"))
             notes += store.uploaded(self.port, event)  # a Drive tool answered with a copy of the ledger
             notes += store.placed(self.port, event)  # a Drive tool showed the store's db or tickets folder
+            notes += layout.placed(self.port, event)  # ... or a project, plan or subtask folder the harness asked for
             notes += register.ticket_seen(self.port, event)  # a child's ticket, checked now and not kept
             notes += draft.watch_seen(self.port, event)  # the parent watches a child's draft pull request
             notes += doorbell.rung(self.port, event)  # a GitHub notification read: the doorbell reads the CI result

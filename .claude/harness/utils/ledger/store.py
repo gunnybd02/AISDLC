@@ -7,8 +7,9 @@ kept as rows of pl_notes, so the schema stays the pinned one and every copy carr
   store.uploaded  key = the copy's number, target = its file name, text = the Drive file's id; written when the
                   hook sees an MCP tool's create_file answer with that file
   store.asked     key = the mark a turn was held for, so a turn is held once for the same work
-  store.folder    target = db or tickets, key = the store folder's id, text = the subfolder's Drive id; written when
-                  the hook sees a Drive answer show that folder under the store folder (made, or listed by a search)
+  store.folder    target = a folder's name, key = its parent's Drive id, text = its own Drive id; written when the
+                  hook sees a Drive answer show it (made, or listed by a search): db or tickets under the store folder
+                  (placed), or a level of a project, plan or subtask path (layout.py, with its store.path rows)
   store.ticket    target = a ticket file's name, key = its sha256 (utils/orchestra/issues.py); store.ticket_uploaded
                   its Drive id, when the hook sees create_file answer with it
 
@@ -344,7 +345,8 @@ def folder_entries(answer: object) -> list[dict[str, object]]:
 
 def placed(port: PlanStore, event: Event) -> list[str]:
     """Keep the id of a subfolder of the store (db or tickets) that a Drive tool's answer shows: a folder of that name
-    whose parent is the store folder (its parentId or parents), or listed by a call that names the store folder.
+    whose parent is the store folder (its parentId or parents), or listed by a call that names the store folder. The
+    folders of a project, plan or subtask are layout.placed's.
 
     Args:
         port: the harness ledger (plans, tickets, audit rows).

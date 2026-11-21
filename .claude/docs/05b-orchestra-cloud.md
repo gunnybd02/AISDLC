@@ -254,6 +254,15 @@ parent saves its own ledger (`orch.<plan id>.parent`). The harness proves a copy
 answer; the model only runs the search. A copy is the child's own when its name's session is the child's cloud session id
 or its own id inside its harness, which its receipt names: the two differ in the cloud (found live).
 
+**Where the copies and tickets go** (the user's design of 2026-11-21; `utils/ledger/layout.py`). Drive keeps one
+folder per project (the repository's name), one per delegated plan, `P<plan>-<title>`, and one per child in it. The
+child's ticket CSV (one row) and its final copy (reason `stop`) go to its own folder; the parent's final copy (reason
+`plan-close`) to the plan's folder. Every other copy (turn ends, handbacks, pushes) stays in `db/`: the safety net if
+a child's machine dies before its stop. The parent computes the path once (`layout.run_path`) and the brief carries
+it (`store.path` of the card block), so the child's stop copy finds the same folder. Each answer that uploads names
+the folders to find or make, one level at a time, and the hook keeps each folder's id from Drive's answers. The
+search before close or remove reads every folder: `'<store folder>' in ancestors`.
+
 ## 9. Limits
 
 | Limit | Value | Why |

@@ -25,8 +25,8 @@ One upload covers everything before it: at most one per checkpoint, never one pe
    is exactly the harness's, gzips it (`<name>.db.gz`: one Drive call carries about 3 MB of file), and answers with
    one Drive call.
 2. Make that call with the Google Drive tool `create_file` (its name may show the connector's id in place of
-   `Google_Drive`), with exactly the values of the answer. Copies go into the store's `db` folder. When no Drive
-   answer showed `db` yet, the answer first says to find it (`search_files`, `title = 'db'` under the store folder)
+   `Google_Drive`), with exactly the values of the answer. Copies go into the store's `db` folder; the final copy of
+   an orchestra run goes to its plan or subtask folder (the table below). When no Drive answer showed `db` yet, the answer first says to find it (`search_files`, `title = 'db'` under the store folder)
    or make it (`create_file` with `contentMimeType application/vnd.google-apps.folder`); the harness reads Drive's
    answer and keeps its id, so the next export names it.
    | Field | Value |
@@ -68,13 +68,20 @@ end in `.db`, not gzipped). To read one, unzip it first: `gunzip <name>.db.gz` g
 ## The folders of the store
 | Folder | Holds |
 |---|---|
-| `db/` | every new ledger copy |
-| `tickets/` | the ticket file of each delegated plan, `<plan id>__<plan sha>.csv`, one row per child (`run("orchestra", "tickets", {})` writes it; you only upload it by its hash, as its answer says) |
+| `<project>/P<plan>-<title>/` | the parent's final copy of a delegated plan (`plan-close`); `<project>` is the repository's name |
+| `<project>/P<plan>-<title>/<child>/` | that child's ticket file `<plan id>__<child>__<plan sha>.csv` (one row; `run("orchestra", "tickets", {})` writes it, you only upload it by its hash) and its final copy (`stop`) |
+| `db/` | every other ledger copy: turn ends, handbacks, pushes, sessions with no delegated plan (the safety net while a run works) |
+| `tickets/` | the ticket files of plans before the project folders (kept as they are) |
 | the store folder itself | the copies made before `db/` existed; they stay (the store only grows) |
+
+The answers name each folder to find or make, one level at a time (`search_files`, then `create_file` with
+`contentMimeType application/vnd.google-apps.folder` when Drive lists none); the hook reads Drive's answers and keeps
+each folder's id, so the next call names it.
 
 ## Copies of an orchestra run
 A session of a delegated plan adds its plan marker to every copy's name: `...__orch.<plan id>.<child name>__...db`
 for a child, `...__orch.<plan id>.parent__...db` for the parent; the record says it too (`plan`). A Drive search,
-name contains `orch.<plan id>.`, in `db/` and in the store folder, lists every database of that run. The parent's plan
+name contains `orch.<plan id>.` and the store folder in its ancestors, lists every database of that run, in whatever
+folder. The parent's plan
 is delivered, and a child's session archived, only once that child's copy is in the store
 (`guide("orchestrate", "skills")`).

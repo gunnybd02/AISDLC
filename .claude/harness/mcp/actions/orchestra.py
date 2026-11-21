@@ -30,7 +30,7 @@ from typing import Any, Optional
 from harness.utils.contracts import ActionContext, ActionError, McpAction, READ, WRITE, answered, session_of
 from harness.utils.git.facts import top
 from harness.utils.git.run import GitError, git
-from harness.utils.ledger import store
+from harness.utils.ledger import layout, store
 from harness.utils.orchestra import brief as briefs
 from harness.utils.orchestra import crew, issues, locked, orders, register, work
 from harness.utils.orchestra import draft as drafts  # draft is also the desk id of a plan here
@@ -135,7 +135,8 @@ class Spawn(McpAction):
                               issue=issue, ticket_file=made, pr=pr, cloud=briefs.cloud_id(),
                               key=orders.key_for(ctx.ports["plans"], sid, card["name"]),
                               locks={p: h for p, h in locked.locked_files(ticket).items()
-                                     if p in card.get("acTests", [])})  # the child's harness refuses a drifted test
+                                     if p in card.get("acTests", [])},  # the child's harness refuses a drifted test
+                              store_path=layout.run_path(ticket["plan"], card["name"]))  # where its stop copy goes
         call = briefs.create_call(plan, card, prompt, url, args.get("model", ""))
         where = "" if url else (" The unit's repository has no URL another machine can clone: add source_url to "
                                 "the call by hand.")
@@ -147,7 +148,7 @@ class Spawn(McpAction):
 
     @staticmethod
     def recorded(port: PlanStore, ticket: Ticket, name: str) -> tuple[dict[str, Any], dict[str, Any]]:
-        """The issue of a child and the plan's ticket file: a plan with locked tests starts a child only with both.
+        """The issue of a child and its ticket file: a plan with locked tests starts a child only with both.
 
         Args:
             port: the ledger port.
@@ -155,7 +156,7 @@ class Spawn(McpAction):
             name: the child's name.
 
         Returns:
-            (its issue {repo, number, url, sha}, the ticket file {title, sha256, path}).
+            (its issue {repo, number, url, sha}, its ticket file {title, sha256, path}).
 
         Raises:
             ActionError: no issue yet; or, with a store folder, the ticket file is not in the store yet.
@@ -164,7 +165,7 @@ class Spawn(McpAction):
         issue = (held.get("children") or {}).get(name)
         if not issue:
             raise ActionError(f"{name} has no issue yet: run('orchestra', 'tickets', {{}}) after lock, then spawn")
-        made = held.get("file") or {}
+        made = (held.get("files") or {}).get(name) or {}
         if store.folder() and not store.ticket_held(port, made.get("title", "")):
             raise ActionError(f"the ticket file {made.get('title') or '(not written)'} is not in the store yet: upload "
                               "it as run('orchestra', 'tickets', {}) said; the harness reads Drive's answer itself")
@@ -195,8 +196,8 @@ class Tickets(McpAction):
     """orchestra.tickets: one GitHub issue per child, and the ticket file of the delegated plan."""
     block, name, effect = "orchestra", "tickets", WRITE
     summary = ("Open one GitHub issue per child of the delegated plan (after lock, before spawn), each with its card and "
-               "a machine block with its hash, then write the ticket file (a CSV row per child) and give its one Drive "
-               "upload into the store's tickets folder; a second call opens no issue again")
+               "a machine block with its hash, then write each child's ticket file (its CSV row) and give the Drive "
+               "calls that upload it into its subtask folder of the store; a second call opens no issue again")
     args_schema = {"type": "object", "properties": {"into": {"type": "string"}}}
     needs = ("plans", "session", "units", "github")
 
@@ -211,10 +212,12 @@ class Tickets(McpAction):
             raise ActionError(f"into is a folder of this session's working folder; {into} is not a folder")
         try:
             lines = issues.open_issues(port, sid, units, ctx.ports["github"])
-            made = issues.write_ticket(port, sid, into)
+            files = issues.write_ticket(port, sid, into)
         except issues.IssueError as e:
             raise ActionError(str(e)) from e
-        return "\n".join(lines + [issues.upload_words(made, store.folder(), store.place(port, "tickets"))])
+        plan = port.ticket(sid)["plan"]
+        return "\n".join(lines + [issues.upload_words(port, sid, plan, files, store.folder(),
+                                                      store.place(port, "tickets"))])
 
 
 class Started(McpAction):
