@@ -95,7 +95,7 @@ def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[st
         start: another branch the child starts from and its pull request goes into; "" for the unit's base (spawn
             always gives "": there is no plan branch).
         issue: its issue {repo, number, url, sha} (utils/orchestra/issues.py); None for none.
-        ticket_file: the plan's ticket file {title, sha256} in the store's tickets folder; None for none.
+        ticket_file: the child's ticket file {title, sha256} in its subtask folder of the store; None for none.
         pr: its draft pull request {repo, number, url} (utils/orchestra/draft.py); None for none.
         orders: what it checks the parent's orders with, {key, cloud, rounds} (utils/orchestra/orders.py); None.
         locks: the content hash of each locked acceptance test of the card ({path: hash}, locked.locked_files); the
@@ -152,7 +152,7 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
         start: another branch the child starts from and its pull request goes into; "" (no plan branch) for the
             unit's base.
         issue: its issue {repo, number, url, sha}; None for none.
-        ticket_file: the plan's ticket file {title, sha256} in the store's tickets folder; None for none.
+        ticket_file: the child's ticket file {title, sha256} in its subtask folder of the store; None for none.
         pr: its draft pull request {repo, number, url}; None for none.
         cloud: the parent's cloud session id (cloud_id), named beside parent_sid; "" outside the cloud.
         key: the child's order key (utils/orchestra/orders.key_for); "" for none.
@@ -168,8 +168,9 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
               "comments by the harness itself: that is how your words reach the orchestrator, whom your push wakes. "
               "When you hand back, the orchestrator tests your pull request with its own copy of the acceptance tests "
               "and, when they pass, merges it into the base itself.") if pr else ""
-    record = (f"Your task on record: issue #{issue['number']} ({issue['url']}), and your row in the ticket file "
-              f"{(ticket_file or {}).get('title', '(none)')} of the store's tickets folder. take registers you first: "
+    where = f"your folder {'/'.join(store_path)} of the store" if store_path else "the store"
+    record = (f"Your task on record: issue #{issue['number']} ({issue['url']}), and your row in your ticket file "
+              f"{(ticket_file or {}).get('title', '(none)')} in {where}. take registers you first: "
               "it asks you to download that file once with the Google Drive tool, the harness checks it and the issue "
               "against this brief and keeps no copy, and only then opens your card plan. Every commit names "
               f"#{issue['number']}: it starts \"#{issue['number']} {card['name']}: \", and the harness writes that."

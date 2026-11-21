@@ -4,8 +4,9 @@ in order (the card in words, the branch and the commit format), and a machine bl
 ISSUE_OPEN and ISSUE_CLOSE, with its sha256. The ticket's ISSUES key keeps each issue {repo, number, url, sha}; a
 second call opens none again. The child's register reads an issue with read_block and format_problems.
 Nothing secret goes in an issue: only the card.
-The ticket file, <draft>__<plan sha>.csv, has one row per child (COLUMNS); harness code writes it, the model only
-uploads it by its sha256 into the store's tickets folder, and the hook records that upload (utils/ledger/store.py)."""
+Each child has its own ticket file, <draft>__<child>__<plan sha>.csv, one row (COLUMNS); harness code writes it, the
+model only uploads it by its sha256 into the child's subtask folder of the store (utils/ledger/layout.py: store/
+<project>/P<plan>-<title>/<child>/), and the hook records that upload (utils/ledger/store.py)."""
 from __future__ import annotations
 
 import csv
@@ -22,7 +23,7 @@ from typing import Any
 from harness.utils.git.facts import top
 from harness.utils.git.github import GitHubError, repo_of
 from harness.utils.git.run import git
-from harness.utils.ledger import store
+from harness.utils.ledger import layout, store
 from harness.utils.ledger.export import FOLDER
 from harness.utils.ledger.recorder import Recorder
 from harness.utils.orchestra import crew, locked
@@ -31,7 +32,8 @@ from harness.utils.orchestra.card import unit_spec
 from harness.utils.plan import tickets
 from harness.utils.shapes import ApprovedPlan, Card, PlanStore
 
-ISSUES = "issues"  # the ticket's key: {"children": {name: {repo, number, url, sha}}, "file": {title, sha256, path}}
+ISSUES = "issues"  # the ticket's key: {"children": {name: {repo, number, url, sha}},
+#                   "files": {name: {title, sha256, path}}}
 ISSUE_OPEN, ISSUE_CLOSE = "<!-- harness-issue", "-->"
 BLOCK = re.compile(re.escape(ISSUE_OPEN) + r"\s*\n(\{.*\})\s*\nsha256: ([0-9a-f]{64})\s*\n" + re.escape(ISSUE_CLOSE))
 FORMAT = "harness-issue/1"
@@ -155,26 +157,28 @@ def format_problems(body: str) -> list[str]:
     return problems
 
 
-def ticket_title(draft: str, plan_sha: str) -> str:
-    """The file name of a plan's ticket file in the store's tickets folder.
+def ticket_title(draft: str, plan_sha: str, child: str) -> str:
+    """The file name of a child's ticket file in its subtask folder.
 
     Args:
         draft: the plan's desk id.
         plan_sha: the sha of its approved items.
+        child: the child's name.
 
     Returns:
-        "<draft>__<12 of the sha>.csv".
+        "<draft>__<child>__<12 of the sha>.csv".
     """
-    return f"{draft}__{plan_sha[:12]}.csv"
+    return f"{draft}__{child}__{plan_sha[:12]}.csv"
 
 
-def ticket_csv(plan: ApprovedPlan, held: dict[str, Any], approved_at: str) -> str:
-    """The ticket file: a header and one row per child, in the plan's order.
+def ticket_csv(plan: ApprovedPlan, held: dict[str, Any], approved_at: str, only: str = "") -> str:
+    """A ticket file: a header and one row per child, in the plan's order.
 
     Args:
         plan: the delegated plan in force.
         held: the issues by child name ({repo, number, sha}).
         approved_at: when the user approved the plan (ISO UTC).
+        only: one child's name: its row alone; "" for every child.
 
     Returns:
         The CSV text.
@@ -182,7 +186,7 @@ def ticket_csv(plan: ApprovedPlan, held: dict[str, Any], approved_at: str) -> st
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\n")
     writer.writerow(COLUMNS)
-    for card in plan["children"]:
+    for card in [c for c in plan["children"] if not only or c["name"] == only]:
         issue = held[card["name"]]
         writer.writerow([f"{issue['number']}_issue_{card['name']}", plan.get("sha", ""), card["name"],
                          f"github.com/{issue['repo']}", f"#{issue['number']}", issue["sha"],
@@ -191,9 +195,9 @@ def ticket_csv(plan: ApprovedPlan, held: dict[str, Any], approved_at: str) -> st
     return out.getvalue()
 
 
-def write_ticket(port: PlanStore, sid: str, into: str) -> dict[str, str]:
-    """Write the ticket file of the delegated plan in force into <into>/.harness-export/ and keep it in the ticket and
-    the store's rows (the hook then knows its upload).
+def write_ticket(port: PlanStore, sid: str, into: str) -> dict[str, dict[str, str]]:
+    """Write each child's ticket file of the delegated plan in force into <into>/.harness-export/ and keep them in the
+    ticket and the store's rows (the hook then knows each upload).
 
     Args:
         port: the ledger port.
@@ -201,7 +205,7 @@ def write_ticket(port: PlanStore, sid: str, into: str) -> dict[str, str]:
         into: a folder of the session's working folder (the Drive tool reads files only there).
 
     Returns:
-        {title, sha256, path}.
+        {child name: {title, sha256, path}}, in the plan's order.
 
     Raises:
         IssueError: no delegated plan, or a child without its issue.
@@ -217,41 +221,58 @@ def write_ticket(port: PlanStore, sid: str, into: str) -> dict[str, str]:
     rows = port.rows("SELECT at FROM pl_plan_events WHERE plan_id = ? AND event = 'approved' ORDER BY at DESC LIMIT 1",
                      (ticket["draft"],))
     approved_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(rows[0]["at"] / 1000)) if rows else ""
-    title, text = ticket_title(ticket["draft"], plan.get("sha", "")), ticket_csv(plan, held, approved_at)
     folder = Path(into) / FOLDER
     folder.mkdir(parents=True, exist_ok=True)
     if not (folder / ".gitignore").exists():
         (folder / ".gitignore").write_text("*\n", encoding="utf-8")
-    path = folder / title
-    path.write_text(text, encoding="utf-8")
-    made = {"title": title, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "path": path.resolve().as_posix()}
-    store.keep_ticket(port, sid, title, made["sha256"], made["path"])
+    files = {}
+    for card in plan["children"]:
+        title = ticket_title(ticket["draft"], plan.get("sha", ""), card["name"])
+        path = folder / title
+        path.write_text(ticket_csv(plan, held, approved_at, only=card["name"]), encoding="utf-8")
+        made = {"title": title, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "path": path.resolve().as_posix()}
+        store.keep_ticket(port, sid, title, made["sha256"], made["path"])
+        files[card["name"]] = made
     port.write(lambda con, rec: tickets.save(con, {**tickets.latest(con, sid), ISSUES: {
-        **(tickets.latest(con, sid).get(ISSUES) or {}), "file": made}}))
-    return made
+        **(tickets.latest(con, sid).get(ISSUES) or {}), "files": files}}))
+    return files
 
 
-def upload_words(made: dict[str, str], root: str, place: str) -> str:
-    """The words of the one Drive call that uploads the ticket file into the store's tickets folder.
+def upload_words(port: PlanStore, sid: str, plan: ApprovedPlan, files: dict[str, dict[str, str]], root: str,
+                 place: str) -> str:
+    """The words of the Drive calls that upload each child's ticket file into its subtask folder of the store
+    (layout.run_path; first the calls that find or make the folders not known yet), or into the tickets folder for a
+    plan that names no repo URL.
 
     Args:
-        made: the ticket file {title, sha256, path} (write_ticket).
+        port: the ledger port.
+        sid: the parent's session.
+        plan: the delegated plan in force.
+        files: each child's ticket file {title, sha256, path} (write_ticket).
         root: the store folder's id ("" when none is set).
         place: the tickets folder's id (store.place); "" when no Drive answer showed it yet.
 
     Returns:
         The text for the model.
     """
+    names = ", ".join(f["title"] for f in files.values())
     if not root:
-        return (f"Ticket file {made['title']} is written ({made['path']}), but no store folder is set "
-                f"({store.ENV}): it stays on this machine only.")
-    first = "" if place else store.find_or_make("tickets", root) + "\n"
-    return (f"Ticket file {made['title']} is written.\n" + first +
-            "Upload it now, once, with the Google Drive tool create_file, exactly:\n"
-            f"  title: {made['title']}\n  parentId: {place or '<the id of the tickets folder Drive gave>'}\n"
+        return (f"Ticket files {names} are written, but no store folder is set ({store.ENV}): they stay on this "
+                "machine only.")
+    lines = [f"Ticket files are written: {names}. Upload each now, once, with the Google Drive tool create_file:"]
+    for n, (name, made) in enumerate(files.items()):
+        path = layout.run_path(plan, name)
+        if path:
+            words, parent = layout.path_words(port, sid, path, last_only=n > 0)
+        else:
+            words = "" if place else store.find_or_make("tickets", root)
+            parent = place or "<the id of the tickets folder Drive gave>"
+        lines += ([words] if words else []) + [
+            f"Then create_file, exactly:\n  title: {made['title']}\n  parentId: {parent}\n"
             f"  contentMimeType: {CSV_MIME}\n  disableConversionToGoogleType: true\n"
-            f"  base64Content: sha256:{made['sha256']}:{made['path']}\n"
-            "The harness reads Drive's answer and records the upload; spawn waits for it.")
+            f"  base64Content: sha256:{made['sha256']}:{made['path']}"]
+    return "\n".join(lines + ["The harness reads Drive's answers and records each upload; spawn waits for them."])
 
 
 def open_issues(port: PlanStore, sid: str, units: dict[str, Any], github: Callable[..., Any]) -> list[str]:

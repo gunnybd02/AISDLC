@@ -84,10 +84,23 @@ def copy_path(ticket: Optional[Ticket], reason: str) -> list[str]:
         path = ((role.get("record") or {}).get("store") or {}).get("path")
         return [str(n) for n in path] if reason == "stop" and isinstance(path, list) and path else []
     plan = (ticket or {}).get("plan") or {}
-    if reason != "plan-close" or not plan.get("children"):
-        return []
-    url = next((str(s.get("url")) for s in (plan.get("repos") or {}).values() if s.get("url")), "")
-    return plan_path(url, plan.get("id", ""), plan.get("title", "")) if url else []
+    return run_path(plan) if reason == "plan-close" and plan.get("children") else []
+
+
+def run_path(plan: dict, child: str = "") -> list[str]:
+    """The store folder of a delegated plan, or of one of its children: plan_path of its first repo's URL, its number
+    and its title. Its tickets, its spawn and its close all ask it here, so they name the same folders.
+
+    Args:
+        plan: the approved plan (id, title, repos).
+        child: a child's name; "" for the plan's own folder.
+
+    Returns:
+        The names from the store folder down; [] for a plan that names no repo URL.
+    """
+    url = next((str(s.get("url")) for s in (plan.get("repos") or {}).values()
+                if isinstance(s, dict) and s.get("url")), "")
+    return plan_path(url, plan.get("id", ""), plan.get("title", ""), child) if url else []
 
 
 def folder_id(port: PlanStore, name: str, parent: str) -> str:
@@ -128,13 +141,14 @@ def held_path(port: PlanStore, names: list[str]) -> tuple[str, int]:
     return parent, known
 
 
-def path_words(port: PlanStore, sid: str, names: list[str]) -> tuple[str, str]:
+def path_words(port: PlanStore, sid: str, names: list[str], last_only: bool = False) -> tuple[str, str]:
     """Keep that the harness asks for this path, and say the Drive calls that find or make each level not known yet.
 
     Args:
         port: the harness ledger.
         sid: the session that asks.
         names: the path's names from the store folder down (plan_path).
+        last_only: say only the last level's calls (its parent's are said just before, for a sibling).
 
     Returns:
         (the words for the model, "" when every level is known; the deepest folder's id, or the placeholder the model
@@ -147,9 +161,10 @@ def path_words(port: PlanStore, sid: str, names: list[str]) -> tuple[str, str]:
     parent, known = held_path(port, names)
     if known == len(names):
         return "", parent
+    first = max(known, len(names) - 1) if last_only else known
     lines = [f"First find the store's folder {joined}, one level at a time; the harness reads each answer of Drive and "
              "keeps the folder's id:"]
-    for i in range(known, len(names)):
+    for i in range(first, len(names)):
         under = parent if i == known else f"<the id Drive gave for {names[i - 1]}>"
         lines.append(f"{i + 1}. search_files with the query: title = '{names[i]}' and mimeType = '{FOLDER_MIME}' and "
                      f"parentId = '{under}'. If Drive lists none, make it: create_file with title {names[i]}, "
