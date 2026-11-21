@@ -151,4 +151,5 @@ def close(port: PlanStore, sid: str, folder: str = "") -> str:
                      + ["Delete the check-in if you set one (delete_trigger), and report to the user. GitHub deletes "
                         "each merged branch when the repository deletes head branches on merge."]
                      + ([f"Save your own ledger too: run('ledger', 'export', {{reason: 'plan-close'}}) and upload it "
-                         f"(its name carries orch.{ticket['draft']}.parent)."] if folder else []))
+                         f"(its name carries orch.{ticket['draft']}.parent; it goes to the plan's own folder of the "
+                         "store, as its answer says)."] if folder else []))

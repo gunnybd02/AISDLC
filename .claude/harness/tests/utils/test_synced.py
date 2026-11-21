@@ -70,7 +70,7 @@ class SyncedTest(Scenario):
         self.assertIn("Not synced yet: hello (no copy found)", text)
         self.assertNotIn("send_message", text)  # no message reaches a child: search again, then ask the user
         self.assertIn("search again a little later", text)
-        self.assertIn(f"title contains 'orch.{self.port.ticket('s1')['draft']}.' and parentId = '{FOLDER}'", text)
+        self.assertIn(f"title contains 'orch.{self.port.ticket('s1')['draft']}.' and '{FOLDER}' in ancestors", text)
         self.assertEqual(self.port.ticket("s1")["state"], "open")
         draft = self.port.ticket("s1")["draft"]
         self.drive_answer([title("session_child0001", draft, "hello", seconds=time.time() - 3600)])
@@ -80,17 +80,21 @@ class SyncedTest(Scenario):
         self.assertIn("is delivered", text)
         self.assertIn(f"orch.{draft}.parent", text)  # the parent saves its own ledger too
 
-    def test_the_search_names_the_db_folder_and_the_store_folder(self):
-        """s2.synced.db: new copies are in db; older ones stay in the store folder; db unknown, it is found first."""
+    def test_the_search_reads_every_folder_of_the_store(self):
+        """s4.synced.anywhere: a child's final copy is in its subtask folder, its safety copies in db, older runs' in
+        the store folder: one search by name under the store folder finds them all, with or without db known."""
         self.accepted_and_merged()
         draft = self.port.ticket("s1")["draft"]
         with mock.patch.dict("os.environ", {store.ENV: FOLDER}):
-            text = land.close(self.port, "s1", folder=FOLDER)
-            self.assertIn(f"title = 'db' and parentId = '{FOLDER}'", text)
-            self.port.write(lambda con, rec: store.note(con, store.FOLDER, "db", FOLDER, "1DbFolderId000001", "s1", 1))
-            text = land.close(self.port, "s1", folder=FOLDER)
-        self.assertIn(f"title contains 'orch.{draft}.' and parentId = '1DbFolderId000001'", text)
-        self.assertIn(f"title contains 'orch.{draft}.' and parentId = '{FOLDER}'", text)
+            for db in ("", "1DbFolderId000001"):
+                if db:
+                    self.port.write(lambda con, rec: store.note(con, store.FOLDER, "db", FOLDER, db, "s1", 1))
+                text = land.close(self.port, "s1", folder=FOLDER)
+                self.assertIn(f"search_files with the query: title contains 'orch.{draft}.' and '{FOLDER}' in "
+                              "ancestors", text)
+                self.assertNotIn("parentId", text)
+        self.drive_answer([title("session_child0001", draft, "hello")])  # found by its name, in whatever folder
+        self.assertIn("is delivered", land.close(self.port, "s1", folder=FOLDER))
 
     def test_a_child_that_can_never_upload_passes_only_with_the_users_allow(self):
         self.accepted_and_merged()
