@@ -224,6 +224,30 @@ class RepoBindingTest(unittest.TestCase):
         self.assertIn("Ready: shop | not reachable (gh: could not reach api.github.com)", result.text)
         self.assertRegex(result.text, r"plan pd-[0-9a-z]+-[0-9a-f]{6} rev")
 
+    def test_a_plan_of_harness_files_works_in_the_harness_home(self):
+        """s1.plan.home-root: through MCP, a plan that names .claude files gets the harness home's clone as its root
+        when that clone is in the plan's repos (PR 93: its steps were refused in the session's folder); a plan without
+        them, or a home in none of its repos, keeps the server's folder."""
+        home = git_repo(self, {"x.py": "X = 1\n"})
+        subprocess.run(["git", "-C", str(home), "remote", "add", "origin", "https://github.com/acme/shop.git"],
+                       check=True, capture_output=True)
+        (home / ".claude").mkdir()
+        shop = {"shop": {"url": "https://github.com/acme/shop", "verify": ["npm", "test"]}}
+        harness_files = {**PLAN, "files": [".claude/harness/a.py"], "tests": [], "repos": shop}
+
+        def root(plan):
+            with mock.patch.dict(os.environ, {"HARNESS_HOME": str(home / ".claude")}):
+                result = self.run("plan", "plan_present", plan=plan)
+            self.assertFalse(result.is_error, result.text)
+            plan_id = re.search(r"plan (pd-[0-9a-z]+-[0-9a-f]{6}) rev", result.text).group(1)
+            return self.port.revision(plan_id)["items"]["root"]
+        self.assertEqual(root(harness_files), str(home.resolve()).replace("\\", "/"))
+        here = os.getcwd().replace("\\", "/")
+        self.assertEqual(root({**PLAN, "repos": shop}), here)  # no harness file: the project's folder
+        subprocess.run(["git", "-C", str(home), "remote", "set-url", "origin", "https://github.com/acme/web.git"],
+                       check=True, capture_output=True)
+        self.assertEqual(root(harness_files), here)  # the home is in none of the repos
+
     def test_the_model_cannot_set_the_verify_itself(self):
         result = self.run("plan", "plan_present", plan={**PLAN, "verify": ["true"]})
         self.assertTrue(result.is_error)

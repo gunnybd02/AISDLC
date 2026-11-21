@@ -9,6 +9,7 @@ from typing import Any
 from harness.utils.contracts import ActionContext, ActionError, McpAction, READ, WRITE, session_of
 from harness.utils.forge import ready
 from harness.utils.forge.protection import forge_off
+from harness.utils.git.facts import top
 from harness.utils.git.run import GitError, git
 from harness.utils.orchestra import child, crew
 from harness.utils.plan import desk
@@ -19,6 +20,33 @@ from harness.utils.shapes import PlanItems, Revision
 ACTIONS = [("plan.plan_present", "PlanPresent"), ("plan.plan_revise", "PlanRevise"), ("plan.plan_show", "PlanShow"),
            ("plan.plan_status", "PlanStatus"), ("plan.plan_drop", "PlanDrop")]
 NOT_KEPT = "The plan was not kept: "
+HOME_ENV, HARNESS_FILES = "HARNESS_HOME", ".claude/"  # the harness home the server runs for; the files it owns
+
+
+def root_of(items: PlanItems) -> str:
+    """The folder a new plan works in: the harness home's clone when the plan changes harness files (.claude/...) and
+    that clone's origin is one of the plan's repos (harness files are committed only there: commit.agent_files refuses
+    them in a unit); else the MCP server's folder, the session's project.
+
+    Args:
+        items: the checked items (files, repos).
+
+    Returns:
+        The root folder, with forward slashes.
+    """
+    here = os.getcwd().replace("\\", "/")
+    home = os.environ.get(HOME_ENV, "").strip()
+    repos = items.get("repos") or {}
+    if not home or not repos or not any(str(f).startswith(HARNESS_FILES) for f in items.get("files") or []):
+        return here
+    clone = top(home)
+    try:
+        origin = git(clone, "remote", "get-url", "origin").strip() if clone else ""
+    except GitError:
+        origin = ""
+    if origin and any(repo_key(spec.get("url", "")) == repo_key(origin) for spec in repos.values()):
+        return clone
+    return here
 
 
 def declared(ctx: ActionContext) -> list[str]:
@@ -133,7 +161,7 @@ class PlanPresent(McpAction):
         problems = desk.unknown(raw) + desk.check(items, need_title=True, units=declared(ctx))
         if problems:
             raise ActionError(NOT_KEPT + "; ".join(problems))
-        items["root"] = os.getcwd().replace("\\", "/")  # the MCP server runs in the project's folder
+        items["root"] = root_of(items)  # the project's folder, or the harness home for harness files
         bind_repo(items)
         plan_id, rev, _ = ctx.ports["plans"].present(items, sid=sid)
         lines = ready.report(items.get("repos"), None if forge_off() else ctx.ports["github"])
