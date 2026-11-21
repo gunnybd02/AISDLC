@@ -86,22 +86,28 @@ def snapshot(db_path: str | Path, out_dir: str | Path, record: StoreRecord) -> E
             "size": len(data)}
 
 
-def upload_call(copy: ExportCopy, folder: str, db: str = "") -> str:
-    """The words of the one Drive call that uploads a copy into the store's db folder (a file reference: the app reads
-    the file); when the db folder is not known yet, first the calls that find or make it.
+def upload_call(copy: ExportCopy, folder: str, db: str = "", place: tuple[str, str] | None = None) -> str:
+    """The words of the one Drive call that uploads a copy into the store's db folder, or into its plan or subtask
+    folder for a final copy (a file reference: the app reads the file); when that folder is not known yet, first the
+    calls that find or make it.
 
     Args:
         copy: the copy snapshot() made.
         folder: the store folder's Drive id.
         db: the store's db folder's Drive id (store.place); "" when no Drive answer showed it yet.
+        place: for a final copy, (the words that find or make its folder, "" when known; the folder's id or the
+            placeholder for it) (layout.path_words); None for the db folder.
 
     Returns:
         The text for the model: the create_file arguments to send, and what to do when it cannot.
     """
-    first = "" if db else find_or_make("db", folder) + "\n"
+    if place:
+        first, parent = (place[0] + "\n" if place[0] else ""), place[1]
+    else:
+        first, parent = ("" if db else find_or_make("db", folder) + "\n"), db or "<the id of the db folder Drive gave>"
     return (f"Exported the ledger: {copy['title']} ({copy['size']} bytes).\n" + first +
             "Upload it now, once, with the Google Drive tool create_file, exactly:\n"
-            f"  title: {copy['title']}\n  parentId: {db or '<the id of the db folder Drive gave>'}\n"
+            f"  title: {copy['title']}\n  parentId: {parent}\n"
             f"  contentMimeType: {MIME}\n"
             f"  disableConversionToGoogleType: true\n"
             f"  base64Content: sha256:{copy['sha256']}:{copy['path']}\n"

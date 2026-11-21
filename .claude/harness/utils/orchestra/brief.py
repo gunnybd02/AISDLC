@@ -83,7 +83,7 @@ def child_subject(role: dict[str, Any], what: str) -> str:
 def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[str, Any] | None = None,
                start: str = "", issue: dict[str, Any] | None = None, ticket_file: dict[str, Any] | None = None,
                pr: dict[str, Any] | None = None, orders: dict[str, Any] | None = None,
-               locks: dict[str, str] | None = None) -> str:
+               locks: dict[str, str] | None = None, store_path: list[str] | None = None) -> str:
     """The card as the child's harness reads it: one JSON object between CARD_OPEN and CARD_CLOSE.
 
     Args:
@@ -100,6 +100,8 @@ def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[st
         orders: what it checks the parent's orders with, {key, cloud, rounds} (utils/orchestra/orders.py); None.
         locks: the content hash of each locked acceptance test of the card ({path: hash}, locked.locked_files); the
             child's take and push refuse a file that drifted from it.
+        store_path: its subtask folder in the store, from the store folder down (layout.plan_path); its stop copy
+            goes there. None for none.
 
     Returns:
         The block, three lines.
@@ -112,7 +114,8 @@ def card_block(plan: int, card: Card, parent_sid: str, draft: str, unit: dict[st
             **({"ticket": {k: ticket_file.get(k) for k in ("title", "sha256")}} if ticket_file else {}),
             **({"pr": {k: pr.get(k) for k in ("repo", "number", "url")}} if pr else {}),
             **({"orders": {k: orders.get(k) for k in ("key", "cloud", "rounds")}} if orders else {}),
-            **({"locks": dict(locks)} if locks else {})}
+            **({"locks": dict(locks)} if locks else {}),
+            **({"store": {"path": list(store_path)}} if store_path else {})}
     return "\n".join([CARD_OPEN, json.dumps(body, ensure_ascii=False, sort_keys=True), CARD_CLOSE])
 
 
@@ -132,7 +135,7 @@ def listed(label: str, paths: list[str]) -> str:
 def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, Any] | None = None,
           resume: str = "", *, rounds: int, start: str = "", issue: dict[str, Any] | None = None,
           ticket_file: dict[str, Any] | None = None, pr: dict[str, Any] | None = None, cloud: str = "",
-          key: str = "", locks: dict[str, str] | None = None) -> str:
+          key: str = "", locks: dict[str, str] | None = None, store_path: list[str] | None = None) -> str:
     """The first prompt of a child: who it is, its work, how it is approved, that nobody is at its keyboard, its
     permissions, how it asks and hands back, its files and criteria, and the card block.
 
@@ -154,6 +157,7 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
         cloud: the parent's cloud session id (cloud_id), named beside parent_sid; "" outside the cloud.
         key: the child's order key (utils/orchestra/orders.key_for); "" for none.
         locks: {path: hash} of the card's locked acceptance tests (card_block); None for none.
+        store_path: its subtask folder in the store (card_block); None for none.
 
     Returns:
         The brief, as the prompt of create_session.
@@ -223,7 +227,7 @@ def brief(plan: int, draft: str, card: Card, parent_sid: str, unit: dict[str, An
                               listed("Tests", card.get("tests", []))) if x),
         f"{judged} It may send you back at most {rounds} times; then the user decides.\n" + "\n".join(acs),
         card_block(plan, card, parent_sid, draft, spec, start, issue, ticket_file, pr,
-                   {"key": key, "cloud": cloud, "rounds": rounds} if key else None, locks),
+                   {"key": key, "cloud": cloud, "rounds": rounds} if key else None, locks, store_path),
     ]
     return "\n\n".join(p for p in parts if p)
 

@@ -13,10 +13,10 @@ from __future__ import annotations
 import json
 import re
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from harness.utils.ledger.store import FOLDER, FOLDER_MIME, folder, folder_entries, note
-from harness.utils.shapes import PlanStore
+from harness.utils.shapes import PlanStore, Ticket
 
 if TYPE_CHECKING:
     from harness.utils.contracts import Event
@@ -65,6 +65,29 @@ def plan_path(repo_url: str, plan: int | str, title: str, child: str = "") -> li
         The names, from the store folder down, e.g. ["AISDLC", "P51-login-page", "api"].
     """
     return [project_of(repo_url), f"P{plan}-{slug(title)}"] + ([child] if child else [])
+
+
+def copy_path(ticket: Optional[Ticket], reason: str) -> list[str]:
+    """The folder a ledger copy goes to, when it is a final copy of an orchestra run: a child's stop copy to its
+    subtask folder (the path its brief names), a parent's plan-close copy to its plan's folder. Every other copy goes
+    to the store's db folder ([]): the safety net while the work runs.
+
+    Args:
+        ticket: the session's newest ticket.
+        reason: the copy's reason (store.REASONS).
+
+    Returns:
+        The path's names from the store folder down; [] for the db folder.
+    """
+    role = (ticket or {}).get("child")
+    if isinstance(role, dict):
+        path = ((role.get("record") or {}).get("store") or {}).get("path")
+        return [str(n) for n in path] if reason == "stop" and isinstance(path, list) and path else []
+    plan = (ticket or {}).get("plan") or {}
+    if reason != "plan-close" or not plan.get("children"):
+        return []
+    url = next((str(s.get("url")) for s in (plan.get("repos") or {}).values() if s.get("url")), "")
+    return plan_path(url, plan.get("id", ""), plan.get("title", "")) if url else []
 
 
 def folder_id(port: PlanStore, name: str, parent: str) -> str:

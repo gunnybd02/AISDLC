@@ -103,6 +103,36 @@ class ExportActionTest(unittest.TestCase):
                          (copy.name, 2, "s-export-test", "push"))
         self.assertTrue(self.export("folder-from-env-1", reason="later").is_error)
 
+    def test_a_final_copy_of_an_orchestra_run_goes_to_its_plan_or_subtask_folder(self):
+        """s2.export.place: a child's stop copy goes to the subtask folder its brief names, the parent's plan-close
+        copy to its plan folder; every other copy, and a session with no run, goes to the db folder."""
+        from harness.utils.plan import tickets
+        sid, sub = "s-export-test", ["AISDLC", "P51-login", "api"]
+
+        def ticket(**keys):
+            self.port.write(lambda con, rec: tickets.save(con, {**tickets.blank(sid), **keys}))
+
+        def parent_id(**args):
+            result = self.export("1RootFolderId0001", **args)
+            self.assertFalse(result.is_error, result.text)
+            return result.text.split("parentId: ", 1)[1].split("\n", 1)[0], result.text
+        self.assertEqual(parent_id(reason="stop")[0], "<the id of the db folder Drive gave>")  # no run: db
+        ticket(draft="pd-abc", child={"name": "api", "draft": "pd-abc", "record": {"store": {"path": sub}}})
+        where, text = parent_id(reason="stop")
+        self.assertEqual(where, "<the id Drive gave for api>")
+        self.assertIn("First find the store's folder AISDLC/P51-login/api", text)
+        self.assertIn("title = 'AISDLC' and mimeType = 'application/vnd.google-apps.folder' and parentId = "
+                      "'1RootFolderId0001'", text)
+        for reason in ("turn-end", "handback", "push"):  # the safety net while the work runs
+            self.assertEqual(parent_id(reason=reason)[0], "<the id of the db folder Drive gave>")
+        plan = {"id": 51, "title": "Login", "children": [{"name": "api"}],
+                "repos": {"probe": {"url": "https://github.com/gunnybd02/AISDLC"}}}
+        ticket(draft="pd-abc", plan=plan)
+        where, text = parent_id(reason="plan-close")
+        self.assertEqual(where, "<the id Drive gave for P51-login>")
+        self.assertIn("First find the store's folder AISDLC/P51-login,", text)
+        self.assertEqual(parent_id(reason="turn-end")[0], "<the id of the db folder Drive gave>")
+
     def test_every_reason_a_harness_text_names_is_one_export_takes(self):
         """s1.export.stop-reason: the stop order asks for reason stop (live run 11: the child fell back to manual);
         export takes it and names the copy by it, and no harness text names a reason export refuses."""
