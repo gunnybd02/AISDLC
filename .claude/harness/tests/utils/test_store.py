@@ -7,7 +7,7 @@ from unittest import mock
 
 from harness.assemble.engine.ports import LedgerPort
 from harness.utils.contracts import Event
-from harness.utils.ledger import store
+from harness.utils.ledger import layout, store
 from harness.utils.orchestra import synced
 from harness.tests import tree
 
@@ -54,6 +54,44 @@ class StoreTest(unittest.TestCase):
             self.assertEqual(store.place(self.port, "db"), "1DbFolderId000001")
             self.assertIn(f"parentId = '{root}'", store.find_or_make("db", root))
         self.assertEqual(store.place(self.port, "db"), "")  # no store folder set
+
+    def test_the_store_keeps_each_level_of_a_project_plan_and_subtask_path(self):
+        """s1.store.paths: layout.plan_path names store/<project>/P<plan>-<title>/<child>; path_words asks for each
+        level not known yet; a level is kept only when its name is on an asked path and its parent is a folder the
+        store knows."""
+        root, kind = "1RootFolderId0001", store.FOLDER_MIME
+        self.assertEqual(layout.plan_path("https://github.com/gunnybd02/AISDLC.git", 51, "Live run 12: a Haiku child!",
+                                         "count"), ["AISDLC", "P51-live-run-12-a-haiku-child", "count"])
+        self.assertEqual(layout.plan_path("git@github.com:o/shop", 7, "Login page"), ["shop", "P7-login-page"])
+
+        def answer(given, response):
+            return layout.placed(self.port, Event("PostToolUse", "mcp__Google_Drive__search_files", given, "s1", "/w",
+                                                 response))
+        names = ["AISDLC", "P51-login", "api"]
+        with mock.patch.dict("os.environ", {store.ENV: root}):
+            self.assertEqual(answer({}, {"id": "1StrayFolder00001", "title": "AISDLC", "mimeType": kind,
+                                         "parentId": root}), [])  # not asked yet
+            words, target = layout.path_words(self.port, "s1", names)
+            self.assertIn(f"1. search_files with the query: title = 'AISDLC' and mimeType = '{kind}' and parentId = "
+                          f"'{root}'", words)
+            self.assertIn("parentId = '<the id Drive gave for P51-login>'", words)
+            self.assertEqual(target, "<the id Drive gave for api>")
+            project = {"id": "1ProjectFolder001", "title": "AISDLC", "mimeType": kind, "parentId": root}
+            self.assertEqual(answer({}, project), ["The store's AISDLC folder is Drive folder 1ProjectFolder001."])
+            self.assertEqual(layout.held_path(self.port, names), ("1ProjectFolder001", 1))
+            listing = json.dumps({"files": [{"id": "1PlanFolder000001", "title": "P51-login", "mimeType": kind}]})
+            answer({"query": "title = 'P51-login' and parentId = '1ProjectFolder001'"}, listing)  # parent from the call
+            self.assertEqual(answer({}, {"id": "1OtherPlan0000001", "title": "P51-login", "mimeType": kind,
+                                         "parentId": "1ProjectFolder001"}), [])  # the first one seen counts
+            answer({}, {"id": "1Elsewhere0000001", "title": "api", "mimeType": kind, "parentId": "1UnknownParent001"})
+            self.assertEqual(layout.held_path(self.port, names), ("1PlanFolder000001", 2))
+            words, _ = layout.path_words(self.port, "s1", names)
+            self.assertTrue(words.startswith("First find the store's folder AISDLC/P51-login/api"))
+            self.assertIn("3. search_files with the query: title = 'api'", words)
+            self.assertNotIn("1. search_files", words)
+            answer({}, {"id": "1ApiFolder0000001", "title": "api", "mimeType": kind, "parentId": "1PlanFolder000001"})
+            self.assertEqual(layout.path_words(self.port, "s1", names), ("", "1ApiFolder0000001"))
+        self.assertEqual(layout.held_path(self.port, names), ("", 0))  # no store folder set
 
     def test_a_copy_has_a_record_and_a_name_that_say_who_and_when(self):
         self.commit("abcdef0123456789")
