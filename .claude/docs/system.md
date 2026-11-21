@@ -25,7 +25,7 @@ repository's own CI and the harness check everything, and the user allows the re
 | The repository | protected branches, CI pipeline, required checks, issues |
 | The plan (form 1) | repository URL, base, folders (scope), test command, children, criteria, acceptance tests, limits (lower only) |
 | The harness | the floor pipeline (base rules, banned words), the flow, defaults (3 children, 3 rounds), the forms |
-| Drive | `tickets/` (proof of the user's approvals), `db/` (every ledger) |
+| Drive | `<project>/P<plan>-<title>/` (the parent's final ledger) and `<child>/` in it (the child's ticket CSV and final ledger); `db/` (the safety copies made along the way) |
 | The machine's environment | the Drive folder id; on a PC, the path of the user's ledger |
 
 | Was in project.json | Now |
@@ -141,8 +141,8 @@ ready and merges it at the tested commit (`land.accept`); GitHub's automatic del
 **The commit format**: every commit on a child's branch starts `#N <name>: `, written by the harness (the parent's
 start, steps, and the empty signal commits of questions and handbacks).
 
-**The ticket CSV**, `tickets/<plan>__<sha>.csv` on Drive, one row per child, written by the harness at form 1 (the
-model only uploads it by reference):
+**The ticket CSV**, one per child, `<project>/P<plan>-<title>/<child>/<plan>__<child>__<sha>.csv` on Drive, its one
+row written by the harness at form 1 (the model only uploads it by reference):
 
 | key | plan sha | child | repo | issue | issue sha | branch | scope | AC tests | approved at |
 |---|---|---|---|---|---|---|---|---|---|
@@ -188,8 +188,16 @@ the locked tests or approves anything.
 
 - Each session's ledger records by itself: prompts, turns with their plan, calls, gates, commits, verify receipts,
   the issue a child registered, orders, CI events.
-- Drive `db/` gets each child's copy when it stops and the parent's at the end; `ledger join` merges copies into one
-  memory beside the ledger, each row once (`utils/ledger/join.py`), read by `db_query` with `memory: true`.
+- Drive keeps one folder per project, plan and child (`utils/ledger/layout.py`):
+
+  ```
+  store/<project>/P<plan>-<title>/            the parent's final copy (plan-close)
+  store/<project>/P<plan>-<title>/<child>/    the child's ticket CSV and its final copy (stop)
+  store/db/                                   every other copy: turn ends, handbacks, pushes (the safety net)
+  ```
+
+  `ledger join` merges copies into one memory beside the ledger, each row once (`utils/ledger/join.py`), read by
+  `db_query` with `memory: true`.
 - The trace: form 1, ticket row, issue #N, branch, commits "#N", CI runs, parent's check, merge, close; a ledger row
   at every step.
 
